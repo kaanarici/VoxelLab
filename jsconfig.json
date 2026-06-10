@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable", "webworker"],
+    "noEmit": true,
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "@ui": ["./js/ui/index.js"],
+      "@ui/*": ["./js/ui/*"],
+      "@core/*": ["./js/core/*"],
+      "@microscopy/*": ["./js/microscopy/*"],
+      "@dicom/*": ["./js/dicom/*"],
+      "@volume/*": ["./js/volume/*"],
+      "@mpr/*": ["./js/mpr/*"],
+      "@roi/*": ["./js/roi/*"],
+      "@overlay/*": ["./js/overlay/*"],
+      "@series/*": ["./js/series/*"],
+      "@projects/*": ["./js/projects/*"],
+      "@shell/*": ["./js/shell/*"]
+    }
+  },
+  "include": ["js/**/*.js", "viewer.js", "scripts/**/*.mjs"],
+  "exclude": ["node_modules", "data", "dist", "build", ".vercel", "test-results"]
+}

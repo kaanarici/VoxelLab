@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="114" fill="#f5f5f7"/>
+  <defs><filter id="sh" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="13"/></filter></defs>
+  <ellipse cx="256" cy="484" rx="148" ry="24" fill="#000000" opacity="0.22" filter="url(#sh)"/>
+  <polygon points="256,44 441.33,151 256,258 70.67,151" fill="#eef0f3" />
+<polygon points="70.67,151 256,258 256,472 70.67,365" fill="#aeb4bd" />
+<polygon points="256,258 441.33,151 441.33,365 256,472" fill="#7b828c" />
+<g stroke="#9aa1ab" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"><line x1="317.78" y1="79.67" x2="132.45" y2="186.67"/><line x1="194.22" y1="79.67" x2="379.55" y2="186.67"/><line x1="379.55" y1="115.33" x2="194.22" y2="222.33"/><line x1="132.45" y1="115.33" x2="317.78" y2="222.33"/></g><g stroke="#6b727c" stroke-width="2" stroke-opacity="0.5" stroke-linecap="round"><line x1="132.45" y1="186.67" x2="132.45" y2="400.67"/><line x1="70.67" y1="222.33" x2="256" y2="329.33"/><line x1="194.22" y1="222.33" x2="194.22" y2="436.33"/><line x1="70.67" y1="293.67" x2="256" y2="400.67"/></g><g stroke="#4f555e" stroke-width="2" stroke-opacity="0.5" stroke-linecap="round"><line x1="317.78" y1="222.33" x2="317.78" y2="436.33"/><line x1="256" y1="329.33" x2="441.33" y2="222.33"/><line x1="379.55" y1="186.67" x2="379.55" y2="400.67"/><line x1="256" y1="400.67" x2="441.33" y2="293.67"/></g>
+<polygon points="256,44 317.78,79.67 256,115.33 194.22,79.67" fill="#f2575b" opacity="0.97"/>
+<g stroke="#5b626c" stroke-width="2.5" stroke-opacity="0.7" fill="none" stroke-linejoin="round">
+    <polygon points="256,44 441.33,151 256,258 70.67,151"/>
+    <polyline points="70.67,151 70.67,365 256,472 441.33,365 441.33,151"/>
+    <line x1="256" y1="258" x2="256" y2="472"/>
+  </g>
+</svg>

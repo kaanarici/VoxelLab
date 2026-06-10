@@ -1,0 +1,672 @@
+  /* Ask / consult modals — flat, clean, no gradient or glow */
+  #ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none; z-index: 3000;
+    align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity .15s ease-out;
+  }
+  #ask-modal.visible, #consult-modal.visible, #upload-modal.visible, #confirm-modal.visible, #shortcuts-modal.visible { display: flex; opacity: 1; }
+  .ask-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    width: min(680px, calc(100vw - 32px));
+    min-width: min(480px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: 82vh;
+    overflow: hidden;
+    box-shadow: var(--shadow-modal);
+    display: flex; flex-direction: column;
+    transform: scale(0.97);
+    transition: transform .15s ease-out;
+  }
+  #ask-modal.visible .ask-card,
+  #consult-modal.visible .ask-card,
+  #upload-modal.visible .ask-card,
+  #confirm-modal.visible .ask-card { transform: scale(1); }
+  .ask-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  /* Two-line header (title + subtitle): pin the close button to the top-right
+     corner rather than vertically centering it against the taller block. */
+  .ask-header.has-subtitle { align-items: flex-start; }
+  .ask-heading { flex: 1; min-width: 0; }
+  .ask-header .ask-title {
+    font-size: 13px; font-weight: 500; color: var(--text);
+    flex: 1;
+    letter-spacing: -0.005em;
+  }
+  .ask-header .ask-badge {
+    font-size: 8px; font-weight: 400;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    opacity: 0.88;
+    max-width: 11em;
+    text-align: right;
+    line-height: 1.35;
+  }
+  .ask-close {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--icon-idle); cursor: pointer; font-size: 16px; line-height: 1;
+    transition: color .08s, background .08s;
+    margin-left: 4px;
+    border-radius: var(--radius);
+    position: relative;
+    background: transparent; border: none; padding: 0;
+    font-family: inherit;
+  }
+  .ask-close:hover { color: var(--text); background: var(--hover); }
+  .ask-close:active { opacity: 0.7; }
+  .ask-close::after {
+    content: ""; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px;
+  }
+  .ask-body-wrap {
+    padding: 14px 16px 16px; overflow-y: auto;
+  }
+  .ask-q {
+    font-size: 13px; color: var(--text); margin-bottom: 4px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .ask-meta {
+    font-size: 10px; color: var(--muted); margin-bottom: 14px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  /* Ask — region question (refined input, not default form chrome) */
+  .ask-input-lead { margin-bottom: 12px; }
+  .ask-input-context {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.45;
+    margin: 0 0 10px;
+    letter-spacing: 0.02em;
+  }
+  .ask-preview-frame {
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--elev);
+    overflow: hidden;
+    max-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ask-preview-img {
+    display: block;
+    max-width: 100%;
+    max-height: 200px;
+    width: auto;
+    height: auto;
+    image-rendering: auto;
+  }
+  .ask-input-field { margin-bottom: 4px; }
+  .ask-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 120px;
+    resize: vertical;
+    background: var(--elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.55;
+    padding: 12px 14px;
+    outline: none;
+  }
+  .ask-textarea:focus {
+    border-color: rgba(140, 170, 210, 0.45);
+    background: var(--hover);
+  }
+  .ask-textarea::placeholder { color: var(--muted); opacity: 0.85; }
+  .ask-input-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .ask-btn {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.1s, border-color 0.1s, opacity 0.1s;
+  }
+  .ask-btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border-color: var(--border);
+  }
+  .ask-btn-ghost:hover { color: var(--text); background: var(--hover); border-color: var(--dim); }
+  .ask-input-hint {
+    margin: 10px 0 0;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .ask-btn-primary {
+    background: var(--text);
+    color: var(--panel);
+    border-color: var(--text);
+  }
+  html.light .ask-btn-primary { color: #fff; }
+  .ask-btn-primary:hover { opacity: 0.88; }
+  .ask-result-q {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .ask-result-meta {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    letter-spacing: 0.04em;
+  }
+  .ask-result-body {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text);
+  }
+  .ask-result-foot {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .ask-a {
+    font-size: 13px; line-height: 1.65; color: var(--text);
+  }
+  .ask-a.err { color: var(--color-abnormal); }
+  .ask-inline-spinner {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: var(--space-xs);
+  }
+  .ask-list { margin: 8px 0 8px 20px; padding: 0; font-size: 13px; line-height: 1.65; }
+  .ask-list li { margin: 6px 0; color: var(--text); }
+  .ask-section-title {
+    font-size: 10px; font-weight: 500; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.12em;
+    margin: 20px 0 8px;
+  }
+  .ask-foot {
+    margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .ask-foot .rerun {
+    color: var(--muted); cursor: pointer;
+    border-bottom: 1px solid var(--dim);
+  }
+  .ask-foot .rerun:hover { color: var(--text); border-bottom-color: var(--text); }
+  .ask-foot .rerun:active { opacity: 0.7; }
+
+  /* Annotation modal (reuses .ask-card chrome) */
+  #annot-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none; z-index: 3000;
+    align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity .15s ease-out;
+  }
+  #annot-modal.visible { display: flex; opacity: 1; }
+  #annot-modal .ask-card { min-width: 440px; max-width: 520px; }
+
+  .annot-textarea {
+    width: 100%;
+    background: var(--elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font: inherit; font-size: 13px; line-height: 1.55;
+    padding: 10px 12px;
+    resize: vertical;
+    min-height: 70px;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .annot-textarea:focus { border-color: var(--dim); background: var(--hover); }
+  .annot-textarea::placeholder { color: var(--muted); }
+
+  .annot-actions {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 14px;
+  }
+  .annot-btn {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    font: inherit; font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    line-height: 1.3;
+    transition: background .08s, border-color .08s, color .08s, opacity .08s;
+  }
+  .annot-btn:hover { background: var(--hover); border-color: var(--dim); }
+  .annot-btn:active { opacity: 0.7; }
+  .annot-btn.primary {
+    background: var(--text); color: var(--panel); border-color: var(--text);
+  }
+  html.light .annot-btn.primary { color: #fff; }
+  .annot-btn.primary:hover { opacity: 0.85; }
+  .annot-btn.danger { color: var(--color-abnormal); border-color: rgba(214, 118, 118, 0.3); }
+  .annot-btn.danger:hover { background: rgba(214, 118, 118, 0.1); border-color: rgba(214, 118, 118, 0.5); }
+  #annot-delete { display: none; }
+  .annot-spacer { flex: 1; }
+
+  /* Hover tooltip for annotations — floats near cursor */
+  #annot-hover {
+    position: absolute; pointer-events: none;
+    display: none;
+    background: rgba(12, 12, 12, 0.88);
+    border-left: 2px solid #e0e0e0;
+    border-radius: var(--radius);
+    padding: 8px 11px;
+    font-size: 12px; line-height: 1.5;
+    color: #e0e0e0;
+    max-width: 260px;
+    z-index: 95;
+  }
+  #annot-hover.visible { display: block; }
+  #annot-hover .ah-label {
+    font-size: 9px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--muted); margin-bottom: 3px;
+  }
+
+  /* Help overlay modal */
+  #help-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none; z-index: 3000;
+    align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity .15s ease-out;
+  }
+  #help-modal.visible { display: flex; opacity: 1; }
+  .help-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    width: min(680px, calc(100vw - 32px));
+    max-height: min(80vh, calc(100vh - 48px));
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transform: scale(0.97);
+    transition: transform .15s ease-out;
+  }
+  #help-modal.visible .help-card { transform: scale(1); }
+  .help-subtitle {
+    margin-top: 3px;
+    font-size: 11px; color: var(--muted); line-height: 1.4;
+  }
+  .help-subtitle kbd {
+    background: var(--elev);
+    border-radius: var(--radius); padding: 1px 5px; font-size: 10px; color: var(--text);
+    font-family: "SF Mono", Monaco, monospace; font-weight: 400;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .help-body { padding: 18px 20px 4px; overflow-y: auto; }
+  .help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 32px; }
+  .help-sec h3 {
+    font-size: 10px; font-weight: 500; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px;
+  }
+  .help-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; font-size: 12px;
+  }
+  .help-row .hk { color: var(--muted); }
+  .help-row .hk-keys { display: inline-flex; gap: 4px; }
+  .help-row kbd {
+    background: var(--elev);
+    border-radius: var(--radius); padding: 2px 6px; font-size: 10px; color: var(--text);
+    font-family: "SF Mono", Monaco, monospace;
+    font-weight: 400;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .help-card .hc-foot {
+    margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--muted); line-height: 1.6;
+  }
+  .help-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .shortcuts-card {
+    width: min(960px, calc(100vw - 32px));
+    max-height: min(760px, calc(100vh - 48px));
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.97);
+    transition: transform .15s ease-out;
+  }
+  #shortcuts-modal.visible .shortcuts-card { transform: scale(1); }
+  .shortcuts-subtitle {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .shortcuts-body {
+    overflow: auto;
+  }
+  .shortcuts-head,
+  .shortcut-row {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(230px, 0.55fr) 80px;
+    align-items: center;
+    gap: 16px;
+  }
+  .shortcuts-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 12px 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .shortcut-row {
+    min-height: 72px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .shortcut-row:hover,
+  .shortcut-row.editing {
+    background: var(--hover);
+  }
+  .shortcut-command {
+    min-width: 0;
+  }
+  .shortcut-name {
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.35;
+  }
+  .shortcut-description {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .shortcut-binding,
+  .shortcut-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .shortcut-actions {
+    justify-content: flex-end;
+  }
+  .shortcut-keycaps {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-height: 26px;
+  }
+  .shortcut-keycaps kbd,
+  .shortcut-capture {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: var(--radius);
+    background: var(--elev);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+  }
+  .shortcut-unassigned {
+    color: var(--muted);
+    font-size: 13px;
+    min-height: 26px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .shortcut-icon-btn {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--icon-idle);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .shortcut-icon-btn svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .shortcut-icon-btn:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  .shortcut-edit {
+    opacity: 0;
+  }
+  .shortcut-row:hover .shortcut-edit,
+  .shortcut-edit:focus-visible {
+    opacity: 1;
+  }
+  .shortcut-icon-btn.is-disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .shortcut-icon-btn.is-disabled:hover {
+    color: var(--icon-idle);
+    background: transparent;
+  }
+  .shortcut-cancel {
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    padding: 4px 0;
+  }
+  .shortcut-cancel:hover {
+    color: var(--text);
+  }
+  .shortcut-conflict {
+    margin-top: 6px;
+    color: var(--color-abnormal);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .upload-file-input { display: none; }
+  .upload-zone-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--muted);
+    margin-bottom: var(--space-xs);
+  }
+  .upload-zone-title {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .upload-zone-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .upload-status {
+    min-height: 20px;
+    margin-top: var(--space-sm);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .upload-status.is-active { color: var(--text); }
+  .upload-status.is-error { color: var(--danger); }
+  .upload-status.is-warning { color: var(--color-attention); }
+  .upload-status.is-success { color: #4ade80; }
+  .upload-section {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .upload-section-title {
+    margin-bottom: var(--space-sm);
+    font-size: 11px;
+    color: var(--text);
+  }
+  .upload-grid {
+    display: grid;
+    gap: var(--space-sm);
+  }
+  .upload-field {
+    width: 100%;
+  }
+  .upload-actions {
+    display: flex;
+    gap: var(--space-sm);
+  }
+  .upload-action {
+    flex: 1;
+    min-width: 0;
+  }
+  .upload-copy {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .upload-copy-tight { margin-top: 6px; }
+  .upload-copy-spaced { margin-top: var(--space-sm); }
+  .format-capability-matrix {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .format-capability-title {
+    margin-bottom: var(--space-sm);
+    font-size: 11px;
+    color: var(--text);
+  }
+  .format-capability-head,
+  .format-capability-row {
+    display: grid;
+    grid-template-columns: 82px minmax(118px, 0.8fr) minmax(0, 1.4fr);
+    gap: 10px;
+    align-items: start;
+  }
+  .format-capability-head {
+    padding-bottom: 5px;
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .format-capability-row {
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .format-capability-status {
+    width: fit-content;
+    max-width: 100%;
+    padding: 1px 6px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .format-capability-format {
+    color: var(--text);
+    min-width: 0;
+  }
+  .format-capability-note {
+    color: var(--muted);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 640px) {
+    #ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal {
+      padding: 16px;
+    }
+    .ask-card {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      max-height: calc(100dvh - 32px);
+    }
+    .ask-header {
+      padding: 11px 12px;
+    }
+    .ask-body-wrap {
+      padding: 12px;
+    }
+    .upload-actions {
+      flex-direction: column;
+    }
+    .shortcuts-card {
+      width: 100%;
+      max-height: calc(100dvh - 32px);
+    }
+    .shortcuts-head {
+      display: none;
+    }
+    .shortcut-row {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .shortcut-description {
+      white-space: normal;
+    }
+    .shortcut-actions {
+      justify-content: flex-start;
+    }
+    .format-capability-head {
+      display: none;
+    }
+    .format-capability-row {
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 4px 8px;
+    }
+    .format-capability-note {
+      grid-column: 2;
+    }
+  }
