@@ -1,0 +1,85 @@
+{
+  "cases": [
+    {
+      "id": "backfills-all-default-public-urls",
+      "publicBase": "https://r2.example/",
+      "input": {
+        "slug": "cloud_job123",
+        "hasRaw": true,
+        "hasRegions": true
+      },
+      "expected": {
+        "slug": "cloud_job123",
+        "hasRaw": true,
+        "hasRegions": true,
+        "sliceUrlBase": "https://r2.example/data/cloud_job123",
+        "rawUrl": "https://r2.example/cloud_job123.raw.zst",
+        "regionUrlBase": "https://r2.example/data/cloud_job123_regions",
+        "regionMetaUrl": "https://r2.example/data/cloud_job123_regions.json"
+      }
+    },
+    {
+      "id": "backfills-only-slices-without-asset-flags",
+      "publicBase": "https://r2.example/path/",
+      "input": {
+        "slug": "cloud_job124",
+        "hasRaw": false,
+        "hasRegions": false
+      },
+      "expected": {
+        "slug": "cloud_job124",
+        "hasRaw": false,
+        "hasRegions": false,
+        "sliceUrlBase": "https://r2.example/path/data/cloud_job124"
+      }
+    },
+    {
+      "id": "preserves-existing-public-url-fields",
+      "publicBase": "https://r2.example/",
+      "input": {
+        "slug": "cloud_job125",
+        "hasRaw": true,
+        "hasRegions": true,
+        "sliceUrlBase": "https://cdn.example/custom/slices",
+        "rawUrl": "https://cdn.example/custom.raw.zst",
+        "regionUrlBase": "https://cdn.example/custom/regions",
+        "regionMetaUrl": "https://cdn.example/custom/regions.json"
+      },
+      "expected": {
+        "slug": "cloud_job125",
+        "hasRaw": true,
+        "hasRegions": true,
+        "sliceUrlBase": "https://cdn.example/custom/slices",
+        "rawUrl": "https://cdn.example/custom.raw.zst",
+        "regionUrlBase": "https://cdn.example/custom/regions",
+        "regionMetaUrl": "https://cdn.example/custom/regions.json"
+      }
+    },
+    {
+      "id": "requires-public-base",
+      "publicBase": "",
+      "input": {
+        "slug": "cloud_job126",
+        "hasRaw": true,
+        "hasRegions": true
+      },
+      "expected": {
+        "slug": "cloud_job126",
+        "hasRaw": true,
+        "hasRegions": true
+      }
+    },
+    {
+      "id": "requires-series-slug",
+      "publicBase": "https://r2.example/",
+      "input": {
+        "hasRaw": true,
+        "hasRegions": true
+      },
+      "expected": {
+        "hasRaw": true,
+        "hasRegions": true
+      }
+    }
+  ]
+}

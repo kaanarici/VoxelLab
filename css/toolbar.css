@@ -1,0 +1,938 @@
+  /* controls bar */
+  .controls {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    row-gap: 10px;
+    overflow: visible;
+    position: relative;
+  }
+  @media (max-width: 1380px) {
+    /* Full-width scrub row when the main column is narrow — same before/after first slice loads
+       (avoid tying layout to .controls--ready, which used to jump on reload). */
+    .controls .scrub-block { flex: 1 0 100%; order: -1; }
+  }
+  @media (max-width: 880px) {
+    .controls { padding: 10px 14px 12px; gap: 8px; }
+    /* Icons only for toolbar-level labeled buttons (views); panels keep labels */
+    .controls > .tool-group .icon-btn.labeled span { display: none; }
+    /* Compact standalone dropdowns; tool-group colormap keeps readable type */
+    .custom-dropdown .dd-trigger { font-size: 10px; padding: 0 18px 0 6px; }
+    .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger {
+      font-size: 11px;
+      padding: 0 4px 0 6px;
+    }
+    .overlay-opacity-wrap { max-width: 90px; }
+    .overlay-opacity-wrap input[type=range] { width: 40px; }
+    .oo-label { font-size: 9px; }
+    /* MR presets: smaller pills */
+    .controls .pill-group .pill { padding: 0 6px; font-size: 9px; }
+  }
+  /* Narrow desktop only (mouse) — shrink labeled buttons; touch keeps 44px */
+  @media (max-width: 880px) and (pointer: fine) {
+    .controls > .tool-group .icon-btn.labeled { width: 30px; padding: 0; }
+  }
+
+  /* Scrub block: play + slider + count + fps — uniform gap; scrubber grows */
+  .scrub-block {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1 1 360px;
+    min-width: 340px;
+    justify-content: flex-start;
+  }
+  /* The slider — filled track via CSS variable --fill */
+  .scrubber {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 30px;
+    display: flex;
+    align-items: center;
+  }
+  /* Track lives here (below the ticks) so ticks sit behind the thumb, not over it. */
+  .scrubber::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%;
+    transform: translateY(-50%); height: 5px; border-radius: 3px;
+    z-index: 0; pointer-events: none;
+    background: linear-gradient(to right,
+      var(--text) 0%, var(--text) var(--fill, 0%),
+      var(--dim) var(--fill, 0%), var(--dim) 100%);
+  }
+
+  .scrubber input[type=range] {
+    position: relative;
+    z-index: 3;
+    appearance: none; -webkit-appearance: none;
+    width: 100%; height: 5px;
+    background: transparent;
+    border-radius: 3px;
+    outline: none; cursor: pointer;
+    margin: 0;
+    padding: 0;
+    display: block;
+  }
+  .scrubber input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: 0 0 0 1.5px var(--text), 0 1px 4px rgba(0,0,0,0.4);
+    cursor: grab;
+    transition: transform .12s ease-out, box-shadow .12s;
+  }
+  .scrubber input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 1.5px var(--text), 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .scrubber input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); }
+  .scrubber input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: 0 0 0 1.5px var(--text), 0 1px 4px rgba(0,0,0,0.4);
+    cursor: grab;
+    transition: transform .12s ease-out, box-shadow .12s;
+  }
+  /* Parked on a finding: the knob glows that finding's severity color */
+
+  .scrubber input[type=range]:disabled {
+    opacity: 1; cursor: default; pointer-events: none;
+  }
+
+  /* Shared text style for scrub-block readouts (match toolbar labeled buttons at 12px) */
+  .ctr-count, .cine-fps {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 30px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  /* Slice count — 7ch ≈ NNN/NNN in tabular figures; add ch only if 4+ digit totals clip */
+  /* Keep the same flex box in busy + ready so toggling aria-busy doesn’t reflow the scrub row */
+  .ctr-count {
+    width: 7ch;
+    min-width: 7ch;
+    text-align: right;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+  }
+  .ctr-count b { color: var(--text); font-weight: 600; }
+  .ctr-count .ctr-sep { color: var(--dim); margin: 0 1px; }
+  .ctr-part {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    vertical-align: middle;
+    box-sizing: border-box;
+  }
+  /* Busy state: skeleton bars while #slice-tot is empty */
+  /* Placeholder bars while aria-busy (set when #slice-tot is empty — works without :has() support) */
+  .ctr-count[aria-busy="true"] .ctr-sep {
+    opacity: 0.35;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part {
+    position: relative;
+    min-width: 2.25ch;
+    /* Same vertical extent as live readout (line-height: 30px on .ctr-count) */
+    height: 30px;
+    height: 1lh;
+    min-height: 1em;
+    vertical-align: middle;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part--tot {
+    min-width: 2.75ch;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part b,
+  .ctr-count[aria-busy="true"] .ctr-part > span {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    /* Invisible but still one line tall so flex box keeps digit line metrics */
+    min-height: 1em;
+    display: inline-block;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part::after {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    /* Full em height reads as digit-sized vs the old 8px bar */
+    height: 1em;
+    min-height: 9px;
+    border-radius: 0.2em;
+    background: var(--dim);
+    opacity: 0.55;
+  }
+  /* FPS readout — fixed digit box (5–30) so the range thumb doesn’t shift 9→10 */
+  .cine-fps {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    min-width: 0;
+  }
+  .cine-fps #fps-val {
+    display: inline-block;
+    width: 2ch;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Cine speed — compact thumb (--compact-range-thumb); track matches slice bar height */
+  .cine-speed {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    height: 30px;
+  }
+  .cine-speed input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    width: 64px;
+    height: 5px;
+    background: var(--dim);
+    border-radius: 3px;
+    cursor: pointer;
+    outline: none;
+    margin: 0; padding: 0; display: block;
+  }
+  .cine-speed input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: 0 0 0 1px var(--text), 0 1px 3px rgba(0,0,0,0.35);
+    cursor: pointer;
+    transition: transform .12s ease-out, box-shadow .12s;
+  }
+  .cine-speed input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  .cine-speed input[type=range]::-moz-range-thumb {
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: 0 0 0 1px var(--text), 0 1px 3px rgba(0,0,0,0.35);
+    cursor: pointer;
+  }
+
+  /* Icon buttons */
+  .icon-btn {
+    display: flex;
+    align-items: center; justify-content: center;
+    width: 30px; height: 30px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--icon-idle);
+    cursor: pointer;
+    padding: 0;
+    transition: background .08s, color .08s, border-color .08s, opacity .08s, transform .08s;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .icon-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .icon-btn:active:not(:disabled) { opacity: 0.7; transform: scale(0.96); }
+  .icon-btn.active {
+    background: var(--accent-bg);
+    color: var(--text);
+  }
+  .icon-btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+  .icon-btn.hidden { display: none; }
+  .scrub-block.hidden { display: none; }
+  .tool-group.hidden { display: none; }
+  .custom-dropdown.hidden { display: none; }
+  .toolbar-sep.hidden { display: none; }
+  /* Center toolbar groups when scrub-block is hidden (single-slice) */
+  .controls:has(> .scrub-block.hidden) { justify-content: center; }
+  .icon-btn .ico { width: 15px; height: 15px; display: block; }
+  .slimsam-icon { width: 15px; height: 15px; }
+  /* W/L preset icons group: three icon-btns sitting as a tight cluster */
+  .mr-presets { display: flex; gap: 2px; flex-shrink: 0; }
+  /* MR presets + overlay opacity: hidden until a series is fully interactive */
+  .controls:not(.controls--ready) #mr-presets,
+  .controls:not(.controls--ready) #overlay-opacity-wrap {
+    display: none !important;
+  }
+  /* Whole W/L group (elevated chrome) — hide while loading so an empty strip does not sit between colormap and tools */
+  .controls:not(.controls--ready) .tool-group--wl {
+    display: none !important;
+  }
+
+  /* Labeled variant — icon + text, for meaning-carrying toggles */
+  .icon-btn.labeled {
+    width: auto; padding: 0 11px 0 8px;
+    gap: 6px; height: 30px;
+    font-size: 12px; font-weight: 500;
+  }
+  .icon-btn.labeled .ico { width: 14px; height: 14px; }
+
+  /* Cine play button — same size and style as other icon buttons */
+  .icon-btn.cine {
+    width: 30px; height: 30px;
+  }
+  .icon-btn.cine.active {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+  }
+  .icon-btn.cine .ico { width: 14px; height: 14px; }
+
+  /* Group layout */
+  .tool-group {
+    display: flex; align-items: center; gap: 2px;
+    flex-shrink: 0;
+    background: var(--elev);
+    border-radius: var(--radius-lg);
+    padding: 2px;
+    overflow: visible;
+  }
+  /* MR W/L presets + overlay opacity share group chrome with the other tool groups */
+  .tool-group--wl {
+    gap: 6px;
+    padding: 2px;
+  }
+  .plugin-tool-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .plugin-export-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
+  .plugin-export-btn {
+    justify-content: flex-start;
+    width: auto;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .toolbar-sep {
+    width: 1px; height: 18px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 4px;
+  }
+
+  /* Toolbox: collapsed group with floating panel */
+  .toolbox {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .toolbox-trigger {
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    width: 30px; height: 30px;
+    background: var(--elev);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--icon-idle);
+    cursor: pointer; padding: 0;
+    transition: background .08s, color .08s, border-color .08s;
+    position: relative;
+  }
+  .toolbox-trigger .ico { width: 15px; height: 15px; display: block; }
+  .toolbox-trigger:hover { background: var(--hover); color: var(--text); }
+  .toolbox-trigger.active,
+  .toolbox.open .toolbox-trigger {
+    background: var(--accent-bg); color: var(--text);
+  }
+  /* Dot badge — shown when any tool inside is active but panel is closed */
+  .toolbox-trigger .tb-dot {
+    position: absolute; top: 3px; right: 3px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent);
+    display: none;
+  }
+  .toolbox-trigger.has-active .tb-dot { display: block; }
+  .toolbox.open .toolbox-trigger .tb-dot { display: none; }
+
+  .toolbox-panel {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%; transform: translateX(-50%);
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius-lg);
+    padding: 4px;
+    z-index: 200;
+    flex-direction: row;
+    align-items: center;
+    gap: 2px;
+    box-shadow: var(--shadow-popover);
+    white-space: nowrap;
+  }
+  .toolbox.open .toolbox-panel { display: flex; }
+  /* Arrow pointing down toward the trigger */
+  .toolbox-panel::after {
+    content: '';
+    position: absolute;
+    bottom: -5px; left: var(--toolbox-caret-x, 50%); transform: translateX(-50%) rotate(45deg);
+    width: 8px; height: 8px;
+    background: var(--panel);
+  }
+  .toolbox.hidden { display: none; }
+
+  /* ── Tailored flyout menus ──────────────────────────────────────────
+     Toolbox flyouts read as real menus: a vertical, sectioned column with
+     per-menu affordances — shortcut keycaps for the action menu (Tools),
+     on/off switches for the overlay toggles. */
+  .toolbox-panel.menu-flyout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    min-width: 188px;
+    padding: 5px;
+  }
+  .menu-flyout .menu-group-label {
+    padding: 7px 8px 3px;
+    font-size: 9px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--rail-title);
+  }
+  .menu-flyout .menu-group-label:first-child { padding-top: 2px; }
+  .menu-flyout .menu-divider {
+    height: 1px; margin: 5px 6px 4px;
+    background: var(--border);
+  }
+  .menu-flyout .menu-row {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 9px; height: 32px;
+    padding: 0 9px;
+    border-radius: var(--radius);
+    color: var(--text);
+  }
+  .menu-flyout .menu-row .ico { color: var(--icon-idle); transition: color .08s; }
+  .menu-flyout .menu-row:hover { background: var(--hover); }
+  .menu-flyout .menu-row:hover .ico { color: var(--text); }
+  .menu-flyout .menu-row.active { background: var(--accent-bg); }
+  .menu-flyout .menu-row.active .ico { color: var(--text); }
+  .menu-flyout .menu-row span { flex: 1 1 auto; text-align: left; }
+
+  /* Action menu (Tools): trailing shortcut keycap pulled from data-key */
+  .menu-actions .menu-row[data-key]::after {
+    content: attr(data-key);
+    margin-left: auto;
+    min-width: 17px; height: 17px; padding: 0 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    color: var(--muted); background: var(--elev);
+    border-radius: 3px;
+  }
+  .menu-actions .menu-row--danger { color: var(--danger); }
+  .menu-actions .menu-row--danger .ico { color: currentColor; }
+  .menu-actions .menu-row--danger:hover { background: rgba(229,115,115,0.1); }
+  .menu-actions .menu-row--danger:hover .ico { color: currentColor; }
+
+  /* Toggle menu (Overlays): trailing on/off switch, state-driven by .active.
+     The knob is a radial-gradient inside the track so it animates with one
+     pseudo-element — no extra DOM. */
+  .menu-toggles .menu-row::after {
+    content: '';
+    margin-left: auto;
+    width: 26px; height: 16px; border-radius: 8px;
+    background-color: var(--dim);
+    background-image: radial-gradient(circle 6px at 8px center, var(--panel) 98%, transparent);
+    transition: background-color .14s ease, background-image .14s ease;
+  }
+  .menu-toggles .menu-row.active {
+    background: transparent;
+  }
+  .menu-toggles .menu-row.active:hover { background: var(--hover); }
+  .menu-toggles .menu-row.active::after {
+    background-color: var(--accent);
+    background-image: radial-gradient(circle 6px at 18px center, var(--bg) 98%, transparent);
+  }
+  /* Toggle rows flip state in place, so the momentary press-scale of an action
+     button is wrong here — the knob slide + row highlight is the feedback. */
+  .menu-toggles .menu-row:active:not(:disabled) { transform: none; }
+
+  /* Colormap menu: gradient swatch + name per row */
+  #cmap-menu {
+    min-width: 180px;
+    padding: 5px;
+  }
+  #cmap-menu .cmap-pick {
+    display: flex; align-items: center; gap: 9px;
+    padding: 5px 9px;
+    border-radius: var(--radius);
+  }
+  #cmap-menu .cmap-pick:first-child,
+  #cmap-menu .cmap-pick:last-child { border-radius: var(--radius); }
+  #cmap-menu .cmap-swatch {
+    width: 40px; height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(127,127,127,0.18);
+  }
+  #cmap-menu .cmap-name { font-size: 12px; }
+
+  /* Tooltips are rendered by js/tooltips.js as a singleton .tip-bubble
+     node. Per-button placement overrides use data-tip-pos="right|left"
+     on the anchor (auto-flip handles top/bottom viewport clamping). */
+  .tip-bubble {
+    position: fixed;
+    z-index: 3500;
+    pointer-events: none;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-border);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--tooltip-text);
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(2px);
+    transition: opacity .1s, transform .1s;
+  }
+  .tip-bubble.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Text button — used only in the 3D presets row. Everything else in the
+     toolbar is an icon-btn. */
+  .btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font: inherit; font-size: 11px; font-weight: 500;
+    line-height: 1.3;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .08s, border-color .08s, color .08s, opacity .08s, transform .08s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--hover); border-color: var(--dim); color: var(--text); }
+  .btn:active:not(:disabled) { opacity: 0.7; transform: scale(0.96); }
+  .btn.active { background: var(--accent-bg); color: var(--text); }
+  .btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+
+  /* AI / stats markers: custom reactive pins riding on top of the track.
+     z-index 2 keeps them above the track; the JS fades the one under the thumb
+     (.under-thumb) so the knob visually absorbs it instead of drawing over it. */
+  #scrub-ticks {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .scrub-tick {
+    /* Monochrome milestone — short + flat so it sits in the bar and aligns with the
+       handle (no towering). Quiet (--muted) while ahead of the handle; once reached or
+       passed it becomes a --bg notch cut into the filled bar. No halo/glow/severity colour. */
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 2px;
+    height: 8px;
+    border-radius: 1px;
+    transform: translate(-50%, -50%);
+    background: var(--muted);
+    opacity: 1;
+    transition: background .12s ease, width .12s ease;
+  }
+  .scrub-tick.passed,
+  .scrub-tick.under-thumb { background: var(--bg); }
+
+  /* Lit when the thumb is near (.active) or the cursor hovers it (.hover) */
+  .scrub-tick.active,
+  .scrub-tick.hover {
+    width: 3px;
+  }
+  /* Thumb is sitting on this marker — let the knob take over */
+  .scrub-tick.under-thumb {
+    /* Tick is taller than the thumb, so it shows above/below the knob — you never
+       lose the divider you're parked on. */
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  .scrubber:has(input:disabled) #scrub-ticks { opacity: 0.35; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scrub-tick { transition: opacity .12s ease, box-shadow .12s ease; }
+    .scrub-tick.active,
+    .scrub-tick.hover { transform: translate(-50%, -50%); }
+    .scrub-tick.under-thumb { transform: translate(-50%, -50%); }
+  }
+
+  /* Custom dropdown (replaces native <select>) */
+  .custom-dropdown {
+    position: relative; display: inline-block; height: 28px;
+  }
+  .custom-dropdown .dd-trigger {
+    background: var(--elev); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 8px 0 10px; font: inherit; font-size: 11px;
+    cursor: pointer; height: 28px;
+    display: flex; align-items: center; gap: 4px;
+    white-space: nowrap; user-select: none;
+    transition: border-color .08s, background .08s;
+  }
+  /* Inside elevated tool groups, drop the extra box border — group chrome is enough */
+  .tool-group .custom-dropdown:has(> .dd-trigger) {
+    height: 30px;
+  }
+  .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger {
+    height: 30px;
+    background: transparent;
+    border-color: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 0 6px 0 8px;
+  }
+  .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger:hover {
+    background: var(--hover);
+    border-color: transparent;
+  }
+  .tool-group .custom-dropdown.open:has(> .dd-trigger) .dd-trigger {
+    background: var(--hover);
+  }
+  .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger:active {
+    border-color: transparent;
+  }
+  .custom-dropdown .dd-trigger .dd-chevron {
+    width: 14px; height: 14px; flex-shrink: 0;
+    color: var(--muted); transition: transform .15s;
+  }
+  .custom-dropdown.open .dd-trigger .dd-chevron { transform: rotate(180deg); }
+  .custom-dropdown .dd-trigger:hover { border-color: var(--dim); }
+  .custom-dropdown .dd-trigger:hover .dd-chevron { color: var(--text); }
+  .custom-dropdown > button:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+  .custom-dropdown .dd-trigger:disabled {
+    opacity: 0.25;
+    cursor: default;
+    pointer-events: none;
+  }
+  .custom-dropdown .dd-menu {
+    display: none; position: absolute; bottom: calc(100% + 4px); left: 0;
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius-lg); min-width: 100%;
+    z-index: 200; padding: 0;
+    max-height: 240px; overflow-x: hidden; overflow-y: auto;
+    box-shadow: var(--shadow-popover);
+  }
+  .custom-dropdown.open .dd-menu { display: block; }
+  .custom-dropdown .dd-item {
+    padding: 6px 12px; font-size: 11px; color: var(--text);
+    cursor: pointer; white-space: nowrap; margin: 0;
+  }
+  .custom-dropdown .dd-item:hover { background: var(--hover); }
+  .custom-dropdown .dd-item.active { color: var(--text); background: var(--accent-bg); }
+  .custom-dropdown .dd-item:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+  .custom-dropdown .dd-item:last-child { border-radius: 0 0 var(--radius) var(--radius); }
+
+  /* Compare series picker */
+  #cmp-dropdown { height: auto; }
+  #cmp-dropdown .dd-menu {
+    min-width: 196px;
+    width: 196px;
+    max-width: calc(100vw - 12px);
+    padding: 5px;
+    border: 0;
+    border-radius: var(--radius-lg);
+  }
+  #cmp-menu .dd-item.cmp-pick {
+    min-height: 30px;
+    width: 100%;
+    padding: 4px 10px 4px 8px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    box-sizing: border-box;
+  }
+  #cmp-menu .dd-item.cmp-pick:first-child,
+  #cmp-menu .dd-item.cmp-pick:last-child {
+    border-radius: var(--radius);
+  }
+  #cmp-menu .cmp-pick.ui-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  #cmp-menu .ui-checkbox-toggle {
+    padding: 0;
+  }
+  #cmp-menu .cmp-pick > span:last-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .custom-dropdown #cmp-menu .dd-item.cmp-pick:hover {
+    background: var(--hover);
+  }
+  #cmp-menu .cmp-menu-head {
+    position: sticky;
+    top: 0;
+    margin: -5px -5px 4px;
+    padding: 8px 10px 6px;
+    background: var(--panel);
+    color: var(--rail-title);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: 1;
+  }
+  #cmp-menu .cmp-stop {
+    position: sticky;
+    bottom: 0;
+    display: block;
+    box-sizing: border-box;
+    margin: 4px -5px -5px;
+    padding: 8px 10px;
+    background: var(--panel);
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    color: var(--rail-label);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: color .08s, background .08s;
+  }
+  #cmp-menu .cmp-stop:hover {
+    color: var(--danger);
+    background: var(--hover);
+  }
+  #cmp-menu .cmp-stop[hidden] {
+    display: none;
+  }
+
+  /* Native select with custom styling (sidebar pickers) */
+  .select-like {
+    background: var(--elev); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 6px 28px 6px 10px; font-size: 11px;
+    cursor: pointer; width: 100%;
+    appearance: none; -webkit-appearance: none;
+    /* Inline Lucide chevron-down as background image */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    background-size: 14px 14px;
+  }
+  .select-like:hover { border-color: var(--dim); }
+  select.select-like:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+  .select-dropdown {
+    position: relative;
+    width: 100%;
+  }
+  .select-dropdown > select.select-like {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .select-dropdown-trigger {
+    width: 100%;
+    height: 28px;
+    padding: 0 8px 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    background: var(--elev);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color .08s, background .08s;
+  }
+  .select-dropdown-trigger:hover {
+    border-color: var(--dim);
+  }
+  .select-dropdown-trigger:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+  .select-dropdown.disabled .select-dropdown-trigger {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .select-dropdown-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .select-dropdown-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--muted);
+    transition: transform .15s, color .08s;
+  }
+  .select-dropdown-trigger:hover .select-dropdown-chevron {
+    color: var(--text);
+  }
+  .select-dropdown.open .select-dropdown-chevron {
+    transform: rotate(180deg);
+  }
+  .select-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    z-index: 220;
+    padding: 5px;
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-popover);
+  }
+  .select-dropdown.open .select-dropdown-menu {
+    display: block;
+  }
+  .select-dropdown-item {
+    width: 100%;
+    min-height: 30px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .select-dropdown-item:hover {
+    background: var(--hover);
+  }
+  .select-dropdown-item.active {
+    background: var(--accent-bg);
+    color: var(--text);
+  }
+  .select-dropdown-item:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .rp-section.collapsible:has(.select-dropdown.open) .rp-body {
+    overflow: visible;
+  }
+
+  /* Overlay opacity — same slider style as .cine-speed */
+  .overlay-opacity-wrap {
+    display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
+    height: 30px;
+    margin-left: 4px;
+  }
+  .overlay-opacity-wrap input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    width: 64px; height: 5px;
+    background: var(--dim);
+    border-radius: 3px;
+    cursor: pointer;
+    outline: none;
+    margin: 0; padding: 0; display: block;
+  }
+  .overlay-opacity-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: 0 0 0 1px var(--text), 0 1px 3px rgba(0,0,0,0.35);
+    cursor: pointer;
+    transition: transform .12s ease-out;
+  }
+  .overlay-opacity-wrap input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  .overlay-opacity-wrap input[type=range]::-moz-range-thumb {
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: 0 0 0 1px var(--text), 0 1px 3px rgba(0,0,0,0.35);
+    cursor: pointer;
+  }
+  .oo-label { white-space: nowrap; font-size: 12px; font-weight: 500; color: var(--muted); }
+
+  /* When inside the controls bar, pill-group needs toolbar-compatible sizing */
+  .controls .pill-group {
+    margin-bottom: 0;
+    margin-left: 6px;
+    height: 30px;
+    flex-shrink: 0;
+  }
+  .controls .tool-group--wl .pill-group {
+    margin-left: 0;
+  }
+  .controls .pill-group .pill {
+    padding: 0 10px;
+    display: flex; align-items: center; justify-content: center;
+    height: 100%;
+    font-size: 11px;
+  }
+
+  /* Render-mode pills (Volume / MIP / MinIP) inside the 3D panel */
+  .pill-group {
+    display: flex; gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+  }
+  .pill {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 11px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    transition: background .08s, color .08s, opacity .08s;
+    border-right: 1px solid var(--border);
+  }
+  .pill:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .pill:last-child { border-right: none; border-radius: 0 var(--radius) var(--radius) 0; }
+  .pill:hover { color: var(--text); background: var(--hover); }
+  .pill:active { opacity: 0.7; }
+  .pill.active { background: var(--accent-bg); color: var(--text); }
+
+  /* Findings panel generate buttons: see panels.css (.gen-btn) */

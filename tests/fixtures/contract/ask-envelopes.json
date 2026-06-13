@@ -1,0 +1,193 @@
+{
+  "valid": [
+    {
+      "id": "ask-point-result",
+      "kind": "ask-result",
+      "input": {
+        "cached": false,
+        "key": "13:19:19:6d2c06983f",
+        "slice": 13,
+        "x": 384,
+        "y": 384,
+        "question": "What approximate structure is at this point?",
+        "answer": "The point is near the midline.",
+        "crop": "data/t2_tse_asks/0013_384_384_6d2c06983f.png"
+      },
+      "expected": {
+        "cached": false,
+        "key": "13:19:19:6d2c06983f",
+        "slice": 13,
+        "x": 384,
+        "y": 384,
+        "question": "What approximate structure is at this point?",
+        "answer": "The point is near the midline.",
+        "crop": "data/t2_tse_asks/0013_384_384_6d2c06983f.png"
+      }
+    },
+    {
+      "id": "ask-region-result-with-context",
+      "kind": "ask-result",
+      "input": {
+        "cached": true,
+        "key": "0:r:18:29:30:36:7eb505e753",
+        "slice": 0,
+        "x": 390,
+        "y": 521,
+        "question": "what is this",
+        "answer": "The selected ring is CSF around the upper spinal cord.",
+        "crop": "data/t2_tse_asks/0000_r301_466_480_577_7eb505e753.png",
+        "region": [301, 466, 480, 577],
+        "contextFingerprint": "a828beedde6fe608"
+      },
+      "expected": {
+        "cached": true,
+        "key": "0:r:18:29:30:36:7eb505e753",
+        "slice": 0,
+        "x": 390,
+        "y": 521,
+        "question": "what is this",
+        "answer": "The selected ring is CSF around the upper spinal cord.",
+        "crop": "data/t2_tse_asks/0000_r301_466_480_577_7eb505e753.png",
+        "region": [301, 466, 480, 577],
+        "contextFingerprint": "a828beedde6fe608"
+      }
+    },
+    {
+      "id": "consult-result",
+      "kind": "consult-result",
+      "input": {
+        "cached": false,
+        "disclaimer": "AI-generated consolidated read. NOT A DIAGNOSIS. Always consult a qualified radiologist.",
+        "provider": "codex",
+        "model": "gpt-5",
+        "impression": "The available sequences look grossly symmetric.",
+        "ask_radiologist": [
+          "Confirm whether the motion-degraded slice is interpretable.",
+          "Confirm there are no subtle FLAIR or SWI findings."
+        ],
+        "limitations": "This non-contrast study cannot assess enhancement."
+      },
+      "expected": {
+        "cached": false,
+        "disclaimer": "AI-generated consolidated read. NOT A DIAGNOSIS. Always consult a qualified radiologist.",
+        "provider": "codex",
+        "model": "gpt-5",
+        "impression": "The available sequences look grossly symmetric.",
+        "ask_radiologist": [
+          "Confirm whether the motion-degraded slice is interpretable.",
+          "Confirm there are no subtle FLAIR or SWI findings."
+        ],
+        "limitations": "This non-contrast study cannot assess enhancement."
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "id": "ask-result-missing-cached",
+      "kind": "ask-result",
+      "reason": "cached_missing",
+      "input": {
+        "key": "13:19:19:6d2c06983f",
+        "slice": 13,
+        "x": 384,
+        "y": 384,
+        "question": "What approximate structure is at this point?",
+        "answer": "The point is near the midline.",
+        "crop": "data/t2_tse_asks/0013_384_384_6d2c06983f.png"
+      }
+    },
+    {
+      "id": "ask-result-missing-answer",
+      "kind": "ask-result",
+      "reason": "answer_missing",
+      "input": {
+        "cached": false,
+        "key": "13:19:19:6d2c06983f",
+        "slice": 13,
+        "x": 384,
+        "y": 384,
+        "question": "What approximate structure is at this point?",
+        "crop": "data/t2_tse_asks/0013_384_384_6d2c06983f.png"
+      }
+    },
+    {
+      "id": "ask-result-inverted-region",
+      "kind": "ask-result",
+      "reason": "region_inverted",
+      "input": {
+        "cached": false,
+        "key": "0:r:bad",
+        "slice": 0,
+        "x": 390,
+        "y": 521,
+        "question": "what is this",
+        "answer": "The selected ring is CSF.",
+        "crop": "data/t2_tse_asks/0000_rbad.png",
+        "region": [480, 466, 301, 577]
+      }
+    },
+    {
+      "id": "ask-result-unexpected-field",
+      "kind": "ask-result",
+      "reason": "unexpected_field:confidence",
+      "input": {
+        "cached": false,
+        "key": "13:19:19:6d2c06983f",
+        "slice": 13,
+        "x": 384,
+        "y": 384,
+        "question": "What approximate structure is at this point?",
+        "answer": "The point is near the midline.",
+        "crop": "data/t2_tse_asks/0013_384_384_6d2c06983f.png",
+        "confidence": 0.8
+      }
+    },
+    {
+      "id": "consult-result-not-object",
+      "kind": "consult-result",
+      "reason": "not_object",
+      "input": []
+    },
+    {
+      "id": "consult-result-missing-provider",
+      "kind": "consult-result",
+      "reason": "provider_missing",
+      "input": {
+        "cached": false,
+        "disclaimer": "AI-generated consolidated read. NOT A DIAGNOSIS. Always consult a qualified radiologist.",
+        "model": "gpt-5",
+        "impression": "The available sequences look grossly symmetric.",
+        "ask_radiologist": [],
+        "limitations": ""
+      }
+    },
+    {
+      "id": "consult-result-non-string-bullet",
+      "kind": "consult-result",
+      "reason": "ask_radiologist_1_not_string",
+      "input": {
+        "cached": false,
+        "disclaimer": "AI-generated consolidated read. NOT A DIAGNOSIS. Always consult a qualified radiologist.",
+        "provider": "codex",
+        "model": "gpt-5",
+        "impression": "The available sequences look grossly symmetric.",
+        "ask_radiologist": ["Confirm motion.", 42],
+        "limitations": ""
+      }
+    },
+    {
+      "id": "consult-result-cached-not-boolean",
+      "kind": "consult-result",
+      "reason": "cached_not_boolean",
+      "input": {
+        "cached": "false",
+        "disclaimer": "AI-generated consolidated read. NOT A DIAGNOSIS. Always consult a qualified radiologist.",
+        "provider": "codex",
+        "model": "gpt-5",
+        "impression": "The available sequences look grossly symmetric.",
+        "ask_radiologist": [],
+        "limitations": ""
+      }
+    }
+  ]
+}
