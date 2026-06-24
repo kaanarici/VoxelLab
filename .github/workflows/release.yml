@@ -1,0 +1,80 @@
+# Public release shape: tag `v*` -> verify, build desktop artifacts, and publish a GitHub release.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # The full check/check:lab suite is the Check workflow's job (on push). The
+  # release builds + smoke-tests the actual packaged app, so it isn't gated on the
+  # brittle regression suite — it ships a built, smoke-verified artifact.
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run desktop:make:mac
+      - run: node scripts/check_desktop_make_outputs.mjs out/forge/make darwin
+      - run: npm run desktop:smoke:packaged:mac
+      - run: npm run desktop:smoke:release:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxellab-macos
+          if-no-files-found: error
+          path: |
+            out/forge/make/**/*.dmg
+            out/forge/make/**/*.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run desktop:make:win
+      - run: node scripts/check_desktop_make_outputs.mjs out/forge/make win32
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxellab-windows
+          if-no-files-found: error
+          path: |
+            out/forge/make/**/*.exe
+            out/forge/make/**/*.nupkg
+            out/forge/make/**/RELEASES
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - build-macos
+      - build-windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+      - run: find release-assets -maxdepth 5 -type f -print
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/**/*

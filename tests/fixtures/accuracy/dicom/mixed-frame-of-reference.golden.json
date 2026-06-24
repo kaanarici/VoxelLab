@@ -1,0 +1,132 @@
+{
+  "description": "mixed FrameOfReferenceUID should prevent volume-stack use",
+  "dicom": {
+    "columns": 3,
+    "imagePlaneFormula": "P = S + i * columnSpacing * rowDirection + j * rowSpacing * columnDirection",
+    "rows": 2
+  },
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        0.75,
+        0.0,
+        0.0,
+        5.0
+      ],
+      [
+        0.0,
+        0.75,
+        0.0,
+        6.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.25,
+        7.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "affineAppliesToVolume": false,
+    "coordinateSystem": "LPS+",
+    "series": {
+      "dicomImportKind": "image-stack",
+      "firstIPP": [
+        5.0,
+        6.0,
+        7.0
+      ],
+      "frameOfReferenceUIDConsistent": false,
+      "geometryKind": "imageStack",
+      "height": 2,
+      "isReconstructedVolumeStack": false,
+      "lastIPP": [
+        5.0,
+        6.0,
+        9.5
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "pixelSpacing": [
+        0.75,
+        0.75
+      ],
+      "reconstructionCapability": "2d-only",
+      "renderability": "2d",
+      "slicePositionsDistinct": true,
+      "sliceSpacing": 1.25,
+      "sliceSpacingRegular": false,
+      "sliceSpacingStats": {
+        "max": 1.25,
+        "mean": 1.25,
+        "min": 1.25,
+        "regular": true
+      },
+      "sliceThickness": 1.25,
+      "slices": 3,
+      "width": 3
+    },
+    "units": "mm",
+    "volumeStackSafe": false,
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          5.0,
+          6.0,
+          7.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          1,
+          1
+        ],
+        "world": [
+          5.75,
+          6.75,
+          8.25
+        ]
+      },
+      {
+        "voxel": [
+          2,
+          1,
+          2
+        ],
+        "world": [
+          6.5,
+          6.75,
+          9.5
+        ]
+      }
+    ]
+  },
+  "files": [
+    "mixed-frame-of-reference/slice-0001.dcm",
+    "mixed-frame-of-reference/slice-0002.dcm",
+    "mixed-frame-of-reference/slice-0003.dcm"
+  ],
+  "fixture": "mixed-frame-of-reference",
+  "reference": {
+    "name": "pydicom+DICOM-PS3.3-Image-Plane",
+    "url": "https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html",
+    "version": "pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1"
+  }
+}
