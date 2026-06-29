@@ -1,0 +1,1016 @@
+  /* controls bar */
+  .controls {
+    padding: var(--space-10) var(--space-md);
+    border-top: var(--border-w) solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    /* Single row: overflow scrolls inside the tool rail (below) instead of
+       wrapping items to a second row or shrinking them. */
+    flex-wrap: nowrap;
+    overflow: visible;
+    position: relative;
+  }
+  @media (max-width: 880px) {
+    /* Tighter toolbar edge padding only — items keep their full size and the
+       tool rail scrolls horizontally rather than shrinking labels/controls. */
+    .controls { padding: var(--space-10) var(--space-14) var(--space-md); gap: var(--space-sm); }
+  }
+
+  /* Scrub block: play + slider + count + fps — uniform gap; scrubber grows */
+  .scrub-block {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    /* Wide scrubber: hold a generous floor and grow into spare space. It does not
+       shrink (flex-shrink 0), so the tool rail to its right scrolls instead of
+       squeezing the slider. Phones override this to shrinkable (responsive.css). */
+    flex: 1 0 560px;
+    justify-content: flex-start;
+  }
+  /* The slider — filled track via CSS variable --fill */
+  .scrubber {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    height: var(--btn-toolbar);
+    display: flex;
+    align-items: center;
+  }
+  /* Track lives here (below the ticks) so ticks sit behind the thumb, not over it. */
+  .scrubber::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%;
+    transform: translateY(-50%); height: 5px; border-radius: var(--radius-sm);
+    z-index: 0; pointer-events: none;
+    background: linear-gradient(to right,
+      var(--text) 0%, var(--text) var(--fill, 0%),
+      var(--dim) var(--fill, 0%), var(--dim) 100%);
+  }
+
+  .scrubber input[type=range] {
+    position: relative;
+    z-index: 3;
+    appearance: none; -webkit-appearance: none;
+    width: 100%; height: 5px;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    outline: none; cursor: pointer;
+    margin: 0;
+    padding: 0;
+    display: block;
+  }
+  .scrubber input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob-strong);
+    cursor: grab;
+    transition: transform var(--dur-quick) var(--ease-smooth), box-shadow var(--dur-quick);
+  }
+  .scrubber input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 1.5px var(--text), 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .scrubber input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); }
+  .scrubber input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob-strong);
+    cursor: grab;
+    transition: transform var(--dur-quick) var(--ease-smooth), box-shadow var(--dur-quick);
+  }
+  /* Parked on a finding: the knob glows that finding's severity color */
+
+  .scrubber input[type=range]:disabled {
+    opacity: 1; cursor: default; pointer-events: none;
+  }
+
+  /* Shared text style for scrub-block readouts (match toolbar labeled buttons at 12px) */
+  .ctr-count, .cine-fps {
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    line-height: 30px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-snug);
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  /* Slice count — 7ch ≈ NNN/NNN in tabular figures; add ch only if 4+ digit totals clip */
+  /* Keep the same flex box in busy + ready so toggling aria-busy doesn’t reflow the scrub row */
+  .ctr-count {
+    width: 7ch;
+    min-width: 7ch;
+    text-align: right;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+  }
+  .ctr-count b { color: var(--text); font-weight: var(--fw-semibold); }
+  .ctr-count .ctr-sep { color: var(--dim); margin: 0 1px; }
+  .ctr-part {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    vertical-align: middle;
+    box-sizing: border-box;
+  }
+  /* Busy state: skeleton bars while #slice-tot is empty */
+  /* Placeholder bars while aria-busy (set when #slice-tot is empty — works without :has() support) */
+  .ctr-count[aria-busy="true"] .ctr-sep {
+    opacity: 0.35;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part {
+    position: relative;
+    min-width: 2.25ch;
+    /* Same vertical extent as live readout (line-height: 30px on .ctr-count) */
+    height: 30px;
+    height: 1lh;
+    min-height: 1em;
+    vertical-align: middle;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part--tot {
+    min-width: 2.75ch;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part b,
+  .ctr-count[aria-busy="true"] .ctr-part > span {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    /* Invisible but still one line tall so flex box keeps digit line metrics */
+    min-height: 1em;
+    display: inline-block;
+  }
+  .ctr-count[aria-busy="true"] .ctr-part::after {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    /* Full em height reads as digit-sized vs the old 8px bar */
+    height: 1em;
+    min-height: 9px;
+    border-radius: 0.2em;
+    background: var(--dim);
+    opacity: 0.55;
+  }
+  /* FPS readout — fixed digit box (5–30) so the range thumb doesn’t shift 9→10 */
+  .cine-fps {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    min-width: 0;
+  }
+  .cine-fps #fps-val {
+    display: inline-block;
+    width: 2ch;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Cine speed — compact thumb (--compact-range-thumb); track matches slice bar height */
+  .cine-speed {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-shrink: 0;
+    height: var(--btn-toolbar);
+  }
+  .cine-speed input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    width: 64px;
+    height: 5px;
+    background: var(--dim);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    outline: none;
+    margin: 0; padding: 0; display: block;
+  }
+  .cine-speed input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob);
+    cursor: pointer;
+    transition: transform var(--dur-quick) var(--ease-smooth), box-shadow var(--dur-quick);
+  }
+  .cine-speed input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  .cine-speed input[type=range]::-moz-range-thumb {
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob);
+    cursor: pointer;
+  }
+
+  /* Icon buttons */
+  .icon-btn {
+    display: flex;
+    align-items: center; justify-content: center;
+    width: var(--btn-toolbar); height: var(--btn-toolbar);
+    background: transparent;
+    border: var(--border-w) solid transparent;
+    border-radius: var(--radius);
+    color: var(--icon-idle);
+    cursor: pointer;
+    padding: 0;
+    transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap), border-color var(--dur-quick) var(--ease-swap), opacity var(--dur-quick) var(--ease-swap), transform var(--dur-quick) var(--ease-swap);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .icon-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .icon-btn:active:not(:disabled) { opacity: 0.7; }
+  .icon-btn.active {
+    background: var(--accent-bg);
+    color: var(--text);
+  }
+  .icon-btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+  .icon-btn.hidden { display: none; }
+  .scrub-block.hidden { display: none; }
+  .tool-group.hidden { display: none; }
+  .custom-dropdown.hidden { display: none; }
+  .toolbar-sep.hidden { display: none; }
+  /* Center toolbar groups when scrub-block is hidden (single-slice) */
+  .controls:has(> .scrub-block.hidden) { justify-content: center; }
+  .icon-btn .ico { width: var(--icon-lg); height: var(--icon-lg); display: block; }
+  /* W/L preset icons group: three icon-btns sitting as a tight cluster */
+  .mr-presets { display: flex; gap: var(--space-2xs); flex-shrink: 0; }
+  /* CT HU window presets (lung/soft/bone/full) — text pills in the W/L group */
+  .ct-presets { display: flex; gap: var(--space-2xs); flex-shrink: 0; }
+  .ct-preset-btn {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--rail-stat);
+    border-radius: var(--radius-sm);
+    font: var(--fw-medium) var(--fs-body) var(--ff-sans);
+    padding: 2px var(--space-xs);
+    cursor: pointer;
+    transition: color var(--dur-quick) var(--ease-smooth),
+      border-color var(--dur-quick) var(--ease-smooth),
+      background-color var(--dur-quick) var(--ease-smooth);
+  }
+  .ct-preset-btn:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.3); }
+  .ct-preset-btn.active { color: var(--text); border-color: var(--text); background: var(--accent-bg); }
+  /* MR/CT presets + overlay opacity: hidden until a series is fully interactive */
+  .controls:not(.controls--ready) #mr-presets,
+  .controls:not(.controls--ready) #ct-presets,
+  .controls:not(.controls--ready) #overlay-opacity-wrap {
+    display: none !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ct-preset-btn { transition: none; }
+  }
+  /* Whole W/L group (elevated chrome) — hide while loading so an empty strip does not sit between colormap and tools */
+  .controls:not(.controls--ready) .tool-group--wl {
+    display: none !important;
+  }
+
+  /* Labeled variant — icon + text, for meaning-carrying toggles */
+  .icon-btn.labeled {
+    width: auto; padding: 0 11px 0 var(--space-sm);
+    gap: var(--space-2sm); height: var(--btn-toolbar);
+    font-size: var(--fs-body-lg); font-weight: var(--fw-medium);
+  }
+  .icon-btn.labeled .ico { width: 14px; height: 14px; }
+
+  /* Cine play button — same size and style as other icon buttons */
+  .icon-btn.cine {
+    width: var(--btn-toolbar); height: var(--btn-toolbar);
+  }
+  .icon-btn.cine.active {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+  }
+  .icon-btn.cine .ico { width: 14px; height: 14px; }
+
+  /* Group layout */
+  .tool-group {
+    display: flex; align-items: center; gap: var(--space-2xs);
+    flex-shrink: 0;
+    background: var(--elev);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2xs);
+    overflow: visible;
+  }
+  /* MR W/L presets + overlay opacity share group chrome with the other tool groups */
+  .tool-group--wl {
+    gap: var(--space-2sm);
+    /* Horizontal inner padding so the W/L label and the last pill aren't flush
+       against the rounded container edge — without over-padding the cluster. */
+    padding: var(--space-2xs) var(--space-2sm);
+  }
+  .plugin-tool-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+  }
+  .plugin-export-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+    padding-top: var(--space-xs);
+    border-top: var(--border-w) solid var(--border);
+  }
+  .plugin-export-btn {
+    justify-content: flex-start;
+    width: auto;
+    padding: 0 var(--space-10);
+    font-size: var(--fs-body);
+  }
+  .toolbar-sep {
+    width: var(--border-w); height: 18px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 var(--space-xs);
+  }
+
+  /* Toolbox: collapsed group with floating panel */
+  .toolbox {
+    position: relative;
+    flex-shrink: 0;
+  }
+  /* The trigger IS the button — sized to the tool-group OUTER height so it lines
+     up with the groups (30px button + 2px×2 group padding), filled edge-to-edge
+     so the icon doesn't float in a padded box. */
+  .toolbox-trigger {
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    width: calc(var(--btn-toolbar) + var(--space-2xs) * 2);
+    height: calc(var(--btn-toolbar) + var(--space-2xs) * 2);
+    background: var(--elev);
+    border: var(--border-w) solid transparent;
+    border-radius: var(--radius-lg);
+    color: var(--icon-idle);
+    cursor: pointer; padding: 0;
+    transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap), border-color var(--dur-quick) var(--ease-swap);
+    position: relative;
+  }
+  .toolbox-trigger .ico { width: var(--icon-lg); height: var(--icon-lg); display: block; }
+  /* Labeled trigger — icon + short text, matching .icon-btn.labeled in the view group */
+  .toolbox-trigger--labeled {
+    width: auto;
+    gap: var(--space-2sm);
+    padding: 0 11px 0 var(--space-sm);
+    font-size: var(--fs-body-lg); font-weight: var(--fw-medium);
+  }
+  .toolbox-trigger--labeled .ico { width: 14px; height: 14px; }
+  .toolbox-trigger:hover { background: var(--hover); color: var(--text); }
+  .toolbox-trigger.active,
+  .toolbox.open .toolbox-trigger {
+    background: var(--accent-bg); color: var(--text);
+  }
+  /* Dot badge — shown when any tool inside is active but panel is closed */
+  .toolbox-trigger .tb-dot {
+    position: absolute; top: 3px; right: 3px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent);
+    display: none;
+  }
+  .toolbox-trigger.has-active .tb-dot { display: block; }
+  .toolbox.open .toolbox-trigger .tb-dot { display: none; }
+  /* Labeled triggers are wide buttons (and icon-only when collapsed), so the
+     absolute corner badge floats off in empty space. Drop the stray dot and
+     signal "something active inside" by brightening the trigger itself. */
+  .toolbox-trigger--labeled .tb-dot { display: none !important; }
+  .toolbox-trigger--labeled.has-active { color: var(--text); }
+
+  .toolbox-panel {
+    display: none;
+    /* Fixed so it escapes the scrolling tool rail's overflow clip; exact left/top
+       are set by placePopup() in wire-controls.js on open. */
+    position: fixed;
+    left: 0; top: 0;
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius-lg);
+    padding: var(--space-xs);
+    z-index: var(--z-dropdown);
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2xs);
+    box-shadow: var(--shadow-popover);
+    white-space: nowrap;
+  }
+  .toolbox.open .toolbox-panel { display: flex; }
+  /* Arrow pointing down toward the trigger */
+  .toolbox-panel::after {
+    content: '';
+    position: absolute;
+    bottom: -5px; left: var(--toolbox-caret-x, 50%); transform: translateX(-50%) rotate(45deg);
+    width: 8px; height: 8px;
+    background: var(--panel);
+  }
+  .toolbox.hidden { display: none; }
+
+  /* ── Tailored flyout menus ──────────────────────────────────────────
+     Toolbox flyouts read as real menus: a vertical, sectioned column with
+     per-menu affordances — shortcut keycaps for the action menu (Tools),
+     on/off switches for the overlay toggles. */
+  .toolbox-panel.menu-flyout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    min-width: 184px;
+    padding: var(--space-2xs);
+  }
+  .menu-flyout .menu-group-label {
+    padding: var(--space-2sm) var(--space-sm) var(--space-2xs);
+    font-size: var(--fs-micro); font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--rail-title);
+  }
+  .menu-flyout .menu-group-label:first-child { padding-top: var(--space-2xs); }
+  .menu-flyout .menu-divider {
+    height: var(--border-w); margin: var(--space-2xs) var(--space-sm);
+    background: var(--border);
+  }
+  .menu-flyout .menu-row {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-sm); height: 30px;
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: var(--fs-body-lg); font-weight: var(--fw-medium);
+  }
+  .menu-flyout .menu-row .ico { color: var(--icon-idle); transition: color var(--dur-quick) var(--ease-swap); }
+  .menu-flyout .menu-row:hover { background: var(--hover); }
+  .menu-flyout .menu-row:hover .ico { color: var(--text); }
+  .menu-flyout .menu-row.active { background: var(--accent-bg); }
+  .menu-flyout .menu-row.active .ico { color: var(--text); }
+  .menu-flyout .menu-row span { flex: 1 1 auto; text-align: left; }
+
+  /* Action menu (Tools): trailing shortcut keycap pulled from data-key */
+  .menu-actions .menu-row[data-key]::after {
+    content: attr(data-key);
+    margin-left: auto;
+    min-width: 16px; height: 16px; padding: 0 var(--space-2xs);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: var(--fs-micro); font-weight: var(--fw-semibold); text-transform: uppercase;
+    color: var(--muted); background: var(--elev);
+    border-radius: var(--radius-sm);
+  }
+  .menu-actions .menu-row--danger { color: var(--danger); }
+  .menu-actions .menu-row--danger .ico { color: currentColor; }
+  .menu-actions .menu-row--danger:hover { background: var(--danger-bg); }
+  .menu-actions .menu-row--danger:hover .ico { color: currentColor; }
+
+  /* Toggle menu (Overlays): trailing on/off switch, state-driven by .active.
+     The knob is a radial-gradient inside the track so it animates with one
+     pseudo-element — no extra DOM. */
+  .menu-toggles .menu-row::after {
+    content: '';
+    margin-left: auto;
+    width: 26px; height: 16px; border-radius: var(--radius-md);
+    background-color: var(--dim);
+    background-image: radial-gradient(circle 6px at 8px center, var(--panel) 98%, transparent);
+    transition: background-color var(--dur-quick) var(--ease-smooth), background-image var(--dur-quick) var(--ease-smooth);
+  }
+  .menu-toggles .menu-row.active {
+    background: transparent;
+  }
+  .menu-toggles .menu-row.active:hover { background: var(--hover); }
+  .menu-toggles .menu-row.active::after {
+    background-color: var(--accent);
+    background-image: radial-gradient(circle 6px at 18px center, var(--bg) 98%, transparent);
+  }
+  /* Toggle rows flip state in place, so the momentary press-scale of an action
+     button is wrong here — the knob slide + row highlight is the feedback. */
+  .menu-toggles .menu-row:active:not(:disabled) { transform: none; }
+
+  /* Colormap menu: gradient swatch + name per row */
+  #cmap-menu {
+    min-width: 180px;
+    padding: var(--space-xs);
+  }
+  #cmap-menu .cmap-pick {
+    display: flex; align-items: center; gap: 9px;
+    padding: var(--space-xs) 9px;
+    border-radius: var(--radius);
+  }
+  #cmap-menu .cmap-pick:first-child,
+  #cmap-menu .cmap-pick:last-child { border-radius: var(--radius); }
+  #cmap-menu .cmap-swatch {
+    width: 40px; height: 14px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px var(--hover-strong);
+  }
+  #cmap-menu .cmap-name { font-size: var(--fs-body-lg); }
+
+  /* Tooltips are rendered by js/tooltips.js as a singleton .tip-bubble
+     node. Per-button placement overrides use data-tip-pos="right|left"
+     on the anchor (auto-flip handles top/bottom viewport clamping). */
+  .tip-bubble {
+    position: fixed;
+    z-index: var(--z-tooltip);
+    pointer-events: none;
+    background: var(--tooltip-bg);
+    border: var(--border-w) solid var(--tooltip-border);
+    border-radius: var(--radius);
+    padding: var(--space-2sm) var(--space-10);
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    color: var(--tooltip-text);
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(2px);
+    transition: opacity var(--tt-out-dur), transform var(--tt-out-dur);
+  }
+  .tip-bubble.visible {
+    transition: opacity var(--tt-in-dur) var(--ease-tip), transform var(--tt-in-dur) var(--ease-tip);
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Text button — used only in the 3D presets row. Everything else in the
+     toolbar is an icon-btn. */
+  /* Bordered text-button skeleton — shared by .btn and the feature buttons that
+     reskin it (.gen-btn panels.css, .annot-btn modals.css). Per-instance blocks
+     keep only color / padding / font-size / transition / layout deltas. */
+  .btn, .gen-btn, .annot-btn {
+    background: transparent;
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font: inherit; font-weight: var(--fw-medium);
+    display: inline-flex; align-items: center;
+  }
+  .btn {
+    color: var(--muted);
+    padding: var(--space-xs) var(--space-10);
+    font-size: var(--fs-body);
+    line-height: var(--lh-snug);
+    justify-content: center;
+    white-space: nowrap;
+    transition: background var(--dur-quick) var(--ease-swap), border-color var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap), opacity var(--dur-quick) var(--ease-swap), transform var(--dur-quick) var(--ease-swap);
+  }
+  .btn:hover { background: var(--hover); border-color: var(--dim); color: var(--text); }
+  .btn:active:not(:disabled) { opacity: 0.7; }
+  .btn.active { background: var(--accent-bg); color: var(--text); }
+  .btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+
+  /* AI / stats markers: custom reactive pins riding on top of the track.
+     z-index 2 keeps them above the track; the JS fades the one under the thumb
+     (.under-thumb) so the knob visually absorbs it instead of drawing over it. */
+  #scrub-ticks {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .scrub-tick {
+    /* Monochrome milestone — short + flat so it sits in the bar and aligns with the
+       handle (no towering). Quiet (--muted) while ahead of the handle; once reached or
+       passed it becomes a --bg notch cut into the filled bar. No halo/glow/severity colour. */
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 2px;
+    height: 10px;
+    border-radius: var(--radius-pill, 999px);
+    transform: translate(-50%, -50%);
+    background: var(--muted);
+    opacity: 1;
+    transition:
+      background var(--dur-quick) var(--ease-swap),
+      width var(--dur-quick) var(--ease-smooth),
+      height var(--dur-quick) var(--ease-smooth);
+  }
+  .scrub-tick.passed,
+  .scrub-tick.under-thumb { background: var(--bg); }
+
+  /* Grows into a clear pill when the thumb is near (.active) or the cursor hovers
+     it (.hover) — color logic unchanged so it still reads on both track halves. */
+  .scrub-tick.active,
+  .scrub-tick.hover {
+    width: 4px;
+    height: 14px;
+  }
+  /* Thumb is sitting on this marker — let the knob take over */
+  .scrub-tick.under-thumb {
+    /* Tick is taller than the thumb, so it shows above/below the knob — you never
+       lose the divider you're parked on. */
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  .scrubber:has(input:disabled) #scrub-ticks { opacity: 0.35; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scrub-tick { transition: opacity var(--dur-quick) var(--ease-swap), box-shadow var(--dur-quick) var(--ease-swap); }
+    .scrub-tick.active,
+    .scrub-tick.hover { transform: translate(-50%, -50%); }
+    .scrub-tick.under-thumb { transform: translate(-50%, -50%); }
+  }
+
+  /* Custom dropdown (replaces native <select>) */
+  .custom-dropdown {
+    position: relative; display: inline-block; height: var(--btn-sidebar);
+  }
+  .custom-dropdown .dd-trigger {
+    background: var(--elev); color: var(--text);
+    border: var(--border-w) solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--space-sm) 0 var(--space-10); font: inherit; font-size: var(--fs-body);
+    cursor: pointer; height: var(--btn-sidebar);
+    display: flex; align-items: center; gap: var(--space-xs);
+    white-space: nowrap; user-select: none;
+    transition: border-color var(--dur-quick) var(--ease-swap), background var(--dur-quick) var(--ease-swap);
+  }
+  /* Inside elevated tool groups, drop the extra box border — group chrome is enough */
+  .tool-group .custom-dropdown:has(> .dd-trigger) {
+    height: var(--btn-toolbar);
+  }
+  .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger {
+    height: var(--btn-toolbar);
+    background: transparent;
+    border-color: transparent;
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    padding: 0 var(--space-2sm) 0 var(--space-sm);
+  }
+  .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger:hover {
+    background: var(--hover);
+    border-color: transparent;
+  }
+  .tool-group .custom-dropdown.open:has(> .dd-trigger) .dd-trigger {
+    background: var(--hover);
+  }
+  .tool-group .custom-dropdown:has(> .dd-trigger) .dd-trigger:active {
+    border-color: transparent;
+  }
+  .custom-dropdown .dd-trigger .dd-chevron {
+    width: 14px; height: 14px; flex-shrink: 0;
+    color: var(--muted); transition: transform var(--chevron-dur) var(--ease-swap);
+  }
+  .custom-dropdown.open .dd-trigger .dd-chevron { transform: rotate(180deg); }
+  .custom-dropdown .dd-trigger:hover { border-color: var(--dim); }
+  .custom-dropdown .dd-trigger:hover .dd-chevron { color: var(--text); }
+  .custom-dropdown > button:focus-visible {
+    box-shadow: none;
+    border-color: var(--muted);
+  }
+  .custom-dropdown .dd-trigger:disabled {
+    opacity: 0.25;
+    cursor: default;
+    pointer-events: none;
+  }
+  .custom-dropdown .dd-menu {
+    /* Fixed so it escapes the scrolling tool rail's overflow clip; placePopup()
+       sets left/top on open. */
+    display: none; position: fixed; left: 0; top: 0;
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius-lg);
+    z-index: var(--z-dropdown); padding: var(--space-2xs);
+    max-height: 240px; overflow-x: hidden; overflow-y: auto;
+    box-shadow: var(--shadow-popover);
+  }
+  .custom-dropdown.open .dd-menu { display: block; }
+  .custom-dropdown .dd-item {
+    padding: var(--space-sm) var(--space-10); font-size: var(--fs-body-lg); color: var(--text);
+    cursor: pointer; white-space: nowrap; margin: 0;
+    border-radius: var(--radius);
+  }
+  .custom-dropdown .dd-item:hover { background: var(--hover); }
+  .custom-dropdown .dd-item.active { color: var(--text); background: var(--accent-bg); }
+
+  /* Compare series picker */
+  #cmp-dropdown { height: auto; }
+  #cmp-dropdown .dd-menu {
+    min-width: 196px;
+    width: 196px;
+    max-width: calc(100vw - var(--space-md));
+    padding: 5px;
+    border: 0;
+    border-radius: var(--radius-lg);
+  }
+  #cmp-menu .dd-item.cmp-pick {
+    min-height: var(--btn-toolbar);
+    width: 100%;
+    padding: var(--space-xs) var(--space-10) var(--space-xs) var(--space-sm);
+    border-radius: var(--radius);
+    font-size: var(--fs-body-lg);
+    box-sizing: border-box;
+  }
+  #cmp-menu .dd-item.cmp-pick:first-child,
+  #cmp-menu .dd-item.cmp-pick:last-child {
+    border-radius: var(--radius);
+  }
+  #cmp-menu .cmp-pick.ui-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+  }
+  #cmp-menu .ui-checkbox-toggle {
+    padding: 0;
+  }
+  #cmp-menu .cmp-pick > span:last-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .custom-dropdown #cmp-menu .dd-item.cmp-pick:hover {
+    background: var(--hover);
+  }
+  #cmp-menu .cmp-menu-head {
+    position: sticky;
+    top: 0;
+    margin: -5px -5px var(--space-xs);
+    padding: var(--space-sm) var(--space-10) var(--space-2sm);
+    background: var(--panel);
+    color: var(--rail-title);
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: var(--z-base);
+  }
+  #cmp-menu .cmp-stop {
+    position: sticky;
+    bottom: 0;
+    display: block;
+    box-sizing: border-box;
+    margin: var(--space-xs) -5px -5px;
+    padding: var(--space-sm) var(--space-10);
+    background: var(--panel);
+    border: 0;
+    border-top: var(--border-w) solid var(--border);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    color: var(--rail-label);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    text-align: left;
+    cursor: pointer;
+    transition: color var(--dur-quick) var(--ease-swap), background var(--dur-quick) var(--ease-swap);
+  }
+  #cmp-menu .cmp-stop:hover {
+    color: var(--danger);
+    background: var(--hover);
+  }
+  #cmp-menu .cmp-stop[hidden] {
+    display: none;
+  }
+
+  /* Native select with custom styling (sidebar pickers) */
+  .select-like {
+    background: var(--elev); color: var(--text);
+    border: var(--border-w) solid var(--border); border-radius: var(--radius);
+    padding: var(--space-2sm) 28px var(--space-2sm) var(--space-10); font-size: var(--fs-body);
+    cursor: pointer; width: 100%;
+    appearance: none; -webkit-appearance: none;
+    /* Inline Lucide chevron-down as background image */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right var(--space-sm) center;
+    background-size: 14px 14px;
+  }
+  .select-like:hover { border-color: var(--dim); }
+  select.select-like:focus-visible {
+    box-shadow: none;
+    border-color: var(--muted);
+  }
+  .select-dropdown {
+    position: relative;
+    width: 100%;
+  }
+  .select-dropdown > select.select-like {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .select-dropdown-trigger {
+    width: 100%;
+    height: var(--btn-sidebar);
+    padding: 0 var(--space-sm) 0 var(--space-10);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2sm);
+    background: var(--elev);
+    color: var(--text);
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: var(--fs-body);
+    cursor: pointer;
+    transition: border-color var(--dur-quick) var(--ease-swap), background var(--dur-quick) var(--ease-swap);
+  }
+  .select-dropdown-trigger:hover {
+    border-color: var(--dim);
+  }
+  .select-dropdown-trigger:focus-visible {
+    box-shadow: none;
+    border-color: var(--muted);
+  }
+  .select-dropdown.disabled .select-dropdown-trigger {
+    opacity: var(--opacity-disabled);
+    cursor: default;
+  }
+  .select-dropdown-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .select-dropdown-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--muted);
+    transition: transform var(--chevron-dur) var(--ease-swap), color var(--dur-quick);
+  }
+  .select-dropdown-trigger:hover .select-dropdown-chevron {
+    color: var(--text);
+  }
+  .select-dropdown.open .select-dropdown-chevron {
+    transform: rotate(180deg);
+  }
+  .select-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + var(--space-xs));
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    z-index: var(--z-dropdown);
+    padding: var(--space-2xs);
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-popover);
+  }
+  .select-dropdown.open .select-dropdown-menu {
+    display: block;
+  }
+  .select-dropdown-item {
+    width: 100%;
+    display: flex; align-items: center;
+    min-height: 30px;
+    padding: 0 var(--space-sm);
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body-lg);
+    text-align: left;
+    cursor: pointer;
+  }
+  .select-dropdown-item:hover {
+    background: var(--hover);
+  }
+  .select-dropdown-item.active {
+    background: var(--accent-bg);
+    color: var(--text);
+  }
+  .select-dropdown-item:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .rp-section.collapsible:has(.select-dropdown.open) .rp-body {
+    overflow: visible;
+  }
+
+  /* Overlay opacity — same slider style as .cine-speed */
+  /* Balanced spacing: the label gets the group gap on its left, the slider gets
+     matching breathing room on its right (the group's 2px padding alone crams the
+     thumb against the rounded border). Independent of the group-padding cascade. */
+  .overlay-opacity-wrap {
+    display: flex; align-items: center; gap: var(--space-2sm);
+    flex-shrink: 0;
+    height: var(--btn-toolbar);
+    padding-left: var(--space-2xs);
+    padding-right: var(--space-2sm);
+  }
+  .overlay-opacity-wrap input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    width: 64px; height: 5px;
+    background: var(--dim);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    outline: none;
+    margin: 0; padding: 0; display: block;
+  }
+  .overlay-opacity-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob);
+    cursor: pointer;
+    transition: transform var(--dur-quick) var(--ease-smooth);
+  }
+  .overlay-opacity-wrap input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  .overlay-opacity-wrap input[type=range]::-moz-range-thumb {
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob);
+    cursor: pointer;
+  }
+  .oo-label { white-space: nowrap; font-size: var(--fs-body-lg); font-weight: var(--fw-medium); color: var(--muted); }
+
+  /* Window/Level: two compact sliders mirroring the overlay-opacity slider. */
+  .wl-control {
+    display: flex; align-items: center; gap: var(--space-2sm);
+    flex-shrink: 0;
+    height: var(--btn-toolbar);
+    padding-left: var(--space-2xs);
+    padding-right: var(--space-2sm);
+  }
+  .wl-control[hidden] { display: none; }
+  .wl-control input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    width: 56px; height: 5px;
+    background: var(--dim);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    outline: none;
+    margin: 0; padding: 0; display: block;
+  }
+  .wl-control input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob);
+    cursor: pointer;
+    transition: transform var(--dur-quick) var(--ease-smooth);
+  }
+  .wl-control input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  .wl-control input[type=range]::-moz-range-thumb {
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    background: var(--text);
+    border: var(--knob-border) solid var(--panel);
+    box-shadow: var(--shadow-knob);
+    cursor: pointer;
+  }
+
+  /* When inside the controls bar, pill-group needs toolbar-compatible sizing */
+  .controls .pill-group {
+    margin-bottom: 0;
+    margin-left: var(--space-2sm);
+    height: var(--btn-toolbar);
+    flex-shrink: 0;
+  }
+  .controls .tool-group--wl .pill-group {
+    margin-left: 0;
+  }
+  .controls .pill-group .pill {
+    padding: 0 var(--space-10);
+    display: flex; align-items: center; justify-content: center;
+    height: 100%;
+    font-size: var(--fs-body);
+  }
+
+  /* Render-mode pills (Volume / MIP / MinIP) inside the 3D panel */
+  .pill-group {
+    display: flex; gap: 0;
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-14);
+  }
+  .pill {
+    flex: 1;
+    padding: var(--space-2sm) var(--space-sm);
+    font-size: var(--fs-body);
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-caps);
+    font-weight: var(--fw-medium);
+    transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap), opacity var(--dur-quick) var(--ease-swap);
+    border-right: var(--border-w) solid var(--border);
+  }
+  .pill:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .pill:last-child { border-right: none; border-radius: 0 var(--radius) var(--radius) 0; }
+  .pill:hover { color: var(--text); background: var(--hover); }
+  .pill:active { opacity: 0.7; }
+  .pill.active { background: var(--accent-bg); color: var(--text); }
+
+  /* Findings panel generate buttons: see panels.css (.gen-btn) */

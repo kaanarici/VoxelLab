@@ -1,0 +1,142 @@
+{
+  "artifact": "voxellab-accuracy-ledger",
+  "version": 1,
+  "tolerance": 0.000001,
+  "references": [
+    "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1"
+  ],
+  "checkedCodePath": [
+    "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+    "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+    "js/core/geometry.js geometryFromSeries"
+  ],
+  "checkedCodePaths": {
+    "dicom-patient-space-vs-pydicom-ps3.3": [
+      "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+      "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+      "js/core/geometry.js geometryFromSeries"
+    ]
+  },
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "maxAbsError": 1.7763568394002505e-15
+  },
+  "rows": [
+    {
+      "oracle": "dicom-patient-space-vs-pydicom-ps3.3",
+      "fixture": "axial-regular",
+      "reference": "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1",
+      "tolerance": 0.000001,
+      "maxAbsError": 0,
+      "affineMaxAbsError": 0,
+      "voxelToWorldMaxAbsError": 0,
+      "seriesFieldMaxAbsError": 0,
+      "status": "PASS",
+      "checkedCodePath": [
+        "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+        "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+        "js/core/geometry.js geometryFromSeries"
+      ],
+      "affineAppliesToVolume": true,
+      "volumeStackSafe": true,
+      "mismatches": []
+    },
+    {
+      "oracle": "dicom-patient-space-vs-pydicom-ps3.3",
+      "fixture": "duplicate-ipp",
+      "reference": "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1",
+      "tolerance": 0.000001,
+      "maxAbsError": 0,
+      "affineMaxAbsError": 0,
+      "voxelToWorldMaxAbsError": 0,
+      "seriesFieldMaxAbsError": 0,
+      "status": "PASS",
+      "checkedCodePath": [
+        "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+        "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+        "js/core/geometry.js geometryFromSeries"
+      ],
+      "affineAppliesToVolume": false,
+      "volumeStackSafe": false,
+      "mismatches": []
+    },
+    {
+      "oracle": "dicom-patient-space-vs-pydicom-ps3.3",
+      "fixture": "enhanced-multiframe",
+      "reference": "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1",
+      "tolerance": 0.000001,
+      "maxAbsError": 0,
+      "affineMaxAbsError": 0,
+      "voxelToWorldMaxAbsError": 0,
+      "seriesFieldMaxAbsError": 0,
+      "status": "PASS",
+      "checkedCodePath": [
+        "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+        "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+        "js/core/geometry.js geometryFromSeries"
+      ],
+      "affineAppliesToVolume": true,
+      "volumeStackSafe": true,
+      "mismatches": []
+    },
+    {
+      "oracle": "dicom-patient-space-vs-pydicom-ps3.3",
+      "fixture": "mixed-frame-of-reference",
+      "reference": "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1",
+      "tolerance": 0.000001,
+      "maxAbsError": 0,
+      "affineMaxAbsError": 0,
+      "voxelToWorldMaxAbsError": 0,
+      "seriesFieldMaxAbsError": 0,
+      "status": "PASS",
+      "checkedCodePath": [
+        "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+        "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+        "js/core/geometry.js geometryFromSeries"
+      ],
+      "affineAppliesToVolume": false,
+      "volumeStackSafe": false,
+      "mismatches": []
+    },
+    {
+      "oracle": "dicom-patient-space-vs-pydicom-ps3.3",
+      "fixture": "oblique-iop",
+      "reference": "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1",
+      "tolerance": 0.000001,
+      "maxAbsError": 1.7763568394002505e-15,
+      "affineMaxAbsError": 1.1102230246251565e-16,
+      "voxelToWorldMaxAbsError": 1.7763568394002505e-15,
+      "seriesFieldMaxAbsError": 1.1102230246251565e-16,
+      "status": "PASS",
+      "checkedCodePath": [
+        "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+        "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+        "js/core/geometry.js geometryFromSeries"
+      ],
+      "affineAppliesToVolume": true,
+      "volumeStackSafe": true,
+      "mismatches": []
+    },
+    {
+      "oracle": "dicom-patient-space-vs-pydicom-ps3.3",
+      "fixture": "reversed-slice-order",
+      "reference": "pydicom+DICOM-PS3.3-Image-Plane pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1",
+      "tolerance": 0.000001,
+      "maxAbsError": 0,
+      "affineMaxAbsError": 0,
+      "voxelToWorldMaxAbsError": 0,
+      "seriesFieldMaxAbsError": 0,
+      "status": "PASS",
+      "checkedCodePath": [
+        "scripts/check_accuracy_ledger.mjs dcmjs fixture adapter",
+        "js/dicom/dicom-import-parse.js buildDICOMSeriesResult",
+        "js/core/geometry.js geometryFromSeries"
+      ],
+      "affineAppliesToVolume": true,
+      "volumeStackSafe": true,
+      "mismatches": []
+    }
+  ]
+}

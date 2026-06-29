@@ -1,0 +1,54 @@
+<div id="help-modal">
+  <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="ask-header has-subtitle">
+      <div class="ask-heading">
+        <div class="ask-title" id="help-title">Keyboard &amp; tools</div>
+        <div class="help-subtitle">Quick reference. Press <kbd>?</kbd> or <kbd>Esc</kbd> to toggle.</div>
+      </div>
+      <button class="ask-close" id="help-close" aria-label="Close (Esc)">×</button>
+    </div>
+    <div class="help-body">
+      <div class="help-grid">
+        <div class="help-sec">
+          <h3>Navigation</h3>
+          <div class="help-row"><span class="hk">Scrub slices</span><kbd>↑↓</kbd></div>
+          <div class="help-row"><span class="hk">Scroll wheel</span><kbd>wheel</kbd></div>
+          <div class="help-row"><span class="hk">Switch series</span><kbd>←→</kbd></div>
+          <div class="help-row"><span class="hk">Microscopy C/T</span><kbd>Shift + ←→/↑↓</kbd></div>
+          <div class="help-row"><span class="hk">Cine play/pause</span><kbd>Space</kbd></div>
+          <div class="help-row"><span class="hk">Jump to slice 1 / last</span><span class="hk-keys"><kbd>Home</kbd><kbd>End</kbd></span></div>
+        </div>
+        <div class="help-sec">
+          <h3>Image adjustment</h3>
+          <div class="help-row"><span class="hk">Pan</span><kbd>Drag</kbd></div>
+          <div class="help-row"><span class="hk">Window / Level</span><kbd>Shift + Drag</kbd></div>
+          <div class="help-row"><span class="hk">Zoom</span><kbd>⌘/Ctrl + Wheel</kbd></div>
+          <div class="help-row"><span class="hk">Auto contrast</span><kbd>A</kbd></div>
+          <div class="help-row"><span class="hk">Reset W/L + zoom</span><kbd>Dbl-click</kbd></div>
+        </div>
+        <div class="help-sec">
+          <h3>Modes</h3>
+          <div class="help-row"><span class="hk">MPR</span><kbd>M</kbd></div>
+          <div class="help-row"><span class="hk">3D volume</span><kbd>3</kbd></div>
+          <div class="help-row"><span class="hk">Compare</span><kbd>C</kbd></div>
+          <div class="help-row"><span class="hk">Measure distance</span><kbd>R</kbd></div>
+          <div class="help-row"><span class="hk">Screenshot</span><kbd>S</kbd></div>
+        </div>
+        <div class="help-sec">
+          <h3>Overlays</h3>
+          <div class="help-row"><span class="hk">Brain (skull strip)</span><kbd>B</kbd></div>
+          <div class="help-row"><span class="hk">Tissue segmentation</span><kbd>T</kbd></div>
+          <div class="help-row"><span class="hk">Symmetry heatmap</span><kbd>Y</kbd></div>
+          <div class="help-row" id="help-ai-row"><span class="hk">Ask AI (drag region)</span><kbd>K</kbd></div>
+        </div>
+      </div>
+      <div class="hc-foot">
+        Click a finding in the sidebar to jump to that slice. Click a measurement to delete it.
+        <span id="help-ai-foot">The floating AI card shows the observation for the current slice. Not a diagnosis.</span>
+      </div>
+    </div>
+    <div class="help-footer">
+      <button class="annot-btn" id="help-shortcuts-open" type="button">Customize shortcuts</button>
+    </div>
+  </div>
+</div>

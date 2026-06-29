@@ -1,0 +1,133 @@
+{
+  "description": "regular oblique stack with non-axial row/column direction cosines",
+  "dicom": {
+    "columns": 4,
+    "imagePlaneFormula": "P = S + i * columnSpacing * rowDirection + j * rowSpacing * columnDirection",
+    "rows": 3
+  },
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        0.7778174593052024,
+        -0.35000000000000003,
+        1.1250000000000004,
+        12.0
+      ],
+      [
+        0.7778174593052024,
+        0.35000000000000003,
+        -1.1250000000000004,
+        -18.0
+      ],
+      [
+        0.0,
+        0.4949747468305833,
+        1.5909902576697312,
+        30.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "affineAppliesToVolume": true,
+    "coordinateSystem": "LPS+",
+    "series": {
+      "dicomImportKind": "volume-stack",
+      "firstIPP": [
+        12.0,
+        -18.0,
+        30.0
+      ],
+      "frameOfReferenceUID": "1.2.826.0.1.3680043.8.498.83714352766928669580036906671003181897",
+      "frameOfReferenceUIDConsistent": true,
+      "geometryKind": "volumeStack",
+      "height": 3,
+      "isReconstructedVolumeStack": true,
+      "lastIPP": [
+        14.25,
+        -20.25,
+        33.18198051533946
+      ],
+      "orientation": [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.0,
+        -0.5000000000000001,
+        0.5000000000000001,
+        0.7071067811865476
+      ],
+      "pixelSpacing": [
+        0.7,
+        1.1
+      ],
+      "reconstructionCapability": "display-volume",
+      "renderability": "volume",
+      "slicePositionsDistinct": true,
+      "sliceSpacing": 2.25,
+      "sliceSpacingRegular": true,
+      "sliceSpacingStats": {
+        "max": 2.25,
+        "mean": 2.25,
+        "min": 2.25,
+        "regular": true
+      },
+      "sliceThickness": 2.25,
+      "slices": 3,
+      "width": 4
+    },
+    "units": "mm",
+    "volumeStackSafe": true,
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          12.0,
+          -18.0,
+          30.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          1,
+          1
+        ],
+        "world": [
+          13.552817459305203,
+          -17.997182540694798,
+          32.085965004500316
+        ]
+      },
+      {
+        "voxel": [
+          3,
+          2,
+          2
+        ],
+        "world": [
+          15.883452377915608,
+          -17.216547622084395,
+          34.17193000900063
+        ]
+      }
+    ]
+  },
+  "files": [
+    "oblique-iop/slice-0001.dcm",
+    "oblique-iop/slice-0002.dcm",
+    "oblique-iop/slice-0003.dcm"
+  ],
+  "fixture": "oblique-iop",
+  "reference": {
+    "name": "pydicom+DICOM-PS3.3-Image-Plane",
+    "url": "https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html",
+    "version": "pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1"
+  }
+}

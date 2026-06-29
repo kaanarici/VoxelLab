@@ -1,0 +1,627 @@
+  :root {
+    /* Clean neutral monochrome. No blue, no purple — color only in data
+       (segmentation, symmetry, finding severity tags). Chrome is grayscale. */
+    --bg:      #0a0a0a;
+    --panel:   #111111;
+    --elev:    #161616;
+    /* Colors */
+    --border:  #1e1e1e;
+    --hover:   #171717;
+    --text:    #f0f0f0;
+    --muted:   #7a7a7a;
+    --dim:     #3a3a3a;
+    --icon-idle: #6a6a6a;          /* resting icon color — visible but quiet, ≥4.5:1 on --bg */
+    --accent:  #f5f5f5;
+    --accent-bg: rgba(255,255,255,0.06);
+    --active-bg: rgba(255,255,255,0.08);
+    --danger:  #e57373;
+    --color-abnormal: #d67676;
+    --color-attention: #d4a72c;
+    --color-microbleed: #9b8fb0;
+    --tooltip-bg: #1a1a1a;
+    --tooltip-border: #2a2a2a;
+    --tooltip-text: #e0e0e0;
+
+    /* Radii */
+    --radius:  4px;
+    --radius-lg: 6px;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --sidebar-px: 16px;         /* horizontal padding in sidebar items */
+    --sidebar-item-py: 8px;     /* vertical padding in sidebar items */
+
+    /* Sizing */
+    --icon-sm: 13px;            /* inline icons, menu items */
+    --icon-md: 16px;            /* sidebar action buttons */
+    --icon-lg: 15px;            /* toolbar buttons */
+    --btn-sidebar: 28px;        /* sidebar action button hit target */
+    --btn-toolbar: 30px;        /* toolbar button hit target */
+    /* Stroke width for circular range thumbs + .ui-checkbox rings — matches .scrubber slice slider */
+    --knob-border: 2px;
+    /* Right-rail sliders (volume transfer, clip X/Y/Z, fusion mix) + toolbar mini sliders (FPS, overlay opacity) */
+    --compact-range-thumb: 12px;
+
+    /* Top chrome strips: viewer header + sidebar rails + mobile panel bar */
+    --chrome-header-height: 45px;
+    --chrome-header-pl: 12px;   /* padding-inline-start */
+    --chrome-header-pr: 8px;    /* padding-inline-end */
+    --sidebar-header-left-pl: 7px;
+    --rail-left-w:  208px;      /* left series sidebar grid column */
+    --rail-right-w: 312px;      /* right details panel grid column */
+    --desktop-window-control-inset: var(--chrome-header-pl);
+    /* Right panel sections: same horizontal inset as chrome + vertical rhythm */
+    --rail-section-padding: var(--space-md) var(--chrome-header-pr) var(--space-md) var(--chrome-header-pl);
+
+    /* Shadows */
+    --shadow-popover: 0 0 0 1px rgba(255,255,255,0.08), 0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+    --shadow-modal:   0 0 0 1px rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.3);
+
+    /* Right rail typography hierarchy (see panels.css, sidebar.css aside.right) */
+    --rail-title: #a0a0a0;
+    --rail-label: #8a8a8a;
+    --rail-value: var(--text);
+    --rail-stat: #7c7c7c;
+    --rail-caption: #7a7a7a;
+    --rail-micro: #828282;
+
+    /* ===== Motion tokens — single source of truth (transitions.dev) ===== */
+    --dur-stagger: 40ms;
+    --dur-micro:   80ms;
+    --dur-quick:   150ms;
+    --dur-fast:    250ms;
+    --dur-medium:  350ms;
+    --dur-slow:    400ms;
+    --dur-vslow:   500ms;
+    --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-swap:   ease-in-out;
+    --ease-tip:    ease-out;
+    --ease-linear: linear;
+    --ease-bouncy: cubic-bezier(0.34, 1.36, 0.64, 1);
+    --ease-bouncy-strong: cubic-bezier(0.34, 3.85, 0.64, 1);
+    /* Semantic roles */
+    --hover-dur:          var(--dur-quick);
+    --accordion-dur:      var(--dur-fast);
+    --chevron-dur:        var(--dur-fast);
+    --reveal-dur:         var(--dur-slow);
+    --reveal-blur:        2px;
+    --dropdown-open-dur:  var(--dur-fast);
+    --dropdown-pre-scale: 0.97;
+    --panel-open-dur:     var(--dur-slow);
+    --panel-close-dur:    var(--dur-medium);
+    --modal-open-dur:     var(--dur-fast);
+    --modal-close-dur:    var(--dur-quick);
+    --modal-scale:        0.96;
+    --tt-in-dur:          var(--dur-quick);
+    --tt-out-dur:         var(--dur-micro);
+    --tt-delay:           var(--dur-micro);
+    --tt-scale:           0.98;
+    --shake-dur-a:        var(--dur-micro);
+    --shake-dur-b:        60ms;
+    --shake-ease:         var(--ease-smooth);
+    --shimmer-dur:        2000ms;
+    --pulse-dur:          1000ms;
+    --resize-dur:         300ms;
+    --resize-ease:        var(--ease-smooth);
+    --avatar-dur:         320ms;
+    --avatar-ease-in:     var(--ease-smooth);
+    --avatar-ease-out:    var(--ease-bouncy-strong);
+    --ease-hover:         var(--ease-tip);
+
+    /* ===== Type scale ===== */
+    --fs-micro:    9px;    /* uppercase eyebrows, badges, axis labels, counts */
+    --fs-caption:  10px;   /* captions, rail stats/micro, disclaimers */
+    --fs-body:     11px;   /* default rail/control body — most common size */
+    --fs-body-lg:  12px;   /* list-item titles, dropdown items, control labels */
+    --fs-title:    13px;   /* section/modal/sidebar titles; == document base */
+    --fs-title-lg: 15px;   /* prominent headings / empty states */
+    --fs-display:  28px;   /* sole hero numeral (slice index) */
+    --fw-regular:  400;
+    --fw-medium:   500;    /* dominant chrome weight */
+    --fw-semibold: 600;
+    --fw-display:  200;    /* thin hero numeral only */
+    --tracking-tight:  -0.01em;
+    --tracking-snug:    0.02em;
+    --tracking-wide:    0.06em;
+    --tracking-caps:    0.1em;   /* uppercase eyebrows / section titles (dominant) */
+    --tracking-caps-x:  0.12em;  /* widest uppercase micro eyebrows */
+    --lh-none:    1;
+    --lh-tight:   1.25;
+    --lh-snug:    1.35;   /* default compact UI */
+    --lh-normal:  1.45;   /* document default */
+    --lh-relaxed: 1.55;
+    --lh-loose:   1.65;
+    --ff-sans: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
+    --ff-mono: "SF Mono", Monaco, monospace;
+
+    /* ===== Z-index scale — base < canvas-overlay < header < dropdown <
+       popover < context-menu < panel-overlay < modal < toast < tooltip ===== */
+    --z-base:           1;
+    --z-canvas-overlay: 40;
+    --z-header:         60;
+    --z-dropdown:       100;
+    --z-popover:        200;
+    --z-context-menu:   300;
+    --z-panel-overlay:  400;
+    --z-modal:          500;
+    --z-toast:          600;
+    --z-tooltip:        700;
+
+    /* ===== Spacing — fill the 4/8/12/16 scale gaps ===== */
+    --space-2xs: 2px;
+    --space-2sm: 6px;    /* most common off-scale value */
+    --space-10:  10px;
+    --space-14:  14px;
+    --space-xl:  24px;
+    --opacity-disabled: 0.4;
+
+    /* ===== Radii (existing: --radius 4, --radius-lg 6) ===== */
+    --radius-sm:   2px;
+    --radius-md:   8px;
+    --radius-xl:   12px;
+    --radius-pill: 9999px;
+    --border-w:       1px;
+    --border-w-thick: 2px;
+
+    /* ===== Semantic color — derived via color-mix so danger/success washes
+       track their base hue across themes automatically ===== */
+    --success:         #4ade80;
+    --success-bg:      color-mix(in srgb, var(--success) 18%, transparent);
+    --danger-bg:       color-mix(in srgb, var(--danger) 10%, transparent);
+    --danger-border:   color-mix(in srgb, var(--danger) 30%, transparent);
+    --abnormal-strong: color-mix(in srgb, var(--color-abnormal) 90%, transparent);
+    --scrim:           rgba(0, 0, 0, 0.5);
+    --hover-strong:    rgba(128, 128, 128, 0.2);  /* neutral hover on elevated surfaces */
+    --selection-bg:    rgba(255, 255, 255, 0.2);
+    --focus-ring:      0 0 0 2px var(--bg), 0 0 0 4px rgba(255, 255, 255, 0.4);
+    --shadow-knob:        0 0 0 1px var(--text), 0 1px 3px rgba(0, 0, 0, 0.35);
+    --shadow-knob-hover:  0 0 0 1px var(--text), 0 2px 6px rgba(0, 0, 0, 0.45);
+    --shadow-knob-strong: 0 0 0 1.5px var(--text), 0 1px 4px rgba(0, 0, 0, 0.4);
+    --shadow-float:       0 8px 24px rgba(0, 0, 0, 0.35);
+
+    /* ===== Canvas-scoped colors — INTENTIONALLY theme-invariant: they sit on
+       the always-black inspection canvas, so they are NOT overridden in light. */
+    --axis-ax: rgb(107, 159, 212);
+    --axis-co: rgb(107, 190, 143);
+    --axis-sa: rgb(212, 168, 107);
+    --axis-ob: rgb(154, 107, 212);
+    --overlay-text:    #e0e0e0;
+    --overlay-muted:   #7a7a7a;
+    --overlay-surface: rgba(10, 10, 10, 0.85);
+    --overlay-border:  rgba(255, 255, 255, 0.08);
+
+    /* Shared interactive styles (applied via utility classes) */
+  }
+  html.light {
+    --bg:      #f0f0f0;
+    --panel:   #fafafa;
+    --elev:    #f0f0f0;
+    --border:  #e0e0e0;
+    --hover:   #ebebeb;
+    --text:    #1a1a1a;
+    --muted:   #777777;
+    --dim:     #c0c0c0;
+    --icon-idle: #666666;
+    --accent:  #1a1a1a;
+    --accent-bg: rgba(0,0,0,0.05);
+    --active-bg: rgba(0,0,0,0.07);
+    --danger:  #c62828;
+    --shadow-popover: 0 0 0 1px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.08);
+    --shadow-modal:   0 0 0 1px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.08);
+
+    --rail-title: #4a4a4a;
+    --rail-label: #5c5c5c;
+    --rail-value: var(--text);
+    --rail-stat: #666666;
+    --rail-caption: #757575;
+    --rail-micro: #6a6a6a;
+    /* Motion/semantic tokens that don't auto-derive from a flipped base var.
+       (--danger-bg/border, --abnormal-strong, --shadow-knob* track via var().) */
+    --success:      #2e7d32;   /* darker so success isn't neon on light surfaces */
+    --scrim:        rgba(255, 255, 255, 0.55);
+    --selection-bg: rgba(0, 0, 0, 0.15);
+    --focus-ring:   0 0 0 2px var(--bg), 0 0 0 4px rgba(0, 0, 0, 0.25);
+  }
+  /* Instant theme switch — no transition on color vars */
+  html.light-switching, html.light-switching * {
+    transition-duration: 0s !important;
+  }
+  /* Light-mode overrides for hardcoded dark values */
+  html.light ::selection { background: rgba(0,0,0,0.15); color: #000; }
+  html.light *:focus-visible {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px rgba(0,0,0,0.25);
+  }
+  /* Tooltips are always dark — no light-mode override needed */
+  html.light .ftag.note { background: rgba(0,0,0,0.04); }
+  /* The inspection surface stays dark in light mode; only app chrome changes. */
+  html.light .canvas-wrap {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --elev: #161616;
+    --border: #1e1e1e;
+    --hover: #171717;
+    --text: #f0f0f0;
+    --muted: #7a7a7a;
+    --dim: #3a3a3a;
+    --icon-idle: #6a6a6a;
+    --accent: #f5f5f5;
+    --accent-bg: rgba(255,255,255,0.06);
+    --active-bg: rgba(255,255,255,0.08);
+    background: #000;
+  }
+  html.light canvas#view { background: #000; }
+  html.light .mpr-cell, html.light .cmp-cell { background: #000; border-color: #1e1e1e; }
+  html.light .mpr-grid, html.light .cmp-grid { background: #000; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ::selection { background: var(--selection-bg); color: #fff; }
+  h1, h2, h3, .sec-title { text-wrap: balance; }
+  p, .f-text, .disclaimer, .ask-a { text-wrap: pretty; }
+
+  /* Design system: shared interactive patterns */
+
+  /* Custom checkbox — hollow ring + inner dot when checked. Row hover (label:hover) scales the knob + border hint. */
+  .ui-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    user-select: none;
+  }
+  .ui-checkbox-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: var(--space-2sm);
+    overflow: visible;
+  }
+  .ui-checkbox-input {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--space-14);
+    height: var(--space-14);
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: var(--z-base);
+  }
+  .ui-checkbox-box {
+    flex-shrink: 0;
+    width: var(--space-14);
+    height: var(--space-14);
+    border-radius: 50%;
+    box-sizing: border-box;
+    position: relative;
+    display: block;
+    pointer-events: none;
+    border: var(--knob-border) solid var(--muted);
+    background: transparent;
+    transition: border-color var(--dur-quick), transform var(--dur-quick) var(--ease-tip);
+  }
+  /* Centered dot — translate(-50%,-50%) keeps it optically centered in the ring */
+  .ui-checkbox-box::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.35);
+    transition: opacity var(--dur-quick) var(--ease-swap), transform var(--dur-quick) var(--ease-swap);
+    pointer-events: none;
+  }
+  .ui-checkbox-input:checked + .ui-checkbox-box {
+    border-color: var(--text);
+    background: transparent;
+  }
+  .ui-checkbox-input:checked + .ui-checkbox-box::after {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* Scale when hovering anywhere on the label row (not only the knob hit area) */
+  .ui-checkbox:hover .ui-checkbox-box {
+    transform: scale(1.25);
+  }
+  .ui-checkbox:hover .ui-checkbox-input:not(:checked) + .ui-checkbox-box {
+    border-color: var(--text);
+  }
+  .ui-checkbox-input:focus-visible + .ui-checkbox-box {
+    outline: var(--border-w-thick) solid var(--dim);
+    outline-offset: var(--space-2xs);
+  }
+  html.light .ui-checkbox-input:focus-visible + .ui-checkbox-box {
+    outline-color: rgba(0, 0, 0, 0.35);
+  }
+  .ui-checkbox-input:disabled + .ui-checkbox-box {
+    opacity: var(--opacity-disabled);
+    cursor: default;
+  }
+
+  /* Small action button (sidebar headers, inline actions) */
+  .act-btn {
+    background: transparent; border: none; cursor: pointer;
+    color: var(--icon-idle);
+    width: var(--btn-sidebar); height: var(--btn-sidebar);
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    transition: color var(--dur-quick) var(--ease-tip), background var(--dur-quick) var(--ease-tip), opacity var(--dur-quick) var(--ease-tip);
+    padding: 0; flex-shrink: 0; position: relative;
+  }
+  .act-btn:hover { color: var(--text); background: var(--hover); }
+  .act-btn:active { opacity: 0.7; }
+  .act-btn svg { width: var(--icon-md); height: var(--icon-md); }
+
+  /* Popover menu (folder context, sort, etc.) */
+  .popover-menu {
+    position: absolute; z-index: var(--z-popover);
+    background: var(--panel);
+    border: 0;
+    border-radius: var(--radius-lg); padding: var(--space-2xs);
+    min-width: 160px;
+    box-shadow: var(--shadow-popover);
+  }
+  .popover-item {
+    display: flex; align-items: center; gap: var(--space-sm);
+    min-height: 30px; padding: 0 var(--space-sm); font-size: var(--fs-body-lg); color: var(--text);
+    cursor: pointer; white-space: nowrap;
+    border-radius: var(--radius);
+    transition: background var(--dur-quick) var(--ease-tip);
+  }
+  .popover-item:hover { background: var(--hover); }
+  .popover-item.danger { color: var(--danger); }
+  .popover-item.danger:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+  .popover-item svg { width: var(--icon-sm); height: var(--icon-sm); flex-shrink: 0; }
+  html, body {
+    height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font: var(--fs-title)/var(--lh-normal) var(--ff-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color var(--dur-fast) var(--ease-linear) .3s;
+  }
+  :hover {
+    scrollbar-color: var(--dim) transparent;
+  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: transparent; border-radius: 3px;
+    transition: background var(--dur-fast) var(--ease-linear) .3s;
+  }
+  :hover::-webkit-scrollbar-thumb { background: var(--dim); }
+  :hover::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Shared fade — studies rail, skeleton bars, orientation labels (0.38s matches js/projects-sidebar) */
+  @keyframes ui-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes ui-fade-in-muted {
+    from { opacity: 0; }
+    to { opacity: 0.85; }
+  }
+  .ui-fade-in {
+    animation: ui-fade-in var(--dur-slow) var(--ease-swap) forwards;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-fade-in {
+      animation: none !important;
+    }
+    /* Suppress decorative hover scales on range thumbs and the custom checkbox knob.
+       Interactive color/background feedback is preserved — only the enlarge-on-hover is dropped. */
+    .scrubber input[type=range]::-webkit-slider-thumb:hover,
+    .scrubber input[type=range]::-webkit-slider-thumb:active,
+    .cine-speed input[type=range]:hover::-webkit-slider-thumb,
+    .overlay-opacity-wrap input[type=range]:hover::-webkit-slider-thumb,
+    aside.right input[type=range]:hover::-webkit-slider-thumb,
+    .ui-checkbox:hover .ui-checkbox-box,
+    .icon-btn:active:not(:disabled),
+    .btn:active:not(:disabled) {
+      transform: none !important;
+    }
+  }
+
+  /* layout */
+  .app {
+    display: grid;
+    grid-template-columns: var(--rail-left-w) 1fr var(--rail-right-w);
+    height: 100vh;
+  }
+  @media (min-width: 641px) {
+    html.desktop-macos:not(.desktop-fullscreen) .sidebar-header-left {
+      padding-left: max(var(--sidebar-header-left-pl), var(--desktop-window-control-inset));
+    }
+    html.desktop-macos:not(.desktop-fullscreen) .viewer-header:has(#btn-show-left:not([hidden])) {
+      padding-left: max(var(--sidebar-header-left-pl), var(--desktop-window-control-inset));
+    }
+  }
+  /* Grid items default to min-height:auto (content-sized). Without this, tall
+     right-panel content grows the row past 100vh and shoves the main column. */
+  .app > * {
+    min-height: 0;
+    min-width: 0;
+  }
+  /* Desktop-only collapse: the mobile breakpoint turns sidebars into position:fixed
+     overlays, and collapse has no meaning there. Scoping these to desktop widths
+     prevents the zero-width rule from conflicting with the mobile overlay width. */
+  @media (min-width: 1101px) {
+    .app.left-collapsed  { grid-template-columns: 0px 1fr var(--rail-right-w); }
+    .app.right-collapsed { grid-template-columns: var(--rail-left-w) 1fr 0px; }
+    .app.left-collapsed.right-collapsed { grid-template-columns: 0px 1fr 0px; }
+    .app.left-collapsed  aside.left  { overflow: hidden; width: 0; min-width: 0; border: none; }
+    .app.right-collapsed aside.right { overflow: hidden; width: 0; min-width: 0; border: none; }
+  }
+  /* 641–1100: left column still fits at 208px; only left-collapsed applies. */
+  @media (max-width: 1100px) and (min-width: 641px) {
+    .app.left-collapsed { grid-template-columns: 0px 1fr; }
+    .app.left-collapsed aside.left { overflow: hidden; width: 0; min-width: 0; border: none; }
+  }
+
+  /* Before module JS runs: same layout as .left-collapsed / .right-collapsed (see index.html + shell-layout-toggles.js). */
+  @media (min-width: 1101px) {
+    html[data-shell-left-collapsed="true"] .app {
+      grid-template-columns: 0px 1fr 312px;
+    }
+    html[data-shell-right-collapsed="true"] .app {
+      grid-template-columns: 208px 1fr 0px;
+    }
+    html[data-shell-left-collapsed="true"][data-shell-right-collapsed="true"] .app {
+      grid-template-columns: 0px 1fr 0px;
+    }
+    html[data-shell-left-collapsed="true"] .app aside.left {
+      overflow: hidden; width: 0; min-width: 0; border: none;
+    }
+    html[data-shell-right-collapsed="true"] .app aside.right {
+      overflow: hidden; width: 0; min-width: 0; border: none;
+    }
+  }
+
+  /* Global focus-visible ring — double-ring (gap between element and ring) */
+  *:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+  /* Windows High-Contrast / forced-colors: box-shadow rings don't render, so fall back to a real outline. */
+  @media (forced-colors: active) {
+    *:focus-visible {
+      outline: var(--border-w-thick) solid CanvasText;
+      outline-offset: var(--space-2xs);
+      box-shadow: none;
+    }
+  }
+  /* Typed controls get a calm border-highlight focus rather than the double-ring
+     halo, which reads as a floating glow on small fields. Buttons/toggles keep the
+     ring. `outline` is left untouched so the forced-colors fallback above still
+     paints a visible indicator. */
+  input[type="text"]:focus-visible,
+  input[type="number"]:focus-visible,
+  input[type="search"]:focus-visible,
+  input[type="url"]:focus-visible,
+  input[type="email"]:focus-visible,
+  textarea:focus-visible,
+  .select-like:focus-visible {
+    box-shadow: none;
+    border-color: var(--muted);
+  }
+
+  [hidden] { display: none !important; }
+
+  /* Notifications */
+  /* Notification container */
+  #notify-container {
+    position: fixed; bottom: var(--space-lg); right: var(--space-lg);
+    display: flex; flex-direction: column-reverse; gap: var(--space-sm);
+    z-index: var(--z-toast); pointer-events: none; max-width: 380px;
+  }
+  /* Keep toasts clear of the open right panel (desktop only — below 1101px the
+     panel is an overlay and the toast already outranks it via --z-toast). */
+  @media (min-width: 1101px) {
+    .app:not(.right-collapsed) ~ #notify-container {
+      right: calc(var(--rail-right-w) + var(--space-lg));
+    }
+  }
+
+  /* Dialog body helpers (used in showDialog innerHTML) */
+  .dlg-body { font-size: var(--fs-title); color: var(--text); }
+  .dlg-body-err { font-size: var(--fs-title); color: var(--color-abnormal); }
+  .dlg-sub { font-size: var(--fs-body); color: var(--muted); margin-top: var(--space-sm); }
+  .dlg-sub-spaced { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--space-14); }
+  .dlg-actions { display: flex; gap: var(--space-sm); justify-content: flex-end; }
+  .dlg-label {
+    font-size: var(--fs-body); color: var(--muted);
+    text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  }
+
+  .notify-item {
+    background: var(--panel); border: var(--border-w) solid var(--border);
+    border-radius: var(--radius-lg); padding: var(--space-10) var(--space-14);
+    font: var(--fs-body-lg)/var(--lh-normal) system-ui, -apple-system, sans-serif;
+    color: var(--text); pointer-events: auto;
+    box-shadow: var(--shadow-popover);
+    animation: notify-in var(--dur-fast) var(--ease-smooth);
+    transition: opacity var(--panel-close-dur) var(--ease-smooth), transform var(--panel-close-dur) var(--ease-smooth);
+    display: flex; align-items: flex-start; gap: var(--space-10);
+  }
+  .notify-item.exiting { opacity: 0; transform: translateX(20px); }
+  .notify-item.shake { animation: notify-shake var(--shake-dur-a) var(--shake-ease); }
+  .notify-body { flex: 1; min-width: 0; }
+  .notify-text { margin-bottom: 0; }
+  .notify-text.has-cmd { margin-bottom: var(--space-sm); }
+  /* Close/dismiss icon-button — shared by the toast dismiss (here) and the ROI
+     annotation delete (.ar-del, panels.css). Per-instance: glyph size + transition. */
+  .notify-dismiss, .ar-del {
+    color: var(--icon-idle);
+    width: 24px; height: 24px; line-height: var(--lh-none);
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius); cursor: pointer;
+  }
+  .notify-dismiss:hover, .ar-del:hover { color: var(--text); background: var(--hover); }
+  .notify-dismiss {
+    background: transparent; border: none; padding: 0; flex-shrink: 0;
+    font-size: var(--fs-title-lg);
+    transition: color var(--dur-quick) var(--ease-tip), background var(--dur-quick) var(--ease-tip);
+    position: relative;
+  }
+  /* Extend hit area to 36x36 without enlarging the visible glyph */
+  .notify-dismiss::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+  .notify-cmd {
+    display: flex; align-items: center; gap: var(--space-2sm);
+    background: var(--elev); border: var(--border-w) solid var(--border);
+    border-radius: var(--radius); padding: var(--space-2sm) var(--space-sm);
+  }
+  .notify-cmd code {
+    flex: 1; font: var(--fs-body)/var(--lh-snug) var(--ff-mono);
+    color: var(--text); word-break: break-all; user-select: all;
+  }
+  .notify-copy {
+    background: var(--hover); border: var(--border-w) solid var(--border);
+    border-radius: var(--radius); color: var(--muted);
+    padding: 3px var(--space-sm); font-size: var(--fs-body); cursor: pointer;
+    white-space: nowrap; font-family: inherit;
+    transition: background var(--dur-quick) var(--ease-tip);
+  }
+  .notify-copy.copied { background: var(--success-bg); color: var(--text); }
+  .notify-progress {
+    margin-top: var(--space-2sm); height: 2px; background: var(--dim);
+    border-radius: 1px; overflow: hidden;
+  }
+  .notify-progress-bar {
+    height: 100%; background: var(--muted); width: 30%;
+    animation: notify-progress var(--shimmer-dur) var(--ease-linear) infinite;
+  }
+  @keyframes notify-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes notify-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+  }
+  @keyframes notify-progress {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(200%); }
+    100% { transform: translateX(-100%); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }

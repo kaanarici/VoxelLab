@@ -1,0 +1,237 @@
+/* global URL */
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+globalThis.location = new URL('http://127.0.0.1/');
+
+const {
+  injectLocalSeries,
+  injectManifestSeries,
+} = await import('../js/dicom/dicom-import.js');
+const {
+  cacheLocalRawVolume,
+  touchLocalRawVolume,
+} = await import('../js/local-raw-volume-cache.js');
+const { state } = await import('../js/core/state.js');
+
+function manifestWithSeries(series = []) {
+  return { patient: 'anonymous', studyDate: '', series: [...series] };
+}
+
+test('injectManifestSeries inserts a new imported entry', () => {
+  const manifest = manifestWithSeries();
+  const idx = injectManifestSeries(manifest, { slug: 'cloud_job123', name: 'Cloud CT' });
+
+  assert.equal(idx, 0);
+  assert.equal(manifest.series.length, 1);
+  assert.equal(manifest.series[0].slug, 'cloud_job123');
+});
+
+test('injectManifestSeries backfills a canonical compare group for new imports', () => {
+  const manifest = manifestWithSeries();
+
+  const idx = injectManifestSeries(manifest, {
+    slug: 'cloud_job123',
+    name: 'Cloud CT',
+    frameOfReferenceUID: '1.2.840.same',
+  });
+
+  assert.equal(idx, 0);
+  assert.equal(manifest.series[0].group, 'for:1.2.840.same');
+});
+
+test('injectManifestSeries updates an existing entry by slug instead of appending', () => {
+  const manifest = manifestWithSeries([
+    { slug: 'cloud_job123', name: 'Old Name', hasAnalysis: true },
+  ]);
+
+  const idx = injectManifestSeries(manifest, { slug: 'cloud_job123', name: 'New Name' });
+
+  assert.equal(idx, 0);
+  assert.equal(manifest.series.length, 1);
+  assert.equal(manifest.series[0].name, 'New Name');
+  assert.equal(manifest.series[0].hasAnalysis, true);
+});
+
+test('injectManifestSeries updates an existing entry by job identity alias', () => {
+  const manifest = manifestWithSeries([
+    { slug: 'cloud_old', sourceJobId: 'job_123', description: 'Old result' },
+  ]);
+
+  const idx = injectManifestSeries(manifest, { slug: 'cloud_new', job_id: 'job_123', description: 'New result' });
+
+  assert.equal(idx, 0);
+  assert.equal(manifest.series.length, 1);
+  assert.equal(manifest.series[0].slug, 'cloud_new');
+  assert.equal(manifest.series[0].sourceJobId, 'job_123');
+  assert.equal(manifest.series[0].job_id, 'job_123');
+  assert.equal(manifest.series[0].description, 'New result');
+});
+
+test('injectManifestSeries rejects ambiguous matches across slug and job identity', () => {
+  const manifest = manifestWithSeries([
+    { slug: 'cloud_slug_match', name: 'By slug' },
+    { slug: 'cloud_job_match', sourceJobId: 'job_123', name: 'By job id' },
+  ]);
+
+  assert.throws(
+    () => injectManifestSeries(manifest, { slug: 'cloud_slug_match', sourceJobId: 'job_123', name: 'Ambiguous' }),
+    /matches multiple existing entries/i,
+  );
+});
+
+test('injectManifestSeries rejects derived entries that reference an unknown projection set', () => {
+  const manifest = manifestWithSeries();
+
+  assert.throws(
+    () => injectManifestSeries(manifest, {
+      slug: 'cloud_projection_job123',
+      name: 'Derived volume',
+      sourceProjectionSetId: 'projection_set_missing',
+    }),
+    /unknown projection set/i,
+  );
+});
+
+test('injectManifestSeries appends derived projection reconstructions that share sourceSeriesUID', () => {
+  const manifest = manifestWithSeries([
+    {
+      slug: 'local_projection',
+      name: 'Projection source',
+      sourceSeriesUID: '1.2.3',
+      sourceProjectionSetId: 'projection_set_1',
+    },
+  ]);
+  manifest.projectionSets = [
+    {
+      id: 'projection_set_1',
+      name: 'Projection registry',
+      modality: 'XA',
+      projectionKind: 'cbct',
+      projectionCount: 2,
+      reconstructionCapability: 'requires-reconstruction',
+      reconstructionStatus: 'reconstructed',
+      renderability: '2d',
+    },
+  ];
+
+  const idx = injectManifestSeries(manifest, {
+    slug: 'cloud_projection_job123',
+    name: 'Derived volume',
+    sourceSeriesUID: '1.2.3',
+    sourceProjectionSetId: 'projection_set_1',
+  });
+
+  assert.equal(idx, 1);
+  assert.deepEqual(manifest.series.map((series) => series.slug), [
+    'local_projection',
+    'cloud_projection_job123',
+  ]);
+});
+
+test('injectManifestSeries binds registration results to loaded moving source series', () => {
+  const manifest = manifestWithSeries([
+    {
+      slug: 'fixed_mr',
+      name: 'Fixed MR',
+      sourceSeriesUID: '1.2.fixed',
+      frameOfReferenceUID: '1.2.fixed.for',
+    },
+    {
+      slug: 'moving_mr',
+      name: 'Moving MR',
+      sourceSeriesUID: '1.2.moving',
+      frameOfReferenceUID: '1.2.moving.for',
+    },
+  ]);
+
+  const idx = injectManifestSeries(manifest, {
+    slug: 'cloud_reg_job123',
+    name: 'Registered moving',
+    sourceSeriesUID: '1.2.moving',
+    frameOfReferenceUID: '1.2.fixed.for',
+    registration: {
+      source: 'modal:rigid_registration',
+      fixedSeriesUID: '1.2.fixed',
+      movingSeriesUID: '1.2.moving',
+      referenceSlug: '1.2.fixed',
+      movingSlug: '1.2.moving',
+    },
+  });
+
+  assert.equal(idx, 2);
+  assert.deepEqual(manifest.series[2].derivedObjectBindings, [{
+    derivedKind: 'registration',
+    frameOfReferenceUID: '1.2.fixed.for',
+    sourceSeriesSlug: 'moving_mr',
+    requiresRegistration: true,
+    affineCompatibility: 'requires-registration',
+  }]);
+  assert.equal(manifest.series[2].group, 'for:1.2.fixed.for');
+
+  const unloaded = manifestWithSeries([manifest.series[0]]);
+  injectManifestSeries(unloaded, {
+    slug: 'cloud_reg_job456',
+    name: 'Registered moving',
+    frameOfReferenceUID: '1.2.fixed.for',
+    registration: {
+      source: 'modal:rigid_registration',
+      fixedSeriesUID: '1.2.fixed',
+      movingSeriesUID: '1.2.moving',
+    },
+  });
+  assert.equal(unloaded.series[1].derivedObjectBindings, undefined);
+});
+
+test('injectLocalSeries preserves microscopy raw display range provenance on local images', () => {
+  const PrevImage = globalThis.Image;
+  globalThis.Image = class {
+    constructor() {
+      this.src = '';
+    }
+  };
+  state._localStacks = {};
+  state._localMicroscopyStacks = {};
+  const manifest = manifestWithSeries();
+  const entry = {
+    slug: 'micro_cells',
+    name: 'Cells',
+    imageDomain: 'microscopy',
+    microscopy: { channelIndex: 0, timeIndex: 0 },
+  };
+  const canvas = {
+    _microscopyDisplayByteRange: [10, 200],
+    _microscopyRawRange: [0, 4095],
+    _microscopyInvertDisplayRange: true,
+    toDataURL: () => 'data:image/png;base64,AA==',
+  };
+
+  try {
+    injectLocalSeries(manifest, entry, [canvas], null, { '0|0': [canvas] });
+  } finally {
+    globalThis.Image = PrevImage;
+  }
+
+  assert.deepEqual(state._localStacks.micro_cells[0]._microscopyDisplayByteRange, [10, 200]);
+  assert.deepEqual(state._localStacks.micro_cells[0]._microscopyRawRange, [0, 4095]);
+  assert.equal(state._localStacks.micro_cells[0]._microscopyInvertDisplayRange, true);
+});
+
+test('cacheLocalRawVolume evicts least-recently-used entries over budget', () => {
+  state._localRawVolumes = {};
+  state._localRawVolumeOrder = [];
+  state.manifest = { series: [] };
+  state.seriesIdx = 0;
+  const volumeA = new Float32Array(32);
+  const volumeB = new Float32Array(32);
+  const volumeC = new Float32Array(32);
+  const budget = volumeA.byteLength * 2;
+
+  cacheLocalRawVolume('local_a', volumeA, { maxBytes: budget });
+  cacheLocalRawVolume('local_b', volumeB, { maxBytes: budget });
+  touchLocalRawVolume('local_a');
+  cacheLocalRawVolume('local_c', volumeC, { maxBytes: budget });
+
+  assert.deepEqual(Object.keys(state._localRawVolumes).sort(), ['local_a', 'local_c']);
+  assert.deepEqual(state._localRawVolumeOrder, ['local_a', 'local_c']);
+});
