@@ -1,0 +1,37 @@
+{
+  "valid": [
+    {"id":"phase-composing","input":{"protocol":"voxellab.ask-event","version":1,"type":"phase","value":"composing"}},
+    {"id":"tool-read-running","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"running","kind":"read","label":"Reading slice 4","detail":""}},
+    {"id":"tool-inspect-running","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-2","state":"running","kind":"inspect","label":"Running Python","detail":"python inspect.py"}},
+    {"id":"tool-measure-running","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-3","state":"running","kind":"measure","label":"Measuring","detail":"distance_mm"}},
+    {"id":"tool-voxel-running","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-4","state":"running","kind":"voxel","label":"Inspecting voxels","detail":"load_volume"}},
+    {"id":"tool-other-running","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-5","state":"running","kind":"other","label":"Tool","detail":""}},
+    {"id":"tool-done","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"done"}},
+    {"id":"tool-error","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"error"}},
+    {"id":"delta","input":{"protocol":"voxellab.ask-event","version":1,"type":"delta","text":"The hippocampus"}},
+    {"id":"tool-output","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool_output","id":"tool-2","text":"stdout"}},
+    {"id":"result","input":{"protocol":"voxellab.ask-event","version":1,"type":"result","result":{"cached":false,"key":"4:1:2:abc","slice":4,"x":10,"y":20,"question":"What is here?","answer":"Approximate anatomy only.","crop":"data/sample_asks/0004_10_20_abc.png"}}},
+    {"id":"error","input":{"protocol":"voxellab.ask-event","version":1,"type":"error","error":"provider unavailable"}},
+    {"id":"done","input":{"protocol":"voxellab.ask-event","version":1,"type":"done"}}
+  ],
+  "invalid": [
+    {"id":"not-object","reason":"not_object","input":[]},
+    {"id":"missing-protocol","reason":"protocol_missing","input":{"version":1,"type":"done"}},
+    {"id":"wrong-protocol","reason":"unsupported_protocol","input":{"protocol":"other","version":1,"type":"done"}},
+    {"id":"missing-version","reason":"version_missing","input":{"protocol":"voxellab.ask-event","type":"done"}},
+    {"id":"non-integer-version","reason":"version_not_integer","input":{"protocol":"voxellab.ask-event","version":"1","type":"done"}},
+    {"id":"unknown-version","reason":"unsupported_version:2","input":{"protocol":"voxellab.ask-event","version":2,"type":"done"}},
+    {"id":"missing-type","reason":"type_missing","input":{"protocol":"voxellab.ask-event","version":1}},
+    {"id":"unknown-type","reason":"unsupported_type:progress","input":{"protocol":"voxellab.ask-event","version":1,"type":"progress"}},
+    {"id":"bad-phase","reason":"unsupported_phase:thinking","input":{"protocol":"voxellab.ask-event","version":1,"type":"phase","value":"thinking"}},
+    {"id":"running-tool-missing-kind","reason":"kind_missing","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"running","label":"Reading","detail":""}},
+    {"id":"unknown-tool-kind","reason":"unsupported_tool_kind:shell","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"running","kind":"shell","label":"Running","detail":""}},
+    {"id":"unknown-tool-state","reason":"unsupported_tool_state:pending","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"pending"}},
+    {"id":"terminal-tool-descriptor","reason":"unexpected_field:kind","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool","id":"tool-1","state":"done","kind":"read"}},
+    {"id":"delta-non-string","reason":"text_not_string","input":{"protocol":"voxellab.ask-event","version":1,"type":"delta","text":3}},
+    {"id":"tool-output-missing-id","reason":"id_missing","input":{"protocol":"voxellab.ask-event","version":1,"type":"tool_output","text":"stdout"}},
+    {"id":"malformed-result","reason":"result:cached_missing","input":{"protocol":"voxellab.ask-event","version":1,"type":"result","result":{}}},
+    {"id":"error-non-string","reason":"error_not_string","input":{"protocol":"voxellab.ask-event","version":1,"type":"error","error":false}},
+    {"id":"done-extra-field","reason":"unexpected_field:value","input":{"protocol":"voxellab.ask-event","version":1,"type":"done","value":"extra"}}
+  ]
+}

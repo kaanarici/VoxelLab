@@ -1,0 +1,45 @@
+name: Focused proposal
+description: Propose a research workflow or compatibility improvement
+title: "[Proposal]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        VoxelLab favors small, proven research workflows over broad format or clinical claims. Do not attach patient data or identifying screenshots.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy and scope
+      options:
+        - label: This proposal contains no patient or identifying information.
+          required: true
+        - label: I understand that VoxelLab is not for clinical use.
+          required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Research workflow
+      description: Describe the task a researcher needs to complete, not only the feature or library you want added.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current workaround
+      description: Explain how the task is handled today and where that path breaks down.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Public test data and references
+      description: Link to public, licensed, deidentified fixtures or format specifications that could support implementation and tests.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Smallest useful outcome
+      description: Define a narrow result that can be verified without claiming full format or tool parity.
+    validations:
+      required: true

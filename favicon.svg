@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="fb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34353a"/><stop offset="1" stop-color="#161719"/></linearGradient>
+    <linearGradient id="ft" x1="0.18" y1="0" x2="0.82" y2="1"><stop offset="0" stop-color="#fbfcfe"/><stop offset="1" stop-color="#dde1e8"/></linearGradient>
+    <linearGradient id="fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcc2cb"/><stop offset="1" stop-color="#9aa1ab"/></linearGradient>
+    <linearGradient id="fr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#878e98"/><stop offset="1" stop-color="#666c76"/></linearGradient>
+    <linearGradient id="fa" x1="0.15" y1="0" x2="0.85" y2="1"><stop offset="0" stop-color="#ff6b6f"/><stop offset="1" stop-color="#e23b41"/></linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#fb)"/>
+  <polygon points="32,11 51,22 32,33 13,22" fill="url(#ft)"/>
+  <polygon points="13,22 32,33 32,55 13,44" fill="url(#fl)"/>
+  <polygon points="32,33 51,22 51,44 32,55" fill="url(#fr)"/>
+  <polygon points="32,11 41.5,16.5 32,22 22.5,16.5" fill="url(#fa)"/>
+</svg>

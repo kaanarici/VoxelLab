@@ -1,0 +1,19 @@
+{
+  "extends": "./jsconfig.json",
+  "compilerOptions": {
+    "maxNodeModuleJsDepth": 0,
+    "skipLibCheck": true
+  },
+  "files": [
+    "js/ask-envelopes.js",
+    "js/ask-event-stream.js",
+    "js/core/state/app-model.js",
+    "js/core/state/runtime-state.js",
+    "js/desktop-path-file.js",
+    "js/microscopy/microscopy-file-kinds.js",
+    "js/runtime/viewer-session-shape.js",
+    "js/series/series-identity.js",
+    "js/sidecar-schemas.js"
+  ],
+  "include": []
+}

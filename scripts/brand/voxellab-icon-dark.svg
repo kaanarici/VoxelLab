@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="mBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34353a"/><stop offset="0.5" stop-color="#222327"/><stop offset="1" stop-color="#161719"/>
+    </linearGradient>
+    
+    <linearGradient id="vTop" x1="0.18" y1="0" x2="0.82" y2="1">
+      <stop offset="0" stop-color="#fbfcfe"/><stop offset="1" stop-color="#dde1e8"/>
+    </linearGradient>
+    <linearGradient id="vLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bcc2cb"/><stop offset="1" stop-color="#9aa1ab"/>
+    </linearGradient>
+    <linearGradient id="vRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#878e98"/><stop offset="1" stop-color="#666c76"/>
+    </linearGradient>
+    <linearGradient id="vAccent" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#ff6b6f"/><stop offset="1" stop-color="#e23b41"/>
+    </linearGradient>
+    <linearGradient id="vSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="0.34" stop-color="#ffffff" stop-opacity="0.02"/>
+      <stop offset="0.62" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="vContact" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <clipPath id="fClip"><rect width="1024" height="1024" rx="228"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#mBody)"/>
+  <g clip-path="url(#fClip)">
+    <ellipse cx="512" cy="802" rx="248" ry="44" fill="#000000" opacity="0.32" filter="url(#vContact)"/>
+    <polygon points="512,150 797.79,315 512,480 226.21,315" fill="url(#vTop)"/>
+    <polygon points="226.21,315 512,480 512,810 226.21,645" fill="url(#vLeft)"/>
+    <polygon points="512,480 797.79,315 797.79,645 512,810" fill="url(#vRight)"/>
+    <g stroke="#8b929d" stroke-width="2.87" stroke-opacity="0.5" stroke-linecap="round"><line x1="607.26" y1="205" x2="321.47" y2="370"/><line x1="416.74" y1="205" x2="702.53" y2="370"/><line x1="702.53" y1="260" x2="416.74" y2="425"/><line x1="321.47" y1="260" x2="607.26" y2="425"/></g>
+    <g stroke="#5f656f" stroke-width="2.87" stroke-opacity="0.5" stroke-linecap="round"><line x1="321.47" y1="370" x2="321.47" y2="700"/><line x1="226.21" y1="425" x2="512" y2="590"/><line x1="416.74" y1="425" x2="416.74" y2="755"/><line x1="226.21" y1="535" x2="512" y2="700"/></g>
+    <g stroke="#454a53" stroke-width="2.87" stroke-opacity="0.5" stroke-linecap="round"><line x1="607.26" y1="425" x2="607.26" y2="755"/><line x1="512" y1="590" x2="797.79" y2="425"/><line x1="702.53" y1="370" x2="702.53" y2="700"/><line x1="512" y1="700" x2="797.79" y2="535"/></g>
+    <polygon points="512,150 607.26,205 512,260 416.74,205" fill="url(#vAccent)"/>
+    <polyline points="416.74,205 512,150 607.26,205" fill="none" stroke="#ffd9da" stroke-width="2.64" stroke-opacity="0.65" stroke-linejoin="round"/>
+    <g stroke="#101113" stroke-width="3.3" stroke-opacity="0.32" fill="none" stroke-linejoin="round">
+      <polygon points="512,150 797.79,315 512,480 226.21,315"/>
+      <polyline points="226.21,315 226.21,645 512,810 797.79,645 797.79,315"/>
+      <line x1="512" y1="480" x2="512" y2="810"/>
+    </g>
+    <polyline points="226.21,315 512,150 797.79,315" fill="none" stroke="#ffffff" stroke-width="2.44" stroke-opacity="0.4" stroke-linejoin="round"/>
+    <rect width="1024" height="1024" fill="url(#vSheen)"/>
+  </g>
+</svg>

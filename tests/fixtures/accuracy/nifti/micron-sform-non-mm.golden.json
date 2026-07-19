@@ -1,0 +1,154 @@
+{
+  "description": "sform-only affine stored in microns and compared in millimeters",
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        -2.0,
+        0.0,
+        0.0,
+        -10.0
+      ],
+      [
+        0.0,
+        -3.0,
+        0.0,
+        20.0
+      ],
+      [
+        0.0,
+        0.0,
+        4.0,
+        30.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "coordinateSystem": "LPS+",
+    "units": "mm",
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          -10.0,
+          20.0,
+          30.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          1
+        ],
+        "world": [
+          -12.0,
+          14.0,
+          34.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          2
+        ],
+        "world": [
+          -12.0,
+          14.0,
+          38.0
+        ]
+      }
+    ]
+  },
+  "fixture": "micron-sform-non-mm.nii",
+  "nibabel": {
+    "affine": [
+      [
+        2000.0,
+        0.0,
+        0.0,
+        10000.0
+      ],
+      [
+        0.0,
+        3000.0,
+        0.0,
+        -20000.0
+      ],
+      [
+        0.0,
+        0.0,
+        4000.0,
+        30000.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          10000.0,
+          -20000.0,
+          30000.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          1
+        ],
+        "world": [
+          12000.0,
+          -14000.0,
+          34000.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          2
+        ],
+        "world": [
+          12000.0,
+          -14000.0,
+          38000.0
+        ]
+      }
+    ]
+  },
+  "nifti": {
+    "form": "sform",
+    "shape": [
+      2,
+      3,
+      3
+    ],
+    "spatialUnit": "micron",
+    "unitToMillimeters": 0.001
+  },
+  "reference": {
+    "affineUnits": "micron",
+    "coordinateSystem": "RAS+",
+    "name": "nibabel",
+    "version": "5.4.2"
+  }
+}
