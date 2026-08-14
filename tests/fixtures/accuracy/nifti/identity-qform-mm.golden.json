@@ -1,0 +1,154 @@
+{
+  "description": "qform-only identity affine in millimeters",
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "coordinateSystem": "LPS+",
+    "units": "mm",
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          1
+        ],
+        "world": [
+          -1.0,
+          -2.0,
+          1.0
+        ]
+      },
+      {
+        "voxel": [
+          2,
+          3,
+          1
+        ],
+        "world": [
+          -2.0,
+          -3.0,
+          1.0
+        ]
+      }
+    ]
+  },
+  "fixture": "identity-qform-mm.nii",
+  "nibabel": {
+    "affine": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          1
+        ],
+        "world": [
+          1.0,
+          2.0,
+          1.0
+        ]
+      },
+      {
+        "voxel": [
+          2,
+          3,
+          1
+        ],
+        "world": [
+          2.0,
+          3.0,
+          1.0
+        ]
+      }
+    ]
+  },
+  "nifti": {
+    "form": "qform",
+    "shape": [
+      3,
+      4,
+      2
+    ],
+    "spatialUnit": "mm",
+    "unitToMillimeters": 1.0
+  },
+  "reference": {
+    "affineUnits": "mm",
+    "coordinateSystem": "RAS+",
+    "name": "nibabel",
+    "version": "5.4.2"
+  }
+}

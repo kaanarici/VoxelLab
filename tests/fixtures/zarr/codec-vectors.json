@@ -1,0 +1,43 @@
+{
+  "blosc-zlib-noshuffle": {
+    "encoded": "blosc-zlib-noshuffle.bin",
+    "decoded_sha256": "3166ab8180cc4a9e8d8b9ba11bcd42ede3d6d5579a6f4f31610fe0ea3f2d6ddb",
+    "decoded_bytes": 4096
+  },
+  "blosc-zstd-noshuffle": {
+    "encoded": "blosc-zstd-noshuffle.bin",
+    "decoded_sha256": "3166ab8180cc4a9e8d8b9ba11bcd42ede3d6d5579a6f4f31610fe0ea3f2d6ddb",
+    "decoded_bytes": 4096
+  },
+  "blosc-lz4hc-shuffle": {
+    "encoded": "blosc-lz4hc-shuffle.bin",
+    "decoded_sha256": "3166ab8180cc4a9e8d8b9ba11bcd42ede3d6d5579a6f4f31610fe0ea3f2d6ddb",
+    "decoded_bytes": 4096
+  },
+  "raw-zstd": {
+    "encoded": "raw-zstd.bin",
+    "decoded_sha256": "3166ab8180cc4a9e8d8b9ba11bcd42ede3d6d5579a6f4f31610fe0ea3f2d6ddb",
+    "decoded_bytes": 4096
+  },
+  "raw-gzip": {
+    "encoded": "raw-gzip.bin",
+    "decoded_sha256": "3166ab8180cc4a9e8d8b9ba11bcd42ede3d6d5579a6f4f31610fe0ea3f2d6ddb",
+    "decoded_bytes": 4096
+  },
+  "_orig": {
+    "first8": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "count": 2048,
+    "sha256": "3166ab8180cc4a9e8d8b9ba11bcd42ede3d6d5579a6f4f31610fe0ea3f2d6ddb",
+    "bytes": 4096,
+    "dtype": "<u2"
+  }
+}

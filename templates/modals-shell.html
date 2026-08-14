@@ -1,0 +1,103 @@
+<div id="annot-modal">
+  <div class="ask-card">
+    <div class="ask-header">
+      <div class="ask-title" id="annot-title">New annotation</div>
+      <div class="ask-badge" id="annot-meta"></div>
+      <button class="ask-close" id="annot-close" aria-label="Cancel (Esc)">×</button>
+    </div>
+    <div class="ask-body-wrap">
+      <textarea id="annot-text" class="annot-textarea" rows="4" placeholder="What do you want to remember about this spot?"></textarea>
+      <div class="annot-actions">
+        <button class="annot-btn danger" id="annot-delete">Delete</button>
+        <div class="annot-spacer"></div>
+        <button class="annot-btn" id="annot-cancel">Cancel</button>
+        <button class="annot-btn primary" id="annot-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="confirm-modal">
+  <div class="ask-card">
+    <div class="ask-header">
+      <div class="ask-title" id="confirm-title">Confirm</div>
+      <button class="ask-close" id="confirm-close" aria-label="Close (Esc)">×</button>
+    </div>
+    <div class="ask-body-wrap" id="confirm-body"></div>
+  </div>
+</div>
+
+<div id="shortcuts-modal">
+  <div class="shortcuts-card" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+    <div class="ask-header has-subtitle">
+      <div class="ask-heading">
+        <div class="ask-title" id="shortcuts-title">Keyboard shortcuts</div>
+        <div class="shortcuts-subtitle">Customize command shortcuts. Duplicate bindings are blocked.</div>
+      </div>
+      <button class="ask-close" id="shortcuts-close" aria-label="Close (Esc)">×</button>
+    </div>
+    <div class="shortcuts-body">
+      <div class="shortcuts-head" aria-hidden="true">
+        <span>Command</span>
+        <span>Keybinding</span>
+      </div>
+      <div class="shortcuts-list" id="shortcuts-list"></div>
+    </div>
+  </div>
+</div>
+
+<div id="cloud-settings-modal">
+  <div class="ask-card cloud-settings-card" role="dialog" aria-modal="true" aria-labelledby="cloud-settings-title">
+    <div class="ask-header has-subtitle">
+      <div class="ask-heading">
+        <div class="ask-title" id="cloud-settings-title">Cloud settings</div>
+        <div class="cloud-settings-subtitle">Modal GPU and R2 settings for optional processing</div>
+      </div>
+      <button class="ask-close" id="cloud-settings-close" aria-label="Close (Esc)">×</button>
+    </div>
+    <div class="ask-body-wrap cloud-settings-body">
+      <div class="cloud-settings-status" id="cloud-settings-status" role="status" aria-live="polite"></div>
+      <label class="cloud-settings-field">
+        <span>Modal webhook base</span>
+        <input id="cloud-settings-modal-base" class="select-like" autocomplete="off" placeholder="https://workspace--medical-imaging-pipeline.modal.run" />
+      </label>
+      <label class="cloud-settings-field">
+        <span>Modal auth token</span>
+        <input id="cloud-settings-modal-token" class="select-like" type="password" autocomplete="off" placeholder="Leave blank to keep the saved token" />
+      </label>
+      <label class="cloud-settings-field">
+        <span>R2 public URL</span>
+        <input id="cloud-settings-r2" class="select-like" autocomplete="off" placeholder="https://pub-xxx.r2.dev" />
+      </label>
+      <label class="cloud-settings-field">
+        <span>Trusted upload origins</span>
+        <input id="cloud-settings-origins" class="select-like" autocomplete="off" placeholder="https://pub-xxx.r2.dev, https://uploads.example.com" />
+      </label>
+      <label class="cloud-settings-toggle ui-checkbox">
+        <span class="ui-checkbox-toggle">
+          <input class="ui-checkbox-input" type="checkbox" id="cloud-settings-enabled" checked />
+          <span class="ui-checkbox-box" aria-hidden="true"></span>
+        </span>
+        <span>Enable cloud GPU processing</span>
+      </label>
+      <div class="cloud-settings-path" id="cloud-settings-path"></div>
+      <div class="cloud-settings-actions">
+        <button class="annot-btn danger" id="cloud-settings-clear-token" type="button">Forget token</button>
+        <div class="annot-spacer"></div>
+        <button class="annot-btn" id="cloud-settings-cancel" type="button">Cancel</button>
+        <button class="annot-btn primary" id="cloud-settings-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="consult-modal">
+  <div class="ask-card">
+    <div class="ask-header">
+      <div class="ask-title">Consolidated read</div>
+      <div class="ask-badge">AI · Not a diagnosis</div>
+      <button class="ask-close" id="consult-close" aria-label="Close (Esc)">×</button>
+    </div>
+    <div class="ask-body-wrap" id="consult-body"></div>
+  </div>
+</div>

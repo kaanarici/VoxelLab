@@ -1,0 +1,691 @@
+/* Ask composer — the inline scoped-chat "Ask" feature: canvas overlay (hint,
+   reticle, marquee), the drawer/scope/thread/steps timeline, prompt bar, and the
+   region quick-look lightbox. Kept out of viewer.css to stay maintainable. */
+
+  /* Motion tokens (--dur-*, --ease-*, --resize-*, --avatar-*) are centralized in
+     css/base.css :root. */
+
+  /* Ask (k): spot picker — ring follows cursor; hint explains the gesture */
+  .ask-reticle {
+    position: fixed;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    border: var(--border-w-thick) solid rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 2px 12px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: calc(var(--z-canvas-overlay) + 2);
+    transform: translate(-50%, -50%);
+  }
+  .ask-mode-hint {
+    position: absolute;
+    bottom: var(--space-md);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: calc(var(--z-canvas-overlay) + 1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(0, 0, 0, 0.55);
+    padding: var(--space-2sm) var(--space-md);
+    border-radius: var(--radius);
+    pointer-events: none;
+    text-align: center;
+    max-width: min(440px, calc(100% - 24px));
+    line-height: var(--lh-snug);
+    border: var(--border-w) solid rgba(255, 255, 255, 0.12);
+  }
+  .canvas-wrap.ask-picking #view {
+    cursor: crosshair !important;
+  }
+
+  svg#overlay-svg .ask-marquee {
+    fill: rgba(130, 185, 255, 0.14);
+    stroke: rgba(210, 230, 255, 0.92);
+    stroke-width: 1.25;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 5 4;
+    pointer-events: none;
+  }
+
+  /* ---- Inline scoped Ask composer: a drawer that rises from behind the bar ---- */
+  .ask-composer {
+    position: absolute;
+    left: 50%;
+    bottom: var(--space-lg);
+    transform: translateX(-50%);
+    z-index: calc(var(--z-canvas-overlay) + 3);
+    width: min(560px, calc(100% - 32px));
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2sm);
+    pointer-events: auto;
+  }
+  .ask-composer[hidden] { display: none; }
+
+  /* Drawer: behind the bar (lower z), tucked under its top edge so the two read
+     as one stacked surface, and grows upward as the conversation fills. */
+  .ask-drawer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: calc(-1 * var(--space-lg));
+    z-index: var(--z-base);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    max-height: 60vh;
+    overflow: hidden;
+    padding: var(--space-md) var(--space-md) 26px;
+    background: var(--elev);
+    border: var(--border-w) solid var(--border);
+    border-bottom: none;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
+    /* Auto height follows content; the steps group animates its own grid-rows
+       collapse, and the thread scrolls natively once content exceeds max-height. */
+  }
+  .ask-drawer.ask-drawer-in { animation: ask-drawer-in var(--panel-close-dur) var(--ease-smooth); }
+  @keyframes ask-drawer-in {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .ask-scope { display: flex; align-items: center; gap: var(--space-10); flex-shrink: 0; }
+  /* Attachment deck: cards stacked with a peek; on hover they fan out + tilt so
+     you can see and pick each (transitions.dev avatar-group spring). */
+  .ask-stack { position: relative; flex-shrink: 0; height: 44px; width: calc(44px + (var(--n, 1) - 1) * 7px); }
+  .ask-stack:hover { z-index: 4; }
+  .ask-att {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: var(--border-w) solid var(--border);
+    background: #000;
+    cursor: pointer;
+    z-index: var(--i);
+    transform: translateX(calc(var(--i) * 7px));
+    transition: transform var(--avatar-dur) var(--avatar-ease-in), border-color 0.12s;
+    will-change: transform;
+  }
+  .ask-stack--open .ask-att {
+    transform: translateX(calc(var(--i) * 38px)) rotate(calc((var(--i) - (var(--n) - 1) / 2) * 5deg));
+  }
+  .ask-att:hover { border-color: var(--dim); }
+  .ask-att-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ask-att-study { width: 100%; height: 100%; display: grid; place-items: center; background: var(--panel); color: var(--muted); }
+  .ask-att-x {
+    position: absolute;
+    top: var(--space-2xs);
+    right: var(--space-2xs);
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--dur-quick) var(--ease-swap);
+  }
+  .ask-att:hover .ask-att-x,
+  .ask-stack--open .ask-att-x { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-att { transition: border-color 0.12s; }
+    .ask-stack--open .ask-att { transform: translateX(calc(var(--i) * 38px)); }
+  }
+  .ask-scope-meta { display: flex; flex-direction: column; gap: var(--space-2xs); min-width: 0; flex: 1; }
+  .ask-scope-title { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); letter-spacing: -0.005em; }
+  .ask-scope-loc {
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    letter-spacing: var(--tracking-snug);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ask-scope-action {
+    flex-shrink: 0;
+    align-self: flex-start;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding: 0 var(--space-sm);
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transition: background var(--dur-quick) var(--ease-swap), border-color var(--dur-quick) var(--ease-swap);
+  }
+  .ask-scope-action svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  .ask-scope-action:hover { background: var(--hover-strong); border-color: var(--dim); }
+  @media (max-width: 720px) {
+    .ask-scope-action {
+      width: 26px;
+      padding: 0;
+      justify-content: center;
+    }
+    .ask-scope-action span { display: none; }
+  }
+  /* Pinned to the drawer's top-right with even inset (matches the 12px drawer
+     padding on top and right). Radius follows outer = inner + padding: the 14px
+     glyph leaves 6px of padding inside the 26px box, so a 6px radius reads as a
+     concentric hover chip. */
+  .ask-scope-close {
+    flex-shrink: 0;
+    align-self: flex-start;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: none;
+    background: transparent;
+    color: var(--icon-idle);
+    cursor: pointer;
+    border-radius: var(--radius-lg);
+    transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap);
+  }
+  /* Neutral translucent overlay so the hover chip is visible on the drawer in
+     both themes (the panel/elev backgrounds are too close to --hover). */
+  .ask-scope-close:hover { background: var(--hover-strong); color: var(--text); }
+
+  /* Thread: the scoped Q/A chat (scrolls inside the drawer when tall) */
+  .ask-thread {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-14);
+    overflow-y: auto;
+    padding-right: var(--space-2xs);
+  }
+  .ask-thread[hidden] { display: none; }
+  /* The whole turn grows + fades in (grid-rows 0fr→1fr); the auto-height drawer
+     follows so nothing flashes into place. */
+  .ask-qa {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows var(--dur-medium) var(--ease-smooth), opacity var(--dur-medium) var(--ease-smooth);
+  }
+  .ask-qa.ask-qa-in { grid-template-rows: 1fr; opacity: 1; }
+  .ask-qa-cell { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: var(--space-2sm); }
+  .ask-qa-q {
+    align-self: flex-end;
+    max-width: 85%;
+    background: var(--accent-bg);
+    border: var(--border-w) solid var(--border);
+    color: var(--text);
+    font-size: var(--fs-body-lg);
+    line-height: 1.5;
+    padding: 7px 11px;
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius) var(--radius-xl);
+  }
+  .ask-qa-a { font-size: var(--fs-title); line-height: 1.6; color: var(--text); }
+  /* Reusable shimmer: a sweep muted→text→muted across the text, used by both the
+     "Thinking" answer state and the "Working…" steps trigger while active. */
+  .ask-shimmer-text {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(90deg, var(--muted) 25%, var(--text) 50%, var(--muted) 75%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: ask-shimmer var(--shimmer-dur) var(--ease-linear) infinite;
+  }
+  @keyframes ask-shimmer {
+    from { background-position: 100% 0; }
+    to   { background-position: -100% 0; }
+  }
+  /* "Thinking" answer state: inline-block (not flex) so it starts at the same left
+     x as the answer that replaces it; opacity transition lets it retire smoothly. */
+  .ask-qa-a.pending {
+    display: inline-block;
+    transition: opacity var(--dur-quick) var(--ease-swap);
+  }
+  .ask-qa-a.err { color: var(--color-abnormal); }
+  /* The answer grows its height in as the words fade (so the drawer eases open). */
+  .ask-qa-a.ask-a-reveal { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--reveal-dur) var(--ease-smooth); }
+  .ask-qa-a.ask-a-reveal.ask-a-in { grid-template-rows: 1fr; }
+  /* Breathing room below every answer, for legibility (more on the latest turn). */
+  .ask-a-cell { min-height: 0; overflow: hidden; padding-bottom: 22px; }
+  .ask-qa:last-child .ask-a-cell { padding-bottom: 26px; }
+  /* Word-by-word blur-fade reveal of the answer (theme-agnostic: animates only
+     opacity/blur, the text keeps var(--text)). */
+  .ask-qa-a .ask-word {
+    display: inline-block;
+    opacity: 0;
+    animation: ask-word-in var(--reveal-dur) var(--ease-smooth) forwards;
+  }
+  @keyframes ask-word-in {
+    from { opacity: 0; filter: blur(var(--reveal-blur)); transform: translateY(2px); }
+    to   { opacity: 1; filter: blur(0); transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-qa-a .ask-word { animation: none; opacity: 1; filter: none; transform: none; }
+    .ask-shimmer-text {
+      animation: none;
+      background: none;
+      color: var(--muted);
+      -webkit-text-fill-color: var(--muted);
+    }
+  }
+  .ask-qa-cached {
+    margin-left: var(--space-sm);
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    vertical-align: middle;
+  }
+  .ask-qa-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    padding-bottom: var(--space-2sm);
+  }
+  .ask-qa-actions[hidden] { display: none; }
+  .ask-action-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    max-width: 100%;
+    padding: 8px 10px;
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--hover);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--dur-quick) var(--ease-swap), border-color var(--dur-quick) var(--ease-swap);
+  }
+  .ask-action-chip:hover {
+    background: var(--hover-strong);
+    border-color: var(--dim);
+  }
+  .ask-action-chip svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  .ask-action-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .ask-action-label {
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ask-action-detail {
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Tool steps — one connected vertical timeline (prompt-kit Steps), grouped as
+     the calls stream in: a kind-icon node per step joined by a connector line.
+     The group auto-collapses to a summary line when the tools finish. */
+  .ask-qa-tools { display: flex; flex-direction: column; }
+  .ask-qa-tools[hidden] { display: none; }
+  .ask-steps { display: flex; flex-direction: column; }
+  /* Hugs its content (chevron + label) so the hover highlight isn't a full row. */
+  .ask-steps-trigger {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 9px 3px var(--space-2sm);
+    background: rgba(255, 255, 255, 0.05);
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.14s ease;
+  }
+  .ask-steps-trigger:hover { color: var(--text); }
+  .ask-steps-trigger:hover .ask-steps-chev { color: var(--text); }
+  /* Disclosure chevron on the LEFT: points right when collapsed, down when open. */
+  .ask-steps-chev { flex-shrink: 0; color: var(--muted); opacity: 0.8; transform: rotate(-90deg); transition: transform var(--chevron-dur) var(--ease-smooth); }
+  .ask-steps[data-open="true"] .ask-steps-chev { transform: rotate(0deg); }
+  /* Sized to its text (not flex:1) so the shimmer gradient sweeps tightly over
+     the glyphs instead of spreading invisibly across the full trigger width. */
+  .ask-steps-label { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Smooth collapse: grid-rows height + content opacity, 0.28s ease — the exact
+     technique the right sidebar sections use. The auto-height drawer follows. */
+  .ask-steps-content { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--accordion-dur) var(--ease-smooth); }
+  .ask-steps[data-open="true"] .ask-steps-content { grid-template-rows: 1fr; }
+  .ask-steps-timeline { overflow: hidden; min-height: 0; padding: 3px 0 var(--space-2xs) var(--space-2sm); opacity: 0; transition: opacity var(--accordion-dur) var(--ease-smooth); }
+  .ask-steps[data-open="true"] .ask-steps-timeline { opacity: 1; }
+  /* Each row grows + fades in (grid-rows 0fr→1fr) so the auto-height drawer
+     follows smoothly instead of the row flashing into place. */
+  .ask-step {
+    position: relative;
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows var(--dur-medium) var(--ease-smooth), opacity var(--dur-medium) var(--ease-smooth);
+  }
+  .ask-step.ask-step-in { grid-template-rows: 1fr; opacity: 1; }
+  .ask-step-cell { min-height: 0; overflow: hidden; padding-bottom: var(--space-10); transform-origin: top; }
+  /* A short segment between consecutive icons — centred on the icon column, in
+     the gap; never before the first or after the last step. */
+  .ask-step:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: -5px;
+    transform: translate(-50%, -50%);
+    width: 1.5px;
+    height: 14px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.22);
+    opacity: 1;
+    transition: opacity var(--dur-quick) var(--ease-swap);
+  }
+  /* When a step's detail is open, the segment below it (the next step's
+     connector) fades away, then returns on collapse. */
+  .ask-step.open + .ask-step::before { opacity: 0; }
+  /* The clickable item hugs its content (icon + label + chevron), not the row;
+     icon and label are vertically centred. */
+  .ask-step-head {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    max-width: 100%;
+    min-height: 20px;
+    padding: 3px var(--space-sm) 3px 1px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-lg);
+    text-align: left;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    cursor: default;
+    transition: background 0.12s;
+  }
+  .ask-step-ico { display: inline-flex; flex-shrink: 0; }
+  .ask-step--read .ask-step-ico { color: #f5a524; }
+  .ask-step--inspect .ask-step-ico { color: #a78bfa; }
+  .ask-step--measure .ask-step-ico { color: #34d399; }
+  .ask-step--voxel .ask-step-ico { color: #38bdf8; }
+  .ask-step--other .ask-step-ico { color: #9aa0a6; }
+  .ask-step--error .ask-step-ico { color: #f87171; }
+  .ask-step--running .ask-step-ico { animation: ask-ico-pulse var(--pulse-dur) var(--ease-linear) infinite; }
+  @keyframes ask-ico-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .ask-step:has(.ask-step-detailwrap) .ask-step-head { cursor: pointer; }
+  .ask-step:has(.ask-step-detailwrap) .ask-step-head:hover .ask-step-name { color: var(--text); }
+  .ask-step-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-swap); }
+  .ask-step-head .ask-tool-chev { flex-shrink: 0; color: var(--muted); opacity: 0.7; transition: transform var(--chevron-dur) var(--ease-smooth); }
+  .ask-step.open .ask-tool-chev { transform: rotate(180deg); }
+  /* Smooth detail reveal (grid-rows); the auto-height drawer follows. */
+  .ask-step-detailwrap { width: 100%; display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--accordion-dur) var(--ease-smooth); }
+  .ask-step.open .ask-step-detailwrap { grid-template-rows: 1fr; }
+  .ask-step-detail {
+    overflow: hidden;
+    min-height: 0;
+    transform-origin: top;
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+    color: var(--muted);
+    opacity: 0.85;
+    padding: 3px 0 var(--space-2xs) 23px;
+    font-family: var(--ff-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-drawer.ask-drawer-in,
+    .ask-lightbox.ask-lightbox-in { animation: none; }
+    .ask-step--running .ask-step-ico { animation: none; }
+    .ask-step, .ask-qa { opacity: 1; }
+    .ask-step, .ask-qa, .ask-qa-a.ask-a-reveal, .ask-steps-content, .ask-steps-timeline, .ask-step-detailwrap, .ask-tool-chev, .ask-steps-chev { transition: none; }
+    .ask-step:not(.ask-step-in), .ask-qa:not(.ask-qa-in), .ask-qa-a.ask-a-reveal:not(.ask-a-in) { grid-template-rows: 1fr; }
+  }
+
+  /* Prompt bar: the hero surface in front of the drawer */
+  .ask-bar {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-sm);
+    background: var(--panel);
+    border: var(--border-w) solid var(--border);
+    /* A finite radius = one-line height/2 reads as a full pill but morphs
+       SMOOTHLY to the tall radius (animating from 9999px snaps at the end). */
+    border-radius: 24px;
+    box-shadow: var(--shadow-modal);
+    padding: var(--space-sm);
+    transition: border-color var(--dur-quick), border-radius var(--resize-dur) var(--resize-ease);
+  }
+  /* Multi-line: a pill looks wrong when tall, so ease down to a rounded rect.
+     Eased in sync with the input's height so the morph reads as one motion. */
+  .ask-bar--tall { border-radius: 18px; }
+  /* …and the textarea lifts onto its own full-width row above the controls. */
+  .ask-bar--tall .ask-bar-input { flex: 1 1 100%; order: -1; }
+  .ask-bar:focus-within { border-color: var(--dim); }
+  .ask-bar-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    resize: none;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-title);
+    line-height: 1.5;
+    max-height: 160px;
+    padding: var(--space-2sm) 0;
+    /* Eased in sync with the bar radius (auto→px on open snaps, px→px wraps ease). */
+    transition: height var(--resize-dur) var(--resize-ease);
+  }
+  .ask-bar-input::placeholder { color: var(--muted); opacity: 0.85; }
+  .ask-composer:has(.ask-drawer) .ask-bar,
+  .ask-composer:has(.ask-drawer) .ask-bar:focus-within {
+    border-top-color: transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-bar, .ask-bar-input { transition: none; }
+  }
+  /* Circle, concentric with the pill bar's right end: the 32px button sits 8px
+     from the bar's right/top/bottom edges, so its 16px radius + 8px padding =
+     the bar's 24px (height/2) end radius. */
+  .ask-bar-send {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 50%;
+    background: var(--text);
+    color: var(--panel);
+    cursor: pointer;
+    transition: opacity var(--dur-quick) var(--ease-swap);
+  }
+  .ask-bar-send:hover:not(:disabled) { opacity: 0.85; }
+  .ask-bar-send:disabled { opacity: var(--opacity-disabled); cursor: default; }
+  /* "+" at the bar's left end — a ghost circle concentric with the bar (16+8=24). */
+  .ask-bar-plus {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap);
+  }
+  .ask-bar-plus:hover,
+  .ask-bar-plus[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+  /* Popover above the "+": region pen (and, later, study context). */
+  .ask-bar-pop {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + var(--space-sm));
+    z-index: 5;
+    min-width: 184px;
+    padding: 5px;
+    background: var(--elev);
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-modal);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    animation: ask-pop-in var(--dropdown-open-dur) var(--ease-smooth);
+  }
+  .ask-bar-pop[hidden] { display: none; }
+  @keyframes ask-pop-in {
+    from { opacity: 0; transform: translateY(6px) scale(var(--dropdown-pre-scale)); }
+    to   { opacity: 1; transform: none; }
+  }
+  .ask-bar-pop-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 9px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body-lg);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--dur-quick) var(--ease-swap);
+  }
+  .ask-bar-pop-item:hover { background: var(--hover-strong); }
+  .ask-bar-pop-item svg { color: var(--muted); flex-shrink: 0; }
+  .ask-pop-sep { height: var(--border-w); background: var(--border); margin: var(--space-xs); }
+  .ask-pop-head { font-size: var(--fs-caption); color: var(--muted); padding: var(--space-xs) 9px 3px; text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+  .ask-pop-studies { display: flex; flex-direction: column; gap: var(--space-2xs); max-height: 200px; overflow-y: auto; }
+  /* Model selector pill — send-button height, fully rounded, left of send. */
+  .ask-bar-model {
+    flex-shrink: 0;
+    margin-left: auto;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 var(--space-md);
+    border-radius: var(--radius-pill);
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body-lg);
+    cursor: pointer;
+    transition: background var(--dur-quick) var(--ease-swap);
+  }
+  .ask-bar-model:hover,
+  .ask-bar-model[aria-expanded="true"] { background: var(--hover-strong); }
+  .ask-model-caret { color: var(--muted); flex-shrink: 0; }
+  .ask-model-menu {
+    position: absolute;
+    right: var(--space-sm);
+    bottom: calc(100% + var(--space-sm));
+    z-index: 5;
+    min-width: 136px;
+    padding: 5px;
+    background: var(--elev);
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-modal);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    animation: ask-pop-in var(--dropdown-open-dur) var(--ease-smooth);
+  }
+  .ask-model-menu[hidden] { display: none; }
+  .ask-model-opt {
+    padding: 7px var(--space-10);
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body-lg);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--dur-quick) var(--ease-swap);
+  }
+  .ask-model-opt:hover { background: var(--hover-strong); }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-bar-pop, .ask-model-menu { animation: none; }
+  }
+  .ask-composer-note {
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    letter-spacing: var(--tracking-snug);
+    padding: 0 var(--space-2sm);
+  }
+
+  /* Region quick-look: click the attachment to preview the crop large */
+  .ask-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    background: rgba(0, 0, 0, 0.8);
+    cursor: zoom-out;
+  }
+  .ask-lightbox[hidden] { display: none; }
+  .ask-lightbox.ask-lightbox-in { animation: ask-lightbox-in var(--modal-open-dur) var(--ease-smooth); }
+  @keyframes ask-lightbox-in { from { opacity: 0; } to { opacity: 1; } }
+  /* Scale the crop UP to a comfortable preview (min-width), not just cap it —
+     region crops are small in canvas pixels, so capping alone left them tiny. */
+  .ask-lightbox img {
+    width: auto;
+    height: auto;
+    min-width: min(70vw, 720px);
+    max-width: 94vw;
+    max-height: 92vh;
+    border-radius: var(--radius-md);
+    border: var(--border-w) solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 16px 56px rgba(0, 0, 0, 0.55);
+    image-rendering: auto;
+  }

@@ -1,0 +1,185 @@
+{
+  "description": "enhanced multi-frame geometry and per-frame pixel-value transformations",
+  "dicom": {
+    "columns": 3,
+    "imagePlaneFormula": "P = S + i * columnSpacing * rowDirection + j * rowSpacing * columnDirection",
+    "rows": 2
+  },
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        0.4,
+        0.0,
+        0.0,
+        5.0
+      ],
+      [
+        0.0,
+        0.9,
+        0.0,
+        -5.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.2000000000000002,
+        10.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "affineAppliesToVolume": true,
+    "coordinateSystem": "LPS+",
+    "frameRescales": [
+      [
+        2.0,
+        -20.0
+      ],
+      [
+        3.0,
+        -30.0
+      ],
+      [
+        4.0,
+        -40.0
+      ]
+    ],
+    "normalizedVolume": [
+      0.3268229166666667,
+      0.3274739583333333,
+      0.328125,
+      0.3287760416666667,
+      0.3294270833333333,
+      0.330078125,
+      0.3294270833333333,
+      0.3304036458333333,
+      0.3313802083333333,
+      0.3323567708333333,
+      0.3333333333333333,
+      0.3343098958333333,
+      0.3359375,
+      0.3372395833333333,
+      0.3385416666666667,
+      0.33984375,
+      0.3411458333333333,
+      0.3424479166666667
+    ],
+    "rescaledPixels": [
+      -20.0,
+      -18.0,
+      -16.0,
+      -14.0,
+      -12.0,
+      -10.0,
+      -12.0,
+      -9.0,
+      -6.0,
+      -3.0,
+      0.0,
+      3.0,
+      8.0,
+      12.0,
+      16.0,
+      20.0,
+      24.0,
+      28.0
+    ],
+    "series": {
+      "dicomImportKind": "volume-stack",
+      "firstIPP": [
+        5.0,
+        -5.0,
+        10.0
+      ],
+      "frameOfReferenceUID": "1.2.826.0.1.3680043.8.498.51057442246782946887701542670315934622",
+      "frameOfReferenceUIDConsistent": true,
+      "geometryKind": "volumeStack",
+      "height": 2,
+      "isReconstructedVolumeStack": true,
+      "lastIPP": [
+        5.0,
+        -5.0,
+        12.4
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "pixelSpacing": [
+        0.9,
+        0.4
+      ],
+      "reconstructionCapability": "display-volume",
+      "renderability": "volume",
+      "slicePositionsDistinct": true,
+      "sliceSpacing": 1.2000000000000002,
+      "sliceSpacingRegular": true,
+      "sliceSpacingStats": {
+        "max": 1.200000000000001,
+        "mean": 1.2000000000000002,
+        "min": 1.1999999999999993,
+        "regular": true
+      },
+      "sliceThickness": 1.2,
+      "slices": 3,
+      "width": 3
+    },
+    "units": "mm",
+    "volumeStackSafe": true,
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          5.0,
+          -5.0,
+          10.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          1,
+          1
+        ],
+        "world": [
+          5.4,
+          -4.1,
+          11.2
+        ]
+      },
+      {
+        "voxel": [
+          2,
+          1,
+          2
+        ],
+        "world": [
+          5.8,
+          -4.1,
+          12.4
+        ]
+      }
+    ]
+  },
+  "files": [
+    "enhanced-multiframe/enhanced.dcm"
+  ],
+  "fixture": "enhanced-multiframe",
+  "reference": {
+    "name": "pydicom+DICOM-PS3.3-Image-Plane",
+    "url": "https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html",
+    "version": "pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1"
+  }
+}

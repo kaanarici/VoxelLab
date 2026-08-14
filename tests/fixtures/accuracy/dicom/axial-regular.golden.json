@@ -1,0 +1,134 @@
+{
+  "description": "regular axial single-frame CT stack",
+  "dicom": {
+    "columns": 4,
+    "imagePlaneFormula": "P = S + i * columnSpacing * rowDirection + j * rowSpacing * columnDirection",
+    "rows": 3
+  },
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        0.6,
+        0.0,
+        0.0,
+        -30.0
+      ],
+      [
+        0.0,
+        0.8,
+        0.0,
+        20.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.5,
+        5.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "affineAppliesToVolume": true,
+    "coordinateSystem": "LPS+",
+    "series": {
+      "dicomImportKind": "volume-stack",
+      "firstIPP": [
+        -30.0,
+        20.0,
+        5.0
+      ],
+      "frameOfReferenceUID": "1.2.826.0.1.3680043.8.498.85910735667775452430180092484015932781",
+      "frameOfReferenceUIDConsistent": true,
+      "geometryKind": "volumeStack",
+      "height": 3,
+      "isReconstructedVolumeStack": true,
+      "lastIPP": [
+        -30.0,
+        20.0,
+        9.5
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "pixelSpacing": [
+        0.8,
+        0.6
+      ],
+      "reconstructionCapability": "display-volume",
+      "renderability": "volume",
+      "slicePositionsDistinct": true,
+      "sliceSpacing": 1.5,
+      "sliceSpacingRegular": true,
+      "sliceSpacingStats": {
+        "max": 1.5,
+        "mean": 1.5,
+        "min": 1.5,
+        "regular": true
+      },
+      "sliceThickness": 1.5,
+      "slices": 4,
+      "width": 4
+    },
+    "units": "mm",
+    "volumeStackSafe": true,
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          -30.0,
+          20.0,
+          5.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          1,
+          1
+        ],
+        "world": [
+          -29.4,
+          20.8,
+          6.5
+        ]
+      },
+      {
+        "voxel": [
+          3,
+          2,
+          3
+        ],
+        "world": [
+          -28.2,
+          21.6,
+          9.5
+        ]
+      }
+    ]
+  },
+  "files": [
+    "axial-regular/slice-0001.dcm",
+    "axial-regular/slice-0002.dcm",
+    "axial-regular/slice-0003.dcm",
+    "axial-regular/slice-0004.dcm"
+  ],
+  "fixture": "axial-regular",
+  "reference": {
+    "name": "pydicom+DICOM-PS3.3-Image-Plane",
+    "url": "https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html",
+    "version": "pydicom 3.0.2; DICOM PS3.3 2026b C.7.6.2.1.1"
+  }
+}

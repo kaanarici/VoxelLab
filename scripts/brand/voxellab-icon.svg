@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="32%" r="80%">
+      <stop offset="0%" stop-color="#13203b"/><stop offset="100%" stop-color="#070d1c"/>
+    </radialGradient>
+    <linearGradient id="topFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7dd3fc"/><stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="leftFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f1f5f9"/><stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="rightFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4ade80"/><stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.14"/><stop offset="52%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="contact" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="114" fill="url(#bg)"/>
+  <ellipse cx="256" cy="486" rx="150" ry="26" fill="#000000" opacity="0.45" filter="url(#contact)"/>
+  <polygon points="256,44 441.33,151 256,258 70.67,151" fill="url(#topFace)" />
+<polygon points="70.67,151 256,258 256,472 70.67,365" fill="url(#leftFace)" />
+<polygon points="256,258 441.33,151 441.33,365 256,472" fill="url(#rightFace)" />
+<g stroke="#0c4a6e" stroke-width="1.6" stroke-opacity="0.4" stroke-linecap="round"><line x1="317.78" y1="79.67" x2="132.45" y2="186.67"/><line x1="194.22" y1="79.67" x2="379.55" y2="186.67"/><line x1="379.55" y1="115.33" x2="194.22" y2="222.33"/><line x1="132.45" y1="115.33" x2="317.78" y2="222.33"/></g>
+<g stroke="#64748b" stroke-width="1.6" stroke-opacity="0.38" stroke-linecap="round"><line x1="132.45" y1="186.67" x2="132.45" y2="400.67"/><line x1="70.67" y1="222.33" x2="256" y2="329.33"/><line x1="194.22" y1="222.33" x2="194.22" y2="436.33"/><line x1="70.67" y1="293.67" x2="256" y2="400.67"/></g>
+<g stroke="#14532d" stroke-width="1.6" stroke-opacity="0.4" stroke-linecap="round"><line x1="317.78" y1="222.33" x2="317.78" y2="436.33"/><line x1="256" y1="329.33" x2="441.33" y2="222.33"/><line x1="379.55" y1="186.67" x2="379.55" y2="400.67"/><line x1="256" y1="400.67" x2="441.33" y2="293.67"/></g>
+<polygon points="132.45,115.33 194.22,151 132.45,186.67 70.67,151" fill="#f0faff" opacity="0.95" filter="url(#glow)"/>
+<g stroke="#070d1c" stroke-width="3" stroke-opacity="0.32" fill="none" stroke-linejoin="round">
+    <polygon points="256,44 441.33,151 256,258 70.67,151"/>
+    <polygon points="70.67,151 256,258 256,472 70.67,365"/>
+    <polygon points="256,258 441.33,151 441.33,365 256,472"/>
+  </g>
+  <rect x="0" y="0" width="512" height="512" rx="114" fill="url(#sheen)"/>
+</svg>

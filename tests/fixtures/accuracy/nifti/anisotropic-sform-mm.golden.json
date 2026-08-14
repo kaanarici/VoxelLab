@@ -1,0 +1,154 @@
+{
+  "description": "sform-only anisotropic spacing with translation in millimeters",
+  "expectedVoxelLab": {
+    "affine": [
+      [
+        -0.699999988079071,
+        0.0,
+        0.0,
+        -12.0
+      ],
+      [
+        0.0,
+        -1.25,
+        0.0,
+        24.0
+      ],
+      [
+        0.0,
+        0.0,
+        2.5,
+        36.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "coordinateSystem": "LPS+",
+    "units": "mm",
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          -12.0,
+          24.0,
+          36.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          1
+        ],
+        "world": [
+          -12.699999988079071,
+          21.5,
+          38.5
+        ]
+      },
+      {
+        "voxel": [
+          2,
+          3,
+          1
+        ],
+        "world": [
+          -13.399999976158142,
+          20.25,
+          38.5
+        ]
+      }
+    ]
+  },
+  "fixture": "anisotropic-sform-mm.nii",
+  "nibabel": {
+    "affine": [
+      [
+        0.699999988079071,
+        0.0,
+        0.0,
+        12.0
+      ],
+      [
+        0.0,
+        1.25,
+        0.0,
+        -24.0
+      ],
+      [
+        0.0,
+        0.0,
+        2.5,
+        36.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "voxelToWorldPoints": [
+      {
+        "voxel": [
+          0,
+          0,
+          0
+        ],
+        "world": [
+          12.0,
+          -24.0,
+          36.0
+        ]
+      },
+      {
+        "voxel": [
+          1,
+          2,
+          1
+        ],
+        "world": [
+          12.699999988079071,
+          -21.5,
+          38.5
+        ]
+      },
+      {
+        "voxel": [
+          2,
+          3,
+          1
+        ],
+        "world": [
+          13.399999976158142,
+          -20.25,
+          38.5
+        ]
+      }
+    ]
+  },
+  "nifti": {
+    "form": "sform",
+    "shape": [
+      3,
+      4,
+      2
+    ],
+    "spatialUnit": "mm",
+    "unitToMillimeters": 1.0
+  },
+  "reference": {
+    "affineUnits": "mm",
+    "coordinateSystem": "RAS+",
+    "name": "nibabel",
+    "version": "5.4.2"
+  }
+}

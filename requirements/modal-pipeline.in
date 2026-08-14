@@ -1,0 +1,12 @@
+numpy==2.3.5
+scipy==1.15.3
+Pillow==12.3.0
+pydicom==3.0.2
+nibabel==5.4.2
+boto3==1.43.71
+antspyx==0.6.3
+TotalSegmentator==2.18.0
+torch==2.13.0
+torchvision==0.28.0
+vtk==9.5.1
+zstandard==0.25.0

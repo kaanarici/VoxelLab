@@ -1,0 +1,221 @@
+# Public release shape: tag `v*` -> verify, build desktop artifacts, and publish a GitHub release.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # Public binaries remain explicitly unsigned until repository signing secrets
+  # are provisioned. Partial credential sets fail closed below.
+  VOXELLAB_ALLOW_UNSIGNED_RELEASE: "true"
+
+jobs:
+  verify-canonical:
+    uses: ./.github/workflows/check.yml
+
+  verify-lab-readiness:
+    runs-on: ubuntu-latest
+    needs:
+      - verify-canonical
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Reject an already-published release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          RESULT="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" 2>&1)"
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ]; then
+            echo "Release $GITHUB_REF_NAME already exists; release tags and assets are immutable." >&2
+            exit 1
+          fi
+          if ! printf '%s' "$RESULT" | grep -q 'HTTP 404'; then
+            printf '%s\n' "$RESULT" >&2
+            exit "$STATUS"
+          fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version-file: '.python-version'
+          cache: pip
+      - run: node scripts/check_release_version.mjs "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: python -m pip install --require-hashes -r requirements/ci.lock
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run -a env PYTHON=python node scripts/check_lab_readiness.mjs --skip-validation-matrix --skip-public-export --report lab-readiness-report.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: voxellab-lab-readiness
+          if-no-files-found: error
+          path: lab-readiness-report.json
+
+  build-macos:
+    runs-on: macos-latest
+    needs:
+      - verify-lab-readiness
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Resolve macOS signing mode
+        id: signing
+        env:
+          VOXELLAB_MACOS_CERTIFICATE_BASE64: ${{ secrets.VOXELLAB_MACOS_CERTIFICATE_BASE64 }}
+          VOXELLAB_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.VOXELLAB_MACOS_CERTIFICATE_PASSWORD }}
+          VOXELLAB_OSX_IDENTITY: ${{ secrets.VOXELLAB_OSX_IDENTITY }}
+          VOXELLAB_APPLE_API_KEY_P8: ${{ secrets.VOXELLAB_APPLE_API_KEY_P8 }}
+          VOXELLAB_APPLE_API_KEY_ID: ${{ secrets.VOXELLAB_APPLE_API_KEY_ID }}
+          VOXELLAB_APPLE_API_ISSUER: ${{ secrets.VOXELLAB_APPLE_API_ISSUER }}
+        run: echo "mode=$(node scripts/check_release_signing_env.mjs darwin)" >> "$GITHUB_OUTPUT"
+      - name: Import Apple signing certificate
+        if: steps.signing.outputs.mode == 'signed'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.VOXELLAB_MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.VOXELLAB_MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/voxellab-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/voxellab-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+      - name: Write Apple notarization key
+        if: steps.signing.outputs.mode == 'signed'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.VOXELLAB_APPLE_API_KEY_P8 }}
+        run: printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+      - run: npm run desktop:make:mac
+        env:
+          VOXELLAB_OSX_IDENTITY: ${{ secrets.VOXELLAB_OSX_IDENTITY }}
+          VOXELLAB_APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          VOXELLAB_APPLE_API_KEY_ID: ${{ secrets.VOXELLAB_APPLE_API_KEY_ID }}
+          VOXELLAB_APPLE_API_ISSUER: ${{ secrets.VOXELLAB_APPLE_API_ISSUER }}
+      - run: node scripts/check_desktop_make_outputs.mjs out/forge/make darwin
+      - run: npm run desktop:smoke:packaged:mac
+      - run: npm run desktop:smoke:release:mac
+      - name: Verify macOS application signature
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          APP_PATH="$(find out/forge -maxdepth 3 -type d -name 'VoxelLab.app' -print -quit)"
+          test -n "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          if [ "$SIGNING_MODE" = signed ]; then
+            codesign --display --verbose=4 "$APP_PATH" 2>&1 | grep -q 'Authority=Developer ID Application'
+            spctl --assess --type execute --verbose=4 "$APP_PATH"
+          else
+            codesign --display --verbose=4 "$APP_PATH" 2>&1 | grep -q 'Signature=adhoc'
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: voxellab-macos
+          if-no-files-found: error
+          path: |
+            out/forge/make/**/*.dmg
+            out/forge/make/**/*.zip
+
+  build-windows:
+    runs-on: windows-latest
+    needs:
+      - verify-lab-readiness
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Resolve Windows signing mode
+        id: signing
+        env:
+          VOXELLAB_WINDOWS_CERTIFICATE_BASE64: ${{ secrets.VOXELLAB_WINDOWS_CERTIFICATE_BASE64 }}
+          VOXELLAB_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.VOXELLAB_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: echo "mode=$(node scripts/check_release_signing_env.mjs win32)" >> "$env:GITHUB_OUTPUT"
+      - name: Write Windows signing certificate
+        if: steps.signing.outputs.mode == 'signed'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.VOXELLAB_WINDOWS_CERTIFICATE_BASE64 }}
+        run: '[IO.File]::WriteAllBytes("$env:RUNNER_TEMP\voxellab-signing.pfx", [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))'
+      - run: npm run desktop:make:win
+        env:
+          VOXELLAB_WINDOWS_CERTIFICATE_FILE: ${{ runner.temp }}\voxellab-signing.pfx
+          VOXELLAB_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.VOXELLAB_WINDOWS_CERTIFICATE_PASSWORD }}
+      - run: node scripts/check_desktop_make_outputs.mjs out/forge/make win32
+      - run: npm run desktop:smoke:packaged:win
+      - name: Verify Windows application signatures
+        shell: pwsh
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          $targets = Get-ChildItem out/forge -Recurse -File -Filter *.exe |
+            Where-Object { $_.Name -eq 'VoxelLab.exe' -or $_.Name -like '*Setup*.exe' }
+          if ($targets.Count -lt 2) { throw 'Expected packaged VoxelLab.exe and installer executable' }
+          $signatures = $targets | ForEach-Object { Get-AuthenticodeSignature $_.FullName }
+          $signatures | Format-Table Path, Status, StatusMessage
+          if ($env:SIGNING_MODE -eq 'signed' -and ($signatures | Where-Object Status -ne 'Valid')) {
+            throw 'One or more Windows release executables have an invalid Authenticode signature'
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: voxellab-windows
+          if-no-files-found: error
+          path: |
+            out/forge/make/**/*.exe
+            out/forge/make/**/*.nupkg
+            out/forge/make/**/RELEASES
+
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    needs:
+      - verify-lab-readiness
+      - build-macos
+      - build-windows
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: release-assets
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.node-version'
+      - run: find release-assets -maxdepth 5 -type f -print
+      - run: node scripts/check_release_assets.mjs release-assets
+      - run: node scripts/write_release_checksums.mjs release-assets release-assets/SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: release-assets/SHA256SUMS
+      - run: node scripts/extract_release_notes.mjs CHANGELOG.md release-notes.md
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+          files: release-assets/**/*

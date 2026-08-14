@@ -1,0 +1,77 @@
+name: Bug report
+description: Report a reproducible problem in VoxelLab
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Do not upload patient data or include names, identifiers, dates, credentials, private URLs, or private workspace details. Use synthetic or fully deidentified files and screenshots.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed patient and identifying information from this report and its attachments.
+          required: true
+        - label: This is not an undisclosed security vulnerability. I will use SECURITY.md for security reports.
+          required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did this happen?
+      options:
+        - macOS desktop app
+        - Windows desktop app
+        - Browser viewer
+        - Local Python or processing tool
+        - Optional cloud processing
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v1.0.0 or a commit hash
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: Input type
+      description: Describe the format, modality, dimensions, compression, and calibration. Do not include identifying metadata.
+      placeholder: Deidentified NIfTI volume, 256 x 256 x 128, millimeter units
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Deidentified logs or screenshots
+      description: Remove patient information, local paths, tokens, and private service URLs before attaching anything.
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks already tried
+      description: Include relevant commands, browser versions, or whether the problem also occurs with the public demo.

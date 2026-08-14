@@ -1,0 +1,16 @@
+{
+  "include": [
+    "python/json_store.py",
+    "python/security_http.py"
+  ],
+  "exclude": [
+    ".venv",
+    "node_modules"
+  ],
+  "extraPaths": [
+    "python"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": "none"
+}
