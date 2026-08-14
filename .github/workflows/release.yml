@@ -1,19 +1,24 @@
-# Public release shape: tag `v*` -> verify, build desktop artifacts, and publish a GitHub release.
+# Public release shape: manually request a version from protected main, verify and
+# build every artifact, then require approval before creating the tag and release.
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact package tag to release, for example v1.2.0
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
+  RELEASE_TAG: ${{ inputs.tag }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   # Public binaries remain explicitly unsigned until repository signing secrets
   # are provisioned. Partial credential sets fail closed below.
@@ -29,22 +34,12 @@ jobs:
       - verify-canonical
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Reject an already-published release tag
+      - name: Verify release request
+        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Reject an existing release identity
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          RESULT="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" 2>&1)"
-          STATUS=$?
-          set -e
-          if [ "$STATUS" -eq 0 ]; then
-            echo "Release $GITHUB_REF_NAME already exists; release tags and assets are immutable." >&2
-            exit 1
-          fi
-          if ! printf '%s' "$RESULT" | grep -q 'HTTP 404'; then
-            printf '%s\n' "$RESULT" >&2
-            exit "$STATUS"
-          fi
+        run: node scripts/check_release_identity.mjs "$GITHUB_REPOSITORY" "$RELEASE_TAG"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: '.node-version'
@@ -53,7 +48,7 @@ jobs:
         with:
           python-version-file: '.python-version'
           cache: pip
-      - run: node scripts/check_release_version.mjs "$GITHUB_REF_NAME"
+      - run: node scripts/check_release_version.mjs "$RELEASE_TAG"
       - run: npm ci
       - run: python -m pip install --require-hashes -r requirements/ci.lock
       - run: npx playwright install --with-deps chromium
@@ -191,6 +186,8 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: release
     permissions:
       contents: write
       id-token: write
@@ -210,12 +207,20 @@ jobs:
       - run: find release-assets -maxdepth 5 -type f -print
       - run: node scripts/check_release_assets.mjs release-assets
       - run: node scripts/write_release_checksums.mjs release-assets release-assets/SHA256SUMS
+      - name: Recheck release identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check_release_identity.mjs "$GITHUB_REPOSITORY" "$RELEASE_TAG"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: release-assets/SHA256SUMS
       - run: node scripts/extract_release_notes.mjs CHANGELOG.md release-notes.md
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - id: release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ inputs.tag }}
           body_path: release-notes.md
           fail_on_unmatched_files: true
           files: release-assets/**/*

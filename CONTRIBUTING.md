@@ -123,3 +123,8 @@ Keep each pull request centered on one outcome. In the description, include:
 Update the README, architecture notes, accuracy ledger, or changelog when a
 public claim changes. Do not broaden a support claim beyond the evidence in the
 tests.
+
+The protected `main` branch accepts changes only through pull requests. Both
+the canonical `check` job and browser suite must pass, review conversations must
+be resolved, and history must remain linear. Releases are a separate manual,
+approval-gated workflow; merging a pull request never publishes a release.
