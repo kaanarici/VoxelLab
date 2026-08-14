@@ -268,49 +268,87 @@ def test_public_export_clean_rejects_private_runtime_paths(tmp_path):
         raise AssertionError("expected private runtime paths to be rejected")
 
 
-def test_public_history_uses_exact_root_commit_message(tmp_path, monkeypatch):
+def test_public_checkout_must_match_remote_main(tmp_path, monkeypatch):
     calls = []
-    outputs = []
 
     def fake_run(cmd, cwd=None, env=None):
         calls.append((cmd, cwd, env))
 
     def fake_output(cmd, cwd=None):
-        outputs.append((cmd, cwd))
-        if cmd == ["git", "write-tree"]:
-            return "tree-id"
-        if cmd == ["git", "commit-tree", "tree-id", "-m", "initial commit"]:
-            return "commit-id"
+        values = {
+            ("git", "status", "--porcelain"): "",
+            ("git", "branch", "--show-current"): "main",
+            ("git", "rev-parse", "HEAD"): "local-id",
+            ("git", "rev-parse", "refs/remotes/origin/main"): "remote-id",
+        }
+        if tuple(cmd) in values:
+            return values[tuple(cmd)]
         raise AssertionError(f"unexpected output command: {cmd}")
 
     (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(sync_public_repo, "public_remote", lambda dest: "git@example.com:kaanarici/VoxelLab.git")
     monkeypatch.setattr(sync_public_repo, "run", fake_run)
     monkeypatch.setattr(sync_public_repo, "output", fake_output)
 
-    sync_public_repo.init_public_history(tmp_path, "git@example.com:kaanarici/VoxelLab.git")
+    try:
+        sync_public_repo.prepare_public_checkout(tmp_path)
+    except RuntimeError as exc:
+        assert "must exactly match origin/main" in str(exc)
+    else:
+        raise AssertionError("expected a divergent public checkout to block sync")
 
-    assert (["git", "commit-tree", "tree-id", "-m", "initial commit"], tmp_path) in outputs
-    assert (["git", "update-ref", "refs/heads/main", "commit-id"], tmp_path, None) in calls
-    assert not any(call[0][:2] == ["git", "commit"] for call in calls)
+    assert (["git", "fetch", "origin", "main"], tmp_path, None) in calls
 
 
-def test_public_history_rewrite_preserves_git_metadata_and_creates_one_root(tmp_path):
+def test_public_history_appends_a_normal_commit(tmp_path):
     _ = subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True)
     _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
     _ = subprocess.run(["git", "config", "user.name", "VoxelLab Test"], cwd=tmp_path, check=True)
-    _ = subprocess.run(["git", "remote", "add", "origin", "git@example.com:kaanarici/VoxelLab.git"], cwd=tmp_path, check=True)
     (tmp_path / "public.txt").write_text("old\n", encoding="utf-8")
     _ = subprocess.run(["git", "add", "public.txt"], cwd=tmp_path, check=True)
     _ = subprocess.run(["git", "commit", "-m", "old history"], cwd=tmp_path, check=True)
+    previous = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
     (tmp_path / "public.txt").write_text("new\n", encoding="utf-8")
 
-    sync_public_repo.init_public_history(tmp_path, "git@example.com:kaanarici/VoxelLab.git")
+    assert sync_public_repo.commit_public_export(tmp_path, "Explain the public change") is True
 
-    assert (tmp_path / ".git").is_dir()
-    assert subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=tmp_path, text=True).strip() == "1"
-    assert subprocess.check_output(["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True).strip() == "initial commit"
-    assert subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=tmp_path, text=True).strip() == "git@example.com:kaanarici/VoxelLab.git"
+    assert subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=tmp_path, text=True).strip() == "2"
+    assert subprocess.check_output(["git", "rev-parse", "HEAD^"], cwd=tmp_path, text=True).strip() == previous
+    assert subprocess.check_output(["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True).strip() == "Explain the public change"
     assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True).strip() == ""
+
+
+def test_public_export_pr_uses_a_unique_source_bound_branch(tmp_path, monkeypatch):
+    calls = []
+    branch = "public-sync/v1.1.2-source123"
+
+    def fake_run(cmd, cwd=None, env=None):
+        calls.append(cmd)
+
+    def fake_output(cmd, cwd=None):
+        if cmd[:3] == ["git", "branch", "--list"]:
+            return ""
+        if cmd[:3] == ["git", "ls-remote", "--heads"]:
+            return ""
+        if cmd == ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]:
+            return "kaanarici/VoxelLab"
+        if cmd[:3] == ["gh", "pr", "create"]:
+            return "https://github.com/kaanarici/VoxelLab/pull/1"
+        if cmd == ["git", "branch", "--show-current"]:
+            return branch
+        raise AssertionError(f"unexpected output command: {cmd}")
+
+    monkeypatch.setattr(sync_public_repo, "public_sync_branch_name", lambda: branch)
+    monkeypatch.setattr(sync_public_repo, "commit_public_export", lambda dest, message: True)
+    monkeypatch.setattr(sync_public_repo, "run", fake_run)
+    monkeypatch.setattr(sync_public_repo, "output", fake_output)
+
+    url = sync_public_repo.open_public_export_pr(tmp_path, "Update public export")
+
+    assert url == "https://github.com/kaanarici/VoxelLab/pull/1"
+    assert ["git", "switch", "-c", branch] in calls
+    assert ["git", "push", "--set-upstream", "origin", branch] in calls
+    assert calls[-1] == ["git", "switch", "main"]
 
 
 def test_public_publish_requires_clean_source_checkout(tmp_path, monkeypatch):
@@ -351,7 +389,6 @@ def test_public_publish_rechecks_export_after_public_check(tmp_path, monkeypatch
     monkeypatch.setattr(sync_public_repo, "free_local_port", lambda: 4173)
     monkeypatch.setattr(sync_public_repo, "run", fake_run)
     monkeypatch.setattr(sync_public_repo, "prune_export", dirty_prune)
-    monkeypatch.setattr(sync_public_repo, "init_public_history", lambda dest, remote: calls.append(["init-public-history"]))
 
     try:
         sync_public_repo.publish_export(tmp_path)
@@ -360,11 +397,8 @@ def test_public_publish_rechecks_export_after_public_check(tmp_path, monkeypatch
     else:
         raise AssertionError("expected post-check public export assertion to block publish")
 
-    assert ["init-public-history"] in calls
-    assert calls.index(["init-public-history"]) < calls.index(["npm", "run", "check"])
     assert ["npm", "run", "check"] in calls
     assert ["npm", "run", "check:lab"] in calls
-    assert calls.count(["init-public-history"]) == 1
 
 
 def test_public_publish_rewrites_public_data_after_checks(tmp_path, monkeypatch):
@@ -383,7 +417,12 @@ def test_public_publish_rewrites_public_data_after_checks(tmp_path, monkeypatch)
     monkeypatch.setattr(sync_public_repo, "free_local_port", lambda: 4173)
     monkeypatch.setattr(sync_public_repo, "MACOS_TRASH", tmp_path / "missing-trash-command")
     monkeypatch.setattr(sync_public_repo, "run", fake_run)
-    monkeypatch.setattr(sync_public_repo, "init_public_history", lambda dest, remote: calls.append(["init-public-history"]))
+    monkeypatch.setattr(
+        sync_public_repo,
+        "open_public_export_pr",
+        lambda dest, message: calls.append(["open-public-export-pr", message]) or "https://github.com/kaanarici/VoxelLab/pull/1",
+    )
+    monkeypatch.setattr(sync_public_repo, "output", lambda cmd, cwd=None: "changed.txt" if cmd == ["git", "diff", "--cached", "--name-only"] else "")
 
     sync_public_repo.publish_export(tmp_path)
 
@@ -391,6 +430,5 @@ def test_public_publish_rewrites_public_data_after_checks(tmp_path, monkeypatch)
     assert json.loads((data_dir / "manifest.json").read_text(encoding="utf-8")) == sync_public_repo.EMPTY_PUBLIC_MANIFEST
     assert ["npm", "run", "check"] in calls
     assert ["npm", "run", "check:lab"] in calls
-    assert calls.count(["init-public-history"]) == 2
-    assert calls.index(["init-public-history"]) < calls.index(["npm", "run", "check"])
-    assert calls[-1] == ["git", "push", "--force-with-lease", "origin", "main"]
+    assert ["open-public-export-pr", "Update public export"] in calls
+    assert ["git", "push", "origin", "main"] not in calls

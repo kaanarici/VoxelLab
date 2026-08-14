@@ -29,10 +29,12 @@ function assertActionsPinned(source, label) {
 assertActionsPinned(checkWorkflow, 'check workflow');
 assertActionsPinned(workflow, 'release workflow');
 
-requireText("tags:\n      - 'v*'", 'release workflow must run for v* tags');
+requireText('workflow_dispatch:\n    inputs:\n      tag:', 'release workflow must require an explicit manual tag request');
+assert.equal(workflow.includes("tags:\n      - 'v*'"), false, 'pushing a tag must not automatically publish a release');
 requireText('permissions:\n  contents: read', 'release verification jobs must default to read-only repository access');
-requireText('concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false', 'release runs for the same tag must serialize so reused tags cannot race publication');
-requireText('publish:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write\n      attestations: write', 'only the release publication job may write repository contents and attestations');
+requireText('concurrency:\n  group: release-${{ inputs.tag }}\n  cancel-in-progress: false', 'release runs for the same requested tag must serialize');
+requireText('RELEASE_TAG: ${{ inputs.tag }}', 'release jobs must share the manually requested tag');
+requireText('publish:\n    runs-on: ubuntu-latest\n    environment:\n      name: release\n    permissions:\n      contents: write\n      id-token: write\n      attestations: write', 'only the environment-gated publication job may write repository contents and attestations');
 requireText('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"', 'release workflow must opt JavaScript actions into Node 24');
 requireWorkflowText(checkWorkflow, 'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"', 'check workflow must opt JavaScript actions into Node 24');
 requireWorkflowText(checkWorkflow, 'workflow_call:', 'canonical checks must be reusable from the release workflow');
@@ -45,9 +47,10 @@ requireText('verify-lab-readiness:\n    runs-on: ubuntu-latest', 'release workfl
 requireText('needs:\n      - verify-canonical', 'release lab readiness must wait for the canonical checks');
 requireWorkflowText(checkWorkflow, 'python -m pip install --require-hashes -r requirements/ci.lock', 'canonical checks must install the reviewed hash-locked Python graph');
 requireText('python -m pip install --require-hashes -r requirements/ci.lock', 'release lab readiness must install the reviewed hash-locked Python graph');
-requireText('node scripts/check_release_version.mjs "$GITHUB_REF_NAME"', 'release workflow must reject tags that do not match package metadata');
-requireText('Reject an already-published release tag', 'release workflow must reject mutable/reused release identities');
-requireText('Release $GITHUB_REF_NAME already exists; release tags and assets are immutable.', 'release workflow must fail closed when the tag already has a release');
+requireText('run: test "$GITHUB_REF" = refs/heads/main', 'release workflow must run only from protected main');
+requireText('node scripts/check_release_version.mjs "$RELEASE_TAG"', 'release workflow must reject requested tags that do not match package metadata');
+requireText('Reject an existing release identity', 'release workflow must reject mutable or reused release identities before building');
+assert.equal(workflow.match(/node scripts\/check_release_identity\.mjs/g)?.length, 2, 'release identity must be checked before building and immediately before publication');
 requireText('npx playwright install --with-deps chromium', 'release lab readiness must install the browser and system dependencies used by Playwright proof');
 requireText('xvfb-run -a env PYTHON=python node scripts/check_lab_readiness.mjs --skip-validation-matrix --skip-public-export --report lab-readiness-report.json', 'release workflow must run every public proof lane and omit only private validation/export checks');
 requireText('name: voxellab-lab-readiness', 'release workflow must upload the lab-readiness evidence bundle');
@@ -77,7 +80,7 @@ requireText('out/forge/make/**/*.exe', 'Windows release artifacts must include s
 requireText('out/forge/make/**/*.nupkg', 'Windows release artifacts must include NuGet packages');
 requireText('out/forge/make/**/RELEASES', 'Windows release artifacts must include Squirrel RELEASES metadata');
 requireText('uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093', 'release workflow must pin artifact downloads to a reviewed commit');
-requireText('publish:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write\n      attestations: write\n    needs:\n      - verify-lab-readiness\n      - build-macos\n      - build-windows', 'release publication must wait for lab readiness and both desktop build jobs');
+requireText('needs:\n      - verify-lab-readiness\n      - build-macos\n      - build-windows', 'release publication must wait for lab readiness and both desktop build jobs');
 requireText('path: release-assets', 'release workflow must collect artifacts into the release-assets directory');
 requireText('find release-assets -maxdepth 5 -type f -print', 'release workflow must print release assets before publication');
 requireText('node scripts/check_release_assets.mjs release-assets', 'release workflow must validate the collected release assets before publication');
@@ -86,6 +89,8 @@ requireText('actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab65
 requireText('subject-checksums: release-assets/SHA256SUMS', 'release provenance must cover the checksummed release subjects');
 requireText('node scripts/extract_release_notes.mjs CHANGELOG.md release-notes.md', 'release workflow must extract human-authored notes for the current package version');
 requireText('softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65', 'release workflow must pin release publication to a reviewed commit');
+requireText('tag_name: ${{ inputs.tag }}', 'release publication must create exactly the approved tag');
+requireText('target_commitish: ${{ github.sha }}', 'release publication must bind the tag to the verified main commit');
 requireText('body_path: release-notes.md', 'release publication must use the human-authored changelog section');
 assert.equal(workflow.includes('generate_release_notes: true'), false, 'release publication must not rely on generated compare notes across rewritten public history');
 requireText('fail_on_unmatched_files: true', 'release publication must fail if artifact globs do not match');
