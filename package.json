@@ -24,7 +24,7 @@
     "desktop:ensure-electron": "node scripts/ensure_electron_runtime.mjs",
     "desktop:smoke": "npm run desktop:ensure-electron && node --test --test-concurrency=1 tests/electron-runtime-smoke.mjs tests/electron-nifti-smoke.mjs tests/electron-tiff-sequence-smoke.mjs tests/electron-microscopy-workflow-smoke.mjs",
     "desktop:check": "node scripts/check_electron_desktop.mjs && node scripts/check_electron_package.mjs && node scripts/check_release_workflow.mjs && node --test tests/electron-desktop-contract.test.mjs && npm run desktop:smoke",
-    "lint": "eslint js electron scripts tests viewer.js --max-warnings 0 && oxlint js electron scripts tests viewer.js",
+    "lint": "eslint js electron scripts tests viewer.js --max-warnings 0 && node --no-warnings --experimental-strip-types node_modules/oxlint/bin/oxlint js electron scripts tests viewer.js",
     "lint:ci": "npm run lint",
     "check": "npm run check:docs && npm run check:js && npm run check:py && npm run check:data && npm run check:geometry && npm run test:node",
     "check:fast": "npm run check:docs && npm run check:js:fast && npm run check:py && npm run check:data && npm run check:validation && npm run check:geometry && npm run check:reference-parity && npm run test:python && npm run test:node",
