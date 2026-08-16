@@ -8,14 +8,14 @@ function finiteNumber(value) {
 }
 
 function cleanedStats(stats, spacingKnown = true) {
-  if (!stats || typeof stats !== 'object') return stats;
+  if (Object.prototype.toString.call(stats) !== '[object Object]') return stats;
   const out = {};
   for (const key of ['area_mm2', 'mean', 'std']) {
     if (key === 'area_mm2' && !spacingKnown) continue;
     const value = finiteNumber(stats[key]);
     if (value != null) out[key] = value;
   }
-  if (stats.adc && typeof stats.adc === 'object') {
+  if (Object.prototype.toString.call(stats.adc) === '[object Object]') {
     const mean = finiteNumber(stats.adc.mean);
     if (mean != null) out.adc = { mean };
   }
@@ -84,5 +84,7 @@ export function collectMeasurements(host) {
     sourceSeriesUID: String(series.sourceSeriesUID || series.seriesUID || series.seriesInstanceUID || ''),
     series,
     measurements: out,
+    measurementCount: out.filter((item) => item.kind !== 'text').length,
+    annotationCount: out.filter((item) => item.kind === 'text').length,
   };
 }

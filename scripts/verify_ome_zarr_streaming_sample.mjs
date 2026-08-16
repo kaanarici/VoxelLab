@@ -64,7 +64,7 @@ async function main() {
   assert.equal(metadata.channels.length, 2, 'channel count');
 
   const level0 = arrayMetadataByPath['0'];
-  assert.deepEqual(level0.shape, [2, 236, 275, 271], 'level-0 shape');
+  assert.deepEqual(level0['shape'], [2, 236, 275, 271], 'level-0 shape');
   assert.equal(level0.compressor?.id, 'blosc', 'level-0 compressor is blosc');
   assert.equal(level0.compressor?.cname, 'lz4', 'level-0 blosc cname is lz4');
 
@@ -73,11 +73,11 @@ async function main() {
   // .zarray shape + the x/y axis indices before level-of-detail selection.
   const xIndex = metadata.axes.findIndex((axis) => axis.name === 'x');
   const yIndex = metadata.axes.findIndex((axis) => axis.name === 'y');
-  const baseWidth = level0.shape[xIndex];
+  const baseWidth = level0['shape'][xIndex];
   const enrichedLevels = metadata.levels.map((level) => {
-    const shape = arrayMetadataByPath[level.path]?.shape || [];
-    const width = shape[xIndex];
-    const height = shape[yIndex];
+    const dimensions = arrayMetadataByPath[level.path]?.['shape'] || [];
+    const width = dimensions[xIndex];
+    const height = dimensions[yIndex];
     return { ...level, width, height, downsample: width ? Math.round(baseWidth / width) : 1 };
   });
 
@@ -90,7 +90,7 @@ async function main() {
   // numcodecs golden bit-for-bit at the statistics level.
   console.log('Streaming + decoding level-0 chunk [0,0,0,0] (Blosc/LZ4/byte-shuffle)...');
   const chunk = await store.readChunk('0', [0, 0, 0, 0], level0);
-  const count = chunk.shape[chunk.shape.length - 1] * chunk.shape[chunk.shape.length - 2];
+  const count = chunk['shape'][chunk['shape'].length - 1] * chunk['shape'][chunk['shape'].length - 2];
   assert.equal(count, golden.count, 'decoded element count');
   const stats = planeStats(chunk.view, count);
   assert.deepEqual(stats.first8, golden.first8, 'first 8 decoded values');
@@ -102,7 +102,7 @@ async function main() {
   const coarseMeta = arrayMetadataByPath[coarse.path];
   const coarseChunk = await store.readChunk(coarse.path, [0, 0, 0, 0], coarseMeta);
   assert.ok(coarseChunk.view.byteLength > 0, 'coarse level chunk decodes');
-  console.log(`Coarse level ${coarse.path} chunk decoded: ${coarseChunk.shape.join('x')}`);
+  console.log(`Coarse level ${coarse.path} chunk decoded: ${coarseChunk['shape'].join('x')}`);
 
   store.abort();
   console.log('PASS: live IDR OME-Zarr streaming matches the authoritative numcodecs golden.');

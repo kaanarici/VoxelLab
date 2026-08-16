@@ -46,6 +46,154 @@ async function waitForMprVolumeReady(page) {
   }), { timeout: 30_000 }).toMatchObject({ mode: 'mpr', ready: true });
 }
 
+test('minimum desktop viewport keeps the horizontal tool rail reachable', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await routeLocalVolumeStudy(page, [
+    localVolumeSeries('minimum_viewport_volume', 'Minimum Viewport Volume'),
+    localVolumeSeries('minimum_viewport_peer', 'Minimum Viewport Peer'),
+  ]);
+  const response = await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
+  expect(response?.ok()).toBe(true);
+  await page.locator('#series-list li').first().click();
+  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  const onboardingDismiss = page.getByRole('button', { name: 'Got it' });
+  if (await onboardingDismiss.isVisible()) await onboardingDismiss.click();
+
+  const rail = page.locator('#tool-rail');
+  const wrap = page.locator('#tool-rail-wrap');
+  await expect.poll(() => rail.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await expect(wrap).toHaveClass(/has-overflow-right/);
+  await expect(wrap).not.toHaveClass(/has-overflow-left/);
+
+  await page.locator('#btn-auto').focus();
+  for (let index = 0; index < 24; index += 1) {
+    if (await page.evaluate(() => document.activeElement?.id === 'btn-compare')) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(page.locator('#btn-compare')).toBeFocused();
+  await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect(wrap).toHaveClass(/has-overflow-left/);
+  const compareHit = await page.locator('#btn-compare').evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const wrapRect = document.getElementById('tool-rail-wrap').getBoundingClientRect();
+    const railElement = document.getElementById('tool-rail');
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      reachable: hit === button || button.contains(hit),
+      button: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+      wrap: { left: wrapRect.left, right: wrapRect.right, top: wrapRect.top, bottom: wrapRect.bottom },
+      scrollLeft: railElement.scrollLeft,
+      hit: hit ? { id: hit.id, className: hit.className, tagName: hit.tagName } : null,
+    };
+  });
+  expect(compareHit.reachable, JSON.stringify(compareHit)).toBe(true);
+
+  for (let index = 0; index < 24; index += 1) {
+    if (await page.evaluate(() => document.activeElement?.id === 'btn-auto')) break;
+    await page.keyboard.press('Shift+Tab');
+  }
+  await expect(page.locator('#btn-auto')).toBeFocused();
+  await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeLessThanOrEqual(2);
+  const autoHit = await page.locator('#btn-auto').evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit === button || button.contains(hit);
+  });
+  expect(autoHit).toBe(true);
+  expect(await page.evaluate(() => ({
+    horizontal: document.documentElement.scrollWidth > window.innerWidth,
+    vertical: document.documentElement.scrollHeight > window.innerHeight,
+  }))).toEqual({ horizontal: false, vertical: false });
+});
+
+test('removing a compare peer refreshes the retained active viewer', async ({ page }) => {
+  await routeLocalVolumeStudy(page, [
+    localVolumeSeries('removal_primary', 'Removal Primary'),
+    localVolumeSeries('removal_peer', 'Removal Peer'),
+  ]);
+  await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
+  await page.locator('li[data-series-slug="removal_primary"]').click();
+  await page.evaluate(async () => {
+    const { state } = await import('/js/core/state.js');
+    state.manifest.series.forEach((series, index) => {
+      series.group = `removal-${index}`;
+      series.frameOfReferenceUID = `removal-${index}`;
+      series.compareGroup = `removal-${index}`;
+    });
+    state.cmpManualSlugs = ['removal_primary', 'removal_peer'];
+  });
+  await page.locator('#btn-compare').click();
+  await expect(page.locator('#cmp-grid .cmp-cell')).toHaveCount(2);
+
+  await page.locator('li[data-series-slug="removal_peer"]').click({ button: 'right' });
+  await page.locator('.context-menu .popover-item', { hasText: 'Remove from viewer' }).click();
+  await expect(page.locator('#confirm-modal')).toHaveClass(/visible/);
+  await page.locator('#remove-series-confirm').click();
+
+  await expect.poll(() => page.evaluate(async () => {
+    const { state } = await import('/js/core/state.js');
+    return {
+      mode: state.mode,
+      slugs: state.manifest.series.map(series => series.slug),
+    };
+  })).toEqual({ mode: '2d', slugs: ['removal_primary'] });
+  await expect(page.locator('#cmp-grid')).not.toBeVisible();
+  await expect(page.locator('#series-name')).toHaveText('Removal Primary');
+});
+
+test('compare uses one physical scale and distinguishes unregistered series', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const dwi = localVolumeSeries('scale_dwi', 'DWI', {
+    width: 128,
+    height: 128,
+    pixelSpacing: [2, 2],
+    description: 'Study A · b0 volume',
+  });
+  const adc = localVolumeSeries('scale_adc', 'ADC', {
+    width: 256,
+    height: 256,
+    pixelSpacing: [1, 1],
+    description: 'Study A · ADC map',
+  });
+  const other = localVolumeSeries('scale_other', 'Other T1', {
+    width: 192,
+    height: 192,
+    pixelSpacing: [1.2, 1.2],
+    description: 'Study B · T1',
+  });
+  dwi.group = 'study-a';
+  adc.group = 'study-a';
+  other.group = 'study-b';
+  dwi.frameOfReferenceUID = 'study-a';
+  adc.frameOfReferenceUID = 'study-a';
+  other.frameOfReferenceUID = 'study-b';
+  await routeLocalVolumeStudy(page, [dwi, adc, other]);
+  await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
+  await page.locator('li[data-series-slug="scale_dwi"]').click();
+  await page.locator('#btn-compare').click();
+  await expect(page.locator('#cmp-grid .cmp-cell')).toHaveCount(2);
+
+  const panes = await page.locator('#cmp-grid .cmp-cell canvas').evaluateAll((canvases) => canvases.map((canvas) => ({
+    source: [canvas.width, canvas.height],
+    display: [canvas.getBoundingClientRect().width, canvas.getBoundingClientRect().height],
+  })));
+  expect(panes.map((pane) => pane.source)).toEqual([[128, 128], [256, 256]]);
+  expect(Math.abs(panes[0].display[0] - panes[1].display[0]), JSON.stringify(panes)).toBeLessThan(1);
+  expect(Math.abs(panes[0].display[1] - panes[1].display[1]), JSON.stringify(panes)).toBeLessThan(1);
+  await expect(page.locator('#cmp-menu .cmp-menu-section')).toHaveText([
+    'Aligned series',
+    'Other or unknown study · not registered',
+  ]);
+  await expect(page.locator('#cmp-menu .cmp-pick-detail')).toContainText([
+    'Study A · b0 volume · 128 × 128 · 2.00 × 2.00 mm/px',
+    'Study A · ADC map · 256 × 256 · 1.00 × 1.00 mm/px',
+    'Study B · T1 · 192 × 192 · 1.20 × 1.20 mm/px',
+  ]);
+  await page.locator('#cmp-menu input[value="scale_other"]').check();
+  await expect(page.locator('#cmp-grid .cmp-cell')).toHaveCount(3);
+  await expect(page.locator('#cmp-grid .cmp-cell[data-slug="scale_other"] .cmp-lbl')).toContainText('index sync · not registered');
+});
+
 test('display toolbar controls update render state and compare picker stays polished', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -334,11 +482,12 @@ test('display toolbar controls update render state and compare picker stays poli
     const rows = [...menu.querySelectorAll('.cmp-pick')];
     const first = rows[0];
     const checkbox = first.querySelector('.ui-checkbox-toggle');
-    const label = first.children[1];
+    const copy = first.querySelector('.cmp-pick-copy');
+    const label = first.querySelector('.cmp-pick-name');
     const menuRect = menu.getBoundingClientRect();
     const rowRect = first.getBoundingClientRect();
     const checkboxRect = checkbox.getBoundingClientRect();
-    const labelRect = label.getBoundingClientRect();
+    const copyRect = copy.getBoundingClientRect();
     const menuStyle = getComputedStyle(menu);
     const rowStyle = getComputedStyle(first);
     const labelStyle = getComputedStyle(label);
@@ -352,8 +501,8 @@ test('display toolbar controls update render state and compare picker stays poli
       rowRadius: rowStyle.borderRadius,
       rowHeight: Math.round(rowRect.height),
       leftInset: Math.round(checkboxRect.left - rowRect.left),
-      labelGap: Math.round(labelRect.left - checkboxRect.right),
-      labelRightPad: Math.round(rowRect.right - labelRect.right),
+      labelGap: Math.round(copyRect.left - checkboxRect.right),
+      labelRightPad: Math.round(rowRect.right - copyRect.right),
       textOverflow: labelStyle.textOverflow,
       tooltipVisible: !!tip && !tip.hidden && tip.classList.contains('visible'),
     };
@@ -363,7 +512,7 @@ test('display toolbar controls update render state and compare picker stays poli
   expect(compareMenu.borderTopWidth).toBe('0px');
   expect(compareMenu.radius).toBe('6px');
   expect(compareMenu.rowRadius).toBe('4px');
-  expect(compareMenu.rowHeight).toBe(30);
+  expect(compareMenu.rowHeight).toBe(39);
   expect(compareMenu.leftInset).toBe(8);
   expect(compareMenu.labelGap).toBe(8);
   expect(compareMenu.labelRightPad).toBeGreaterThanOrEqual(10);
@@ -372,10 +521,10 @@ test('display toolbar controls update render state and compare picker stays poli
 
   const longNameMenu = await page.locator('#cmp-menu').evaluate((menu) => {
     const row = menu.querySelector('.cmp-pick');
-    row.children[1].textContent = 'Very long imported DICOM series description with scanner sequence details and acquisition suffix';
+    row.querySelector('.cmp-pick-name').textContent = 'Very long imported DICOM series description with scanner sequence details and acquisition suffix';
     const menuRect = menu.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
-    const labelRect = row.children[1].getBoundingClientRect();
+    const labelRect = row.querySelector('.cmp-pick-copy').getBoundingClientRect();
     return {
       menuWidth: Math.round(menuRect.width),
       rowWidth: Math.round(rowRect.width),
@@ -383,8 +532,8 @@ test('display toolbar controls update render state and compare picker stays poli
       rowRight: Math.round(rowRect.right),
     };
   });
-  expect(longNameMenu.menuWidth).toBeLessThanOrEqual(198);
-  expect(longNameMenu.rowWidth).toBeLessThanOrEqual(196);
+  expect(longNameMenu.menuWidth).toBeLessThanOrEqual(232);
+  expect(longNameMenu.rowWidth).toBeLessThanOrEqual(230);
   expect(longNameMenu.labelRight).toBeLessThanOrEqual(longNameMenu.rowRight);
 
   await page.keyboard.press('Escape');

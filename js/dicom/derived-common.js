@@ -102,7 +102,7 @@ export function seqFirst(value) {
 export function bytesFromValue(value) {
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
   if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  if (typeof value === 'string') {
+  if (value?.charCodeAt instanceof Function) {
     const binary = globalThis.atob ? globalThis.atob(value) : '';
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);

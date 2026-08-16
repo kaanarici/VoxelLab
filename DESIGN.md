@@ -15,7 +15,7 @@ the code and this document disagree, update this document.
 
 ### The rule: monochrome chrome, color only in data
 
-The application chrome is pure grayscale. **No blue, no purple, no brand hue anywhere in the UI shell.** Hue is reserved exclusively for *data*: segmentation overlays, symmetry/diff maps, LUTs, and finding-severity tags. The justification: in a medical image viewer the operator must read color as signal (a red region means a finding, not a button). Spending color on chrome trains the eye to ignore it. So buttons, panels, toolbars, menus, and text are all neutral; the only saturated pixels on screen should be carrying information.
+The application chrome is pure grayscale. **No blue, no purple, no brand hue anywhere in the UI shell.** Hue is reserved for *data* and exceptional destructive/error states: segmentation overlays, symmetry/diff maps, LUTs, finding-severity tags, delete affordances, and error text. The justification: in a medical image viewer the operator must read color as signal. Routine buttons, panels, toolbars, menus, and text stay neutral; saturated chrome is limited to a warning that requires attention.
 
 Two consequences follow:
 - A new control gets a grayscale token (`--text`, `--muted`, `--icon-idle`, `--accent-bg`), never an invented accent color.
@@ -40,14 +40,14 @@ Light mode is a `.light` class on `<html>` that swaps the neutral ramp. **The in
 | Token | Dark | Role |
 |---|---|---|
 | `--text` | `#f0f0f0` | Primary text, active labels, checked/checkmark fills. |
-| `--muted` | `#7a7a7a` | Secondary text, resting button labels, placeholders. |
+| `--muted` | `#8c8c8c` | Secondary text, resting button labels, placeholders. |
 | `--dim` | `#3a3a3a` | Disabled text, kbd glyphs, empty-state icons, scrollbar thumb. |
 | `--icon-idle` | `#6a6a6a` | Resting icon color: visible but quiet, held to ≥4.5:1 on `--bg`. |
 | `--accent` | `#f5f5f5` | Near-white emphasis (active status dot). Grayscale, *not* a hue. |
 | `--accent-bg` | `rgba(255,255,255,.06)` | Active/pressed fill for toggles, segmented items, selected rows. |
 | `--active-bg` | `rgba(255,255,255,.08)` | Stronger selected-row fill (list selection). |
 
-**Data & severity color: the only place hue is allowed**
+**Data, severity, and destructive/error color: the only places hue is allowed**
 | Token | Dark | Role |
 |---|---|---|
 | `--danger` | `#e57373` | Destructive action affordance (delete menu items, error dialog text). |
@@ -55,7 +55,10 @@ Light mode is a `.light` class on `<html>` that swaps the neutral ramp. **The in
 | `--color-attention` | `#d4a72c` | Severity: needs-attention finding tag / dot (amber). |
 | `--color-microbleed` | `#9b8fb0` | Data class color: microbleed segmentation. |
 
-These hues appear only on data classes: the severity/finding tags, channel LUT swatches, and segmentation overlays. Chrome (buttons, panels, sidebars, toolbars) is strictly monochrome; no structural class introduces hue.
+These hues appear only on data classes, severity/finding tags, channel LUT
+swatches, segmentation overlays, destructive affordances, and error text.
+Routine chrome (buttons, panels, sidebars, and toolbars) is strictly monochrome;
+no structural class introduces hue.
 
 **Tooltips (always dark, both themes)**
 | Token | Value | Role |
@@ -71,7 +74,7 @@ These hues appear only on data classes: the severity/finding tags, channel LUT s
 | `--rail-label` | `#8a8a8a` | Control labels in the rail. |
 | `--rail-value` | `var(--text)` | The actual readout value (highest contrast in the rail). |
 | `--rail-stat` | `#7c7c7c` | Tag/stat chip text. |
-| `--rail-caption` | `#7a7a7a` | Captions. |
+| `--rail-caption` | `#8c8c8c` | Captions. |
 | `--rail-micro` | `#828282` | Micro-labels. |
 
 ---
@@ -82,20 +85,22 @@ These hues appear only on data classes: the severity/finding tags, channel LUT s
 
 Base: `13px / 1.45`, system stack `-apple-system, "SF Pro Text", "Inter", system-ui, sans-serif`, with `-webkit-font-smoothing: antialiased` + `-moz-osx-font-smoothing: grayscale`. There is no display/serif face: this is a dense tool UI, not a marketing page.
 
-**Ramp** (every size in the system, with where it belongs):
-| Size | Weight | When to use |
-|---|---|---|
-| 9px | 500, tabular | Count pills, kbd chips, flat severity labels: the smallest metadata badges. |
-| 10px | 500–600 | Section overlines (uppercase, `0.1em` tracking), value readouts (tabular), empty-state badges. |
-| 11px | 500 | Buttons (`.ui-btn`), segmented items, dropdown/menu rows, list descriptions, dialog sub-labels. The workhorse control size. |
-| 12px | 500 | Labeled icon buttons, `lg` button, menu trigger labels, tooltips, list-row name, empty-state subtitle. |
-| 13px | 400–500 | Body text, card/modal titles (500, `-0.005em`), dialog body. The base size. |
-| 15px | 500 | Empty-state title: the largest type in the system, for the primary "no data" message. |
+**Ramp** (live tokens in `css/base.css`; DESIGN.md used to list ad-hoc px):
+| Size | Token | Weight | When to use |
+|---|---|---|---|
+| 9px | `--fs-micro` | 500, tabular | Count pills, flat severity labels. |
+| 10px | `--fs-caption` | 500–600 | Section overlines (uppercase, `0.1em` tracking), rail captions, command-palette keycaps. |
+| 11px | `--fs-body` | 500 | Buttons (`.btn`), segmented items. The workhorse control size. |
+| 12px | `--fs-body-lg` | 500 | Dropdown/menu rows, list descriptions, labeled icon buttons. |
+| 13px | `--fs-title` | 400–500 | Body text, card/modal titles (500, `--tracking-tight`), dialog body. |
+| 15px | `--fs-title-lg` | 500 | Prominent headings. |
+| 20px | *(empty-state title, currently hardcoded)* | 500 | First-run empty-state title. |
+| 28px | `--fs-display` | 200 | Sole hero numeral (slice index). |
 
 Conventions:
 - **Tabular numerals** (`font-variant-numeric: tabular-nums`) on every numeric readout, count, slider value, and kbd chip so digits don't jitter while scrubbing.
 - **Uppercase + ~0.1em letter-spacing** marks structural overlines and segmented controls (section titles, command-palette sections, segmented items). Normal case everywhere else.
-- Titles use slight negative tracking (`-0.005em`); never tighten body text.
+- Titles use `--tracking-tight` (`-0.01em`); never tighten body text.
 - `text-wrap: balance` on headings/`.sec-title`; `text-wrap: pretty` on paragraphs and disclaimers.
 - Weight ceiling is 600 (glyph fallbacks, value readouts). No bold/800 anywhere: emphasis comes from color/contrast, not weight.
 
@@ -108,12 +113,13 @@ Conventions:
 | `--space-md` | 12px | Intra-panel padding, vertical rhythm between groups. |
 | `--space-lg` | 16px | Section/panel block padding, the outer rail inset. |
 
-Layout-specific spacing tokens build on the same grid: `--sidebar-px: 16px`, `--sidebar-item-py: 8px`, `--chrome-header-pl: 12px` / `--chrome-header-pr: 8px`, and the composite `--rail-section-padding`. Ad-hoc gaps in primitive CSS (5/6/7/10/14px) are local control geometry, not new scale steps: do not promote them to tokens.
+Layout-specific spacing tokens build on the same grid: `--sidebar-px: 16px`, `--sidebar-item-py: 8px`, `--chrome-header-pl: 12px` / `--chrome-header-pr: 8px`, and the composite `--rail-section-padding`. Extra steps already in the token file: `--space-2xs` 2px, `--space-2sm` 6px, `--space-10` 10px, `--space-14` 14px, `--space-xl` 24px. Do not invent further ad-hoc steps.
 
 ### Radius & sizing
 
 - `--radius: 4px`: default for buttons, inputs, chips, list rows.
 - `--radius-lg: 6px`: larger surfaces: popovers, modals, notifications.
+- Also in the token file: `--radius-sm` 2px, `--radius-md` 8px, `--radius-xl` 12px, `--radius-pill`.
 - Icon sizes: `--icon-sm: 13px` (inline/menu), `--icon-md: 16px` (sidebar actions), `--icon-lg: 15px` (toolbar). Hit targets: `--btn-sidebar: 28px`, `--btn-toolbar: 30px`. Honor these so density stays uniform.
 
 ---
@@ -125,19 +131,21 @@ Three flat fills form the layer stack: VoxelLab uses **brightness, not drop shad
 | Layer | Token | Meaning | Used by |
 |---|---|---|---|
 | Backdrop | `--bg` | The page floor. | `<body>`, viewer canvas wrap, empty-state. |
-| Raised | `--panel` | Content sits on top of the floor. | Cards (`.vl-card`), popovers, modal cards, notifications. |
-| Inset | `--elev` | Recessed *into* a surface: wells and chips read as carved-in. | Inputs, kbd chips, tags, code blocks, `.vl-card.is-flat`. |
+| Raised | `--panel` | Content sits on top of the floor. | Cards, popovers, modal cards (`.ask-card`), notifications. |
+| Inset | `--elev` | Recessed *into* a surface: wells and chips read as carved-in. | Inputs, kbd chips, tags, code blocks. |
 
 Elevation rules:
 - In-plane separation = a 1px `--border` hairline and/or a `--hover` wash on interaction. No shadow.
-- Floating overlays get one of two shadow tokens, both of which lead with a `0 0 0 1px rgba(255,255,255,.08)` light hairline (a faint top-edge highlight that reads as a lifted edge in the dark theme), then layered ambient shadows:
-  - `--shadow-popover`: popovers, menus, notifications, `.vl-card.is-elevated`, the spinner disc.
-  - `--shadow-modal`: modals (a deeper, wider cast for the highest layer).
-- Selected list rows add an inset accent bar (`box-shadow: inset 2px 0 0 var(--text)`) rather than a fill change alone: a grayscale selection marker, consistent with the no-chrome-color rule.
+- **Modal and dialog cards have no CSS `border` and no outline hairline.** They sit on `--panel` with ambient `--shadow-modal` only (`0 8px 24px` / `0 16px 48px`). Do not add `border: 1px solid var(--border)` or a `0 0 0 1px` ring around `.ask-card`, `.help-card`, `.shortcuts-card`, `.cmdk-dialog`, or `.project-rename-card`.
+- Other floating overlays (popovers, menus) use `--shadow-popover` and `border: 0` — hairline-only, same recipe.
+- `--shadow-popover`: popovers, menus, notifications, the toolbox panel.
+- `--shadow-modal`: modals, dialogs, command palette, and the Ask composer bar.
+- `--scrim` is a **dark dim** in both themes (`rgba(0,0,0,.5)` dark, `rgba(0,0,0,.28)` light). Do not use a white/light wash behind dialogs.
+- Selected list rows that are multi-selected add an inset accent bar (`box-shadow: inset 2px 0 0 var(--text)`). A single `.active` series row uses `--active-bg` fill only.
 
 Card/panel variant → surface mapping (so "make it X" picks the right layer):
-- `--panel` + border → raised grouped surface (e.g. `.notify-item`, dialog cards).
-- `--panel` + `--shadow-popover` → floating surface (`.popover-menu`, `.custom-dropdown .dd-menu`, `.toolbox-panel`).
+- `--panel` + `--shadow-modal`, no CSS border → dialog/modal card (`.ask-card`, `.help-card`, `.shortcuts-card`, `.cmdk-dialog`).
+- `--panel` + `--shadow-popover`, no CSS border → floating menu (`.popover-menu`, `.custom-dropdown .dd-menu`, `.toolbox-panel`).
 - `--elev` → inset block (right-rail metadata, `.panel-count`, `.dd-trigger`).
 
 ---
@@ -158,7 +166,12 @@ The inner 2px is a gap in the page-background color, the outer 2px is the visibl
 - Light theme overrides the ring to `rgba(0,0,0,.25)`; the checkbox uses an `outline`-based ring as a deliberate exception (a 2px `--dim` outline) because the box is tiny.
 - **Forced-colors / Windows High-Contrast**: box-shadow rings don't paint, so `@media (forced-colors: active)` falls back to a real `2px solid CanvasText` outline. Preserve this fallback in any custom focus styling.
 
-Every interactive primitive carries its accessible affordances already: buttons set `aria-label`/`title` when label is empty and `aria-pressed` when `active`; segmented/dropdown use `role=group`/`listbox` + `aria-selected`/`aria-expanded`; menus set `aria-haspopup`; modals set `role=dialog` + `aria-modal` and trap focus (`trapFocus`/`releaseFocus`) restoring the prior focus on close; switch sets `role=switch`; status dots set `role=img` only when a `label` is given (otherwise `aria-hidden`). Reuse these primitives rather than re-implementing the wiring.
+Canonical interactive primitives carry their required accessible affordances:
+buttons have an accessible name and expose pressed state when applicable;
+segmented controls, dropdowns, menus, dialogs, switches, and status indicators
+use their matching roles and state attributes; dialogs trap focus and restore the
+prior focus on close. Reuse these primitives and verify any new interaction with
+the accessibility browser suite rather than assuming markup alone is complete.
 
 ### Reduced motion
 
@@ -183,19 +196,19 @@ Canonical classes (each is the one sanctioned way to render its role):
 
 - **Buttons**: `.btn` (text), `.icon-btn` (30px toolbar), `.act-btn` (28px sidebar/header). Surface-scoped variants (`.preset-btn`, `.roi-results-export`, `.annot-btn`, `.mpr-tb-btn`) share the same states: hover → `--hover`, `:active` press, `:disabled` (opacity + `pointer-events:none`), `:focus-visible` → the global double ring.
 - **Segmented**: `.pill-group` + `.pill` (W/L presets, render-mode, CT-window). Children flex to fill.
-- **Dropdown**: `.custom-dropdown` + `.dd-trigger` / `.dd-menu` / `.dd-item`. Native `<select class="select-like">` is progressively enhanced by `select-like-dropdown.js`.
-- **Sliders**: `.scrubber` range (filled via `--fill`), `.cine-speed`; right-rail rows use `.tool-row` (`.tl-lbl` / `.tl-sl` / `.tl-val`) for label + slider + tabular readout. Track `--text`, rest `--dim`; knob shadow from `--shadow-thumb`.
+- **Dropdown**: toolbar widgets use `.custom-dropdown` + `.dd-trigger` / `.dd-menu` / `.dd-item`. Native `<select class="select-like">` is enhanced by `select-like-dropdown.js` into `.select-dropdown` / `.select-dropdown-trigger` / `.select-dropdown-menu`.
+- **Sliders**: `.scrubber` range (filled via `--fill`), `.cine-speed`; right-rail rows use `.tool-row` (`.tl-lbl` / `.tl-sl` / `.tl-val`) for label + slider + tabular readout. Track `--text`, rest `--dim`; knob shadow from `--shadow-knob`.
 - **Checkbox / switch**: `.ui-checkbox` (hollow ring + dot, `.ui-checkbox-box`) and `.ui-switch` (`.ui-switch-track` / `.ui-switch-thumb`).
 - **Tag / count**: `.panel-count` (count chip), `.mpr-tb-pill` (status pill), finding/severity tags (the sanctioned home for severity color).
-- **Keycap**: `<kbd>` inside `.sidebar-shortcut` and `.cmdk` rows.
+- **Keycap**: `<kbd>` inside `.sidebar-shortcut` (20×20, 12px `--icon-idle` on `--elev`, matching `.act-btn` / `.sidebar-ico`; `--text` on Search-row hover) and `.cmdk` rows.
 - **Section (collapsible)**: `.rp-section.collapsible` + `.sec-title` / `.rp-collapse-ico` / `.rp-body` (grid 1fr↔0fr). Section headers: `.section-header` / `.section-title`.
-- **Rows**: `.sidebar-row` (full-width action) and `.series-list li` (`.sname` / `.sdesc` / `.ai-dot`; `.active` = surface fill).
-- **Menu / popover**: `.popover-menu` + `.popover-item` (folder/sort/context menus), floating via `--shadow-popover`.
-- **Empty state**: `.empty-state` (viewer) and `.rp-empty*` (rail).
-- **Spinner**: `.viewer-spinner` + helpers in `js/spinner.js` (flash-guarded).
+- **Rows**: `.sidebar-row` (full-width action) and `.series-list li` (`.sname` / `.sdesc`; `.active` = `--active-bg` fill).
+- **Menu / popover**: `.popover-menu` + `.popover-item` (folder/sort/context menus), floating via `--shadow-popover` with `border: 0`.
+- **Empty state**: `.empty-state` (viewer) and `.rp-empty*` (rail). First-run drop on `#empty-state` opens the study dialog.
+- **Spinner**: `.viewer-spinner` + helpers in `js/spinner.js` (flash-guarded). Uses `--shadow-float`, not `--shadow-popover`.
 - **Tooltip**: singleton `.tip-bubble` rendered by `js/tooltips.js`; anchors carry `data-tip` (+ optional `data-tip-pos`).
-- **Modal**: `[id$="-modal"].visible`, focus-trapped via `openModal`/`showDialog` in `js/dom.js`.
-- **Notification**: `.notify-item` via `js/notify.js`.
+- **Modal / dialog**: `.ask-card` (upload, confirm, cloud settings, consult), `.help-card`, `.shortcuts-card`, `.cmdk-dialog`, `.project-rename-card`. No CSS border; `--shadow-modal` for lift. Opened via `openModal`/`showDialog` in `js/dom.js`. The Open study dialog is folder-first: the drop zone click opens a directory picker; individual files are a secondary control.
+- **Notification**: `.notify-item` via `js/notify.js`. Kinds (`confirm`, `info`, `warning`, `error`, `progress`, `action`) set `data-notify-kind` and the persist policy; the panel stays grayscale with a 2px kind rail.
 
 Shared DOM helpers (`js/dom.js`): `$`, `escapeHtml`, `colorSwatchSvg`,
 `trapFocus`/`releaseFocus`, `clientToCanvasPx`, and the modal orchestration above.

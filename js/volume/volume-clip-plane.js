@@ -39,9 +39,9 @@ export function volumeClipPlane({
   const H = Math.max(1, Math.floor(finite(dims?.H, 1)));
   const D = Math.max(1, Math.floor(finite(dims?.D, 1)));
   const extents = [
-    Math.max(0, W - 1) * Math.max(0, finite(spacing?.col, 1)),
-    Math.max(0, H - 1) * Math.max(0, finite(spacing?.row, 1)),
-    Math.max(0, D - 1) * Math.max(0, finite(spacing?.slice, 1)),
+    W * Math.max(0, finite(spacing?.col, 1)),
+    H * Math.max(0, finite(spacing?.row, 1)),
+    D * Math.max(0, finite(spacing?.slice, 1)),
   ];
   const { n } = obliqueBasis(clampObliqueYaw(yaw), clampObliquePitch(pitch));
   const normal = n.map((component, index) => component * extents[index]);

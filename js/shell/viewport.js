@@ -5,8 +5,9 @@
 import { $ } from '../dom.js';
 import { state } from '../core/state.js';
 import { MR_PRESETS } from '../core/constants.js';
-import { DEFAULT_IOP, geometryFromSeries, inPlaneDisplaySize } from '../core/geometry.js';
-import { viewPresetAnatomy, NEUTRAL_VIEW_LABELS } from '../core/view-orientation.js';
+import { geometryFromSeries, inPlaneDisplaySize } from '../core/geometry.js';
+import { hasPatientFrame, viewPresetAnatomy, NEUTRAL_VIEW_LABELS } from '../core/view-orientation.js';
+import { obliqueBasis } from '../mpr/mpr-oblique-geometry.js';
 import { updateScaleBar } from '../overlay/scale-bar.js';
 import { setFitZoom, setWindowLevel, setVolumeTransfer } from '../core/state/viewer-commands.js';
 
@@ -24,7 +25,7 @@ let _lastMprOrientSig = '';
 function restartOrientationFade(elements) {
   const list = elements.filter(Boolean);
   if (!list.length) return;
-  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   for (const el of list) el.classList.remove(UI_FADE);
   void list[0].offsetWidth;
   requestAnimationFrame(() => {
@@ -54,10 +55,7 @@ export function updateOrientationMarkers(series) {
   // secondary captures and plain image stacks have no patient orientation (some
   // are assigned an identity IOP at import), so labeling them L/R/A/P would be
   // false precision — clear the markers instead of guessing.
-  const hasPatientFrame = !!s
-    && s.orientation?.length >= 6
-    && s.imageDomain !== 'microscopy';
-  if (!hasPatientFrame) {
+  if (!hasPatientFrame(s)) {
     _last2dOrientSig = '';
     for (const el of Object.values(els)) {
       el.textContent = '';
@@ -106,10 +104,20 @@ export function updateThreeDViewLabels(series) {
 
 /** Per-MPR-pane L/R/A/P/S/I markers (2D markers are hidden in MPR mode). */
 export function updateMprOrientationMarkers(series) {
-  if (!series) return;
-  const iop = series.orientation?.length >= 6 ? series.orientation : DEFAULT_IOP;
-  const [r0, r1, r2, c0, c1, c2] = iop;
+  const prefixes = ['mpr-ax', 'mpr-co', 'mpr-sa', 'mpr-ob'];
+  if (!hasPatientFrame(series)) {
+    _lastMprOrientSig = '';
+    for (const prefix of prefixes) {
+      for (const suffix of ['ol', 'or', 'ot', 'ob']) {
+        const marker = $(`${prefix}-${suffix}`);
+        if (marker) marker.textContent = '';
+      }
+    }
+    return;
+  }
   const geo = geometryFromSeries(series);
+  const [r0, r1, r2] = geo.row;
+  const [c0, c1, c2] = geo.col;
   const sd = geo.sliceDir;
 
   const right2d = majorAxis(r0, r1, r2);
@@ -121,11 +129,20 @@ export function updateMprOrientationMarkers(series) {
   const coT = majorAxis(sd[0], sd[1], sd[2]);
   const saR = majorAxis(c0, c1, c2);
   const saT = coT;
+  const oblique = obliqueBasis(state.obYaw, state.obPitch);
+  const toPatient = (vector) => [0, 1, 2].map(axis => (
+    vector[0] * geo.row[axis]
+    + vector[1] * geo.col[axis]
+    + vector[2] * geo.sliceDir[axis]
+  ));
+  const obRight = majorAxis(...toPatient(oblique.u));
+  const obBottom = majorAxis(...toPatient(oblique.v));
 
   const cells = [
     ['mpr-ax', left2d, right2d, top2d, bottom2d],
     ['mpr-co', OPPOSITE[coR], coR, coT, OPPOSITE[coT]],
     ['mpr-sa', OPPOSITE[saR], saR, saT, OPPOSITE[saT]],
+    ['mpr-ob', OPPOSITE[obRight], obRight, OPPOSITE[obBottom], obBottom],
   ];
   const sig = cells.map(([, L, R, T, B]) => [L, R, T, B].join('')).join('|');
   if (sig === _lastMprOrientSig) return;

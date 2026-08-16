@@ -7,6 +7,7 @@ globalThis.window = globalThis.window || { addEventListener() {} };
 const {
   obliqueBasis,
   obliquePlaneExtentMm,
+  obliqueSamplingCenterVoxel,
   fitObliqueCanvas,
   obliqueRasterSize,
   sampleObliqueCompositeSlice,
@@ -189,6 +190,25 @@ test('obliquePlaneExtentMm uses physical spacing so thick slices expand the obli
 
   assert.ok(extent.widthMm > 8, 'tilted plane should span more than the in-plane width');
   assert.ok(extent.heightMm > 16, 'thick-slice contribution should appear in physical-plane height');
+});
+
+test('off-center oblique extents shift the raster while keeping the crosshair on the plane', () => {
+  const spacing = { row: 1, col: 1, slice: 1 };
+  const extent = obliquePlaneExtentMm(
+    { W: 10, H: 8, D: 5 },
+    spacing,
+    [0, 0, 2],
+    0,
+    0,
+  );
+  const samplingCenter = obliqueSamplingCenterVoxel([0, 0, 2], spacing, 0, 0, extent);
+
+  assert.ok(Math.abs(samplingCenter[0] - 4.5) < 1e-6);
+  assert.ok(Math.abs(samplingCenter[1] - 3.5) < 1e-6);
+  assert.ok(samplingCenter[0] - extent.widthMm / 2 <= 0);
+  assert.ok(samplingCenter[0] + extent.widthMm / 2 >= 9);
+  assert.ok(samplingCenter[1] - extent.heightMm / 2 <= 0);
+  assert.ok(samplingCenter[1] + extent.heightMm / 2 >= 7);
 });
 
 test('fitObliqueCanvas preserves the physical plane aspect ratio inside the available stage', () => {

@@ -5,7 +5,7 @@
 // Persisted by selected-series fingerprint and slice, the same pattern as
 // linear measurements in measure.js.
 
-import { $, clientToCanvasPx } from '../dom.js';
+import { $, canvasScreenScale, clientToCanvasPx } from '../dom.js';
 import { inPlanePixelSpacing } from '../core/geometry.js';
 import { state } from '../core/state.js';
 import { angleEntriesForSlice } from '../overlay/annotation-graph.js';
@@ -18,7 +18,7 @@ import {
 import { renderRoiResults } from './roi-results.js';
 
 function refreshRoiResults() {
-  if (typeof document === 'object' && typeof document.createElement === 'function') renderRoiResults();
+  if (globalThis.document?.createElement instanceof Function) renderRoiResults();
 }
 
 function angleKey() {
@@ -95,14 +95,6 @@ function physicalDelta(point, vertex, series) {
   };
 }
 
-function pixelUnitFromPhysicalAngle(angle, series) {
-  const { sx, sy } = physicalAxes(series);
-  const px = Math.cos(angle) / sx;
-  const py = Math.sin(angle) / sy;
-  const mag = Math.hypot(px, py) || 1;
-  return [px / mag, py / mag];
-}
-
 function computeAngle(p1, vertex, p3, series) {
   const { dx: dx1, dy: dy1 } = physicalDelta(p1, vertex, series);
   const { dx: dx2, dy: dy2 } = physicalDelta(p3, vertex, series);
@@ -118,8 +110,11 @@ function computeAngle(p1, vertex, p3, series) {
 // Called from drawMeasurements() so angles coexist with rulers and ROIs.
 export function drawAngles(svg) {
   const list = anglesHere().filter(angleVisibleInCurrentScope);
-  const series = state.manifest.series[state.seriesIdx];
-  const fontSize = Math.max(11, Math.round(series.width * 0.018));
+  const canvas = $('view');
+  const displayScale = canvasScreenScale(svg, canvas.width, canvas.height);
+  const scaleX = Math.max(1e-6, displayScale.x);
+  const scaleY = Math.max(1e-6, displayScale.y);
+  const fontSize = 11 / scaleY;
   const svgNS = 'http://www.w3.org/2000/svg';
 
   list.forEach((m) => {
@@ -136,29 +131,30 @@ export function drawAngles(svg) {
     }
 
     // Vertex dot
-    const dot = document.createElementNS(svgNS, 'circle');
+    const dot = document.createElementNS(svgNS, 'ellipse');
     dot.setAttribute('cx', m.vertex.x); dot.setAttribute('cy', m.vertex.y);
-    dot.setAttribute('r', 3); dot.setAttribute('class', 'm-dot');
+    dot.setAttribute('rx', 3 / scaleX); dot.setAttribute('ry', 3 / scaleY);
+    dot.setAttribute('class', 'm-dot');
     g.appendChild(dot);
 
     // Arc indicator (small arc at vertex)
-    const r = Math.min(30, Math.max(15, series.width * 0.04));
-    const { dx: dx1, dy: dy1 } = physicalDelta(m.p1, m.vertex, series);
-    const { dx: dx2, dy: dy2 } = physicalDelta(m.p3, m.vertex, series);
+    const arcRadius = 20;
+    const dx1 = (m.p1.x - m.vertex.x) * scaleX;
+    const dy1 = (m.p1.y - m.vertex.y) * scaleY;
+    const dx2 = (m.p3.x - m.vertex.x) * scaleX;
+    const dy2 = (m.p3.y - m.vertex.y) * scaleY;
     const a1 = Math.atan2(dy1, dx1);
     const a2 = Math.atan2(dy2, dx2);
-    const [u1x, u1y] = pixelUnitFromPhysicalAngle(a1, series);
-    const [u2x, u2y] = pixelUnitFromPhysicalAngle(a2, series);
-    const sx = m.vertex.x + r * u1x;
-    const sy = m.vertex.y + r * u1y;
-    const ex = m.vertex.x + r * u2x;
-    const ey = m.vertex.y + r * u2y;
+    const sx = m.vertex.x + arcRadius * Math.cos(a1) / scaleX;
+    const sy = m.vertex.y + arcRadius * Math.sin(a1) / scaleY;
+    const ex = m.vertex.x + arcRadius * Math.cos(a2) / scaleX;
+    const ey = m.vertex.y + arcRadius * Math.sin(a2) / scaleY;
     // Shape: -0.35 -> shortest signed arc from ray 1 to ray 2 in radians.
     const delta = Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1));
     const largeArc = Math.abs(delta) > Math.PI ? 1 : 0;
     const sweep = delta >= 0 ? 1 : 0;
     const arc = document.createElementNS(svgNS, 'path');
-    arc.setAttribute('d', `M ${sx} ${sy} A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`);
+    arc.setAttribute('d', `M ${sx} ${sy} A ${arcRadius / scaleX} ${arcRadius / scaleY} 0 ${largeArc} ${sweep} ${ex} ${ey}`);
     arc.setAttribute('fill', 'none');
     arc.setAttribute('stroke', 'rgba(255,255,255,0.7)');
     arc.setAttribute('stroke-width', '1');
@@ -166,27 +162,28 @@ export function drawAngles(svg) {
 
     // Label
     const midAngle = a1 + delta / 2;
-    const [umx, umy] = pixelUnitFromPhysicalAngle(midAngle, series);
-    const lx = m.vertex.x + (r + fontSize) * umx;
-    const ly = m.vertex.y + (r + fontSize) * umy;
+    const labelRadius = arcRadius + 11;
+    const lx = m.vertex.x + labelRadius * Math.cos(midAngle) / scaleX;
+    const ly = m.vertex.y + labelRadius * Math.sin(midAngle) / scaleY;
     const label = document.createElementNS(svgNS, 'text');
     label.setAttribute('x', lx); label.setAttribute('y', ly);
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('class', 'm-label');
     label.setAttribute('font-size', fontSize);
     label.textContent = `${m.deg.toFixed(1)}°`;
+    label.setAttribute('transform', `translate(${lx} ${ly}) scale(${scaleY / scaleX} 1) translate(${-lx} ${-ly})`);
     g.appendChild(label);
 
     // Delete button
-    const delR = Math.max(8, fontSize * 0.6);
-    const dx = lx + fontSize * 1.5, dy = ly;
-    const bg = document.createElementNS(svgNS, 'circle');
+    const dx = lx + (label.textContent.length * 3.2 + 10) / scaleX;
+    const dy = ly - 4 / scaleY;
+    const bg = document.createElementNS(svgNS, 'ellipse');
     bg.setAttribute('cx', dx); bg.setAttribute('cy', dy);
-    bg.setAttribute('r', delR);
+    bg.setAttribute('rx', 8 / scaleX); bg.setAttribute('ry', 8 / scaleY);
     bg.setAttribute('class', 'm-del-bg');
     g.appendChild(bg);
-    const x1 = dx - delR * 0.4, x2 = dx + delR * 0.4;
-    const y1 = dy - delR * 0.4, y2 = dy + delR * 0.4;
+    const x1 = dx - 3.2 / scaleX, x2 = dx + 3.2 / scaleX;
+    const y1 = dy - 3.2 / scaleY, y2 = dy + 3.2 / scaleY;
     const cross1 = document.createElementNS(svgNS, 'line');
     cross1.setAttribute('x1', x1); cross1.setAttribute('y1', y1);
     cross1.setAttribute('x2', x2); cross1.setAttribute('y2', y2);
@@ -197,9 +194,9 @@ export function drawAngles(svg) {
     cross2.setAttribute('x2', x1); cross2.setAttribute('y2', y2);
     cross2.setAttribute('class', 'm-del-x');
     g.appendChild(cross2);
-    const hit = document.createElementNS(svgNS, 'circle');
+    const hit = document.createElementNS(svgNS, 'ellipse');
     hit.setAttribute('cx', dx); hit.setAttribute('cy', dy);
-    hit.setAttribute('r', delR);
+    hit.setAttribute('rx', 8 / scaleX); hit.setAttribute('ry', 8 / scaleY);
     hit.setAttribute('class', 'm-del-hit');
     hit.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -215,9 +212,10 @@ export function drawAngles(svg) {
   // In-progress preview
   if (state.anglePending && state.anglePending.length > 0) {
     for (const pt of state.anglePending) {
-      const dot = document.createElementNS(svgNS, 'circle');
+      const dot = document.createElementNS(svgNS, 'ellipse');
       dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
-      dot.setAttribute('r', 4); dot.setAttribute('class', 'm-dot');
+      dot.setAttribute('rx', 4 / scaleX); dot.setAttribute('ry', 4 / scaleY);
+      dot.setAttribute('class', 'm-dot');
       svg.appendChild(dot);
     }
     // Draw arm lines from last point

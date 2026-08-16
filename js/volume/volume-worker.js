@@ -1,7 +1,6 @@
 import { DCMJS_IMPORT_URL, FZSTD_ESM_URL } from '../core/dependencies.js';
 import { normalizeUint16RawVolume } from './volume-raw-normalize.js';
 import { decodeZstdRawVolume } from './volume-zstd-decode.js';
-import { computeGradientRGBA8 } from './volume-gradient.js';
 import {
   addDICOMActualInputBytes,
   assertDICOMActualFileBytes,
@@ -29,8 +28,61 @@ async function ensureDcmjs() {
 }
 
 function looksLikeSourceManifest(payload) {
-  return payload && typeof payload === 'object'
+  return payload != null && Object(payload) === payload && !Array.isArray(payload) && !(payload instanceof Function)
     && (payload.sourceKind === 'projection' || payload.sourceKind === 'ultrasound');
+}
+
+async function readDicomFiles(files, { metadataOnly, onProgress }) {
+  const lib = await ensureDcmjs();
+  const DicomMessage = lib.data.DicomMessage;
+  const datasets = [];
+  const sourceManifests = {};
+  let parsed = 0;
+  let actualInputBytes = 0;
+
+  for (const [index, file] of files.entries()) {
+    if (/\.json$/i.test(file?.name || '')) {
+      try {
+        const bytes = await file.arrayBuffer();
+        assertDICOMActualFileBytes(bytes.byteLength, file, index);
+        actualInputBytes = addDICOMActualInputBytes(actualInputBytes, bytes.byteLength, file, index);
+        const payload = JSON.parse(new TextDecoder().decode(bytes));
+        if (looksLikeSourceManifest(payload) && payload.seriesUID) {
+          sourceManifests[String(payload.seriesUID)] = { payload, sourceId: index };
+        }
+      } catch (error) {
+        if (isDICOMResourceLimit(error)) throw error;
+      }
+      continue;
+    }
+    try {
+      const ab = await file.arrayBuffer();
+      assertDICOMActualFileBytes(ab.byteLength, file, index);
+      actualInputBytes = addDICOMActualInputBytes(actualInputBytes, ab.byteLength, file, index);
+      const ds = metadataOnly
+        ? DicomMessage.readFile(ab, {
+          ignoreErrors: false,
+          untilTag: '7FE00010',
+          includeUntilTagValue: false,
+          noCopy: true,
+        })
+        : DicomMessage.readFile(ab);
+      const meta = lib.data.DicomMetaDictionary.naturalizeDataset(ds.dict);
+      if (!Object.hasOwn(meta, 'PixelData')) continue;
+      const item = {
+        meta,
+        sourceByteLength: ab.byteLength,
+        sourceId: index,
+      };
+      if (!metadataOnly) item.pixelData = ds.dict['7FE00010'];
+      datasets.push(item);
+      parsed += 1;
+      if (parsed % 10 === 0) onProgress(parsed, files.length);
+    } catch (error) {
+      if (isDICOMResourceLimit(error)) throw error;
+    }
+  }
+  return { datasets, sourceManifests };
 }
 
 self.onmessage = async (e) => {
@@ -55,17 +107,6 @@ self.onmessage = async (e) => {
     } catch (err) {
       self.postMessage({ type: 'error', id, error: err.message });
     }
-  }
-
-  if (type === 'gradient') {
-    try {
-      const { data, width, height, depth, isFloat } = e.data;
-      const rgba = computeGradientRGBA8(data, width, height, depth, isFloat);
-      self.postMessage({ type: 'gradient-result', id, rgba }, [rgba.buffer]);
-    } catch (err) {
-      self.postMessage({ type: 'error', id, error: err.message });
-    }
-    return;
   }
 
   if (type === 'flatten-image-bitmaps') {
@@ -98,63 +139,23 @@ self.onmessage = async (e) => {
     return;
   }
 
-  if (type === 'parse-dicom-files') {
+  if (type === 'scan-dicom-files' || type === 'parse-dicom-files') {
     try {
-      const lib = await ensureDcmjs();
-      const DicomMessage = lib.data.DicomMessage;
-      const datasets = [];
-      const sourceManifests = {};
-      let parsed = 0;
-      let actualInputBytes = 0;
-
-      for (const [index, file] of (e.data.files || []).entries()) {
-        if (/\.json$/i.test(file?.name || '')) {
-          try {
-            const bytes = await file.arrayBuffer();
-            assertDICOMActualFileBytes(bytes.byteLength, file, index);
-            actualInputBytes = addDICOMActualInputBytes(actualInputBytes, bytes.byteLength, file, index);
-            const payload = JSON.parse(new TextDecoder().decode(bytes));
-            if (looksLikeSourceManifest(payload) && payload.seriesUID) {
-              sourceManifests[String(payload.seriesUID)] = payload;
-            }
-          } catch (error) {
-            if (isDICOMResourceLimit(error)) throw error;
-            // Ignore sidecar JSON that is not a source manifest.
-          }
-          continue;
-        }
-        try {
-          const ab = await file.arrayBuffer();
-          assertDICOMActualFileBytes(ab.byteLength, file, index);
-          actualInputBytes = addDICOMActualInputBytes(actualInputBytes, ab.byteLength, file, index);
-          const ds = DicomMessage.readFile(ab);
-          const meta = lib.data.DicomMetaDictionary.naturalizeDataset(ds.dict);
-          if (!meta.PixelData) continue;
-          datasets.push({
-            meta,
-            pixelData: ds.dict['7FE00010'],
-            sourceByteLength: ab.byteLength,
-            sourceId: index,
+      const payload = await readDicomFiles(e.data.files || [], {
+        metadataOnly: type === 'scan-dicom-files',
+        onProgress(parsed, total) {
+          self.postMessage({
+            type: 'progress',
+            id,
+            stage: type === 'scan-dicom-files' ? 'discovering' : 'parsing',
+            detail: `${parsed} / ${total}`,
           });
-          parsed++;
-          if (parsed % 10 === 0) {
-            self.postMessage({
-              type: 'progress',
-              id,
-              stage: 'parsing',
-              detail: `${parsed} / ${e.data.files.length}`,
-            });
-          }
-        } catch (error) {
-          if (isDICOMResourceLimit(error)) throw error;
-          // Skip unparseable files.
-        }
-      }
-
+        },
+      });
       self.postMessage({
         type: 'dicom-result',
         id,
-        payload: { datasets, sourceManifests },
+        payload,
       });
     } catch (err) {
       self.postMessage({ type: 'error', id, error: err.message });

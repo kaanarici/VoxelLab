@@ -62,7 +62,7 @@ async function resolveImageSrc(url, priority) {
   return { src: objectUrl, release: () => URL.revokeObjectURL(objectUrl) };
 }
 
-function loadFreshImage(img, url, label, index, errorMode, priority) {
+function loadFreshImage(img, url, label, index, errorMode, priority, onFail) {
   return wrapLoader((async () => {
     // Set the DOM hint for the direct-src fallback path. The cached path
     // forwards `priority` into the underlying fetch() inside cachedFetchResponse,
@@ -84,7 +84,7 @@ function loadFreshImage(img, url, label, index, errorMode, priority) {
       img.onerror = null;
       release?.();
     }
-  })(), label, index, errorMode);
+  })(), label, index, errorMode, onFail);
 }
 
 export function imageUrlForStack(dir, index, series = state.manifest?.series?.[state.seriesIdx]) {
@@ -125,7 +125,11 @@ export function rawVolumeUrlForSeries(series = state.manifest?.series?.[state.se
   return `./data/${series.slug}.raw`;
 }
 
-function loadExistingImage(img, label, index, errorMode) {
+function imageSlotFailed(img) {
+  return !!(img?.complete && img.naturalWidth === 0);
+}
+
+function loadExistingImage(img, label, index, errorMode, onFail) {
   return wrapLoader(new Promise((resolve, reject) => {
     if (img.complete && img.naturalWidth > 0) resolve(true);
     else if (img.complete && img.naturalWidth === 0) reject(new Error(`Image ${index + 1} failed: ${img.src}`));
@@ -133,7 +137,7 @@ function loadExistingImage(img, label, index, errorMode) {
       img.onload = () => resolve(true);
       img.onerror = () => reject(new Error(`Image ${index + 1} failed: ${img.src}`));
     }
-  }), label, index, errorMode);
+  }), label, index, errorMode, onFail);
 }
 
 function prefetchConcurrency(value) {
@@ -145,19 +149,35 @@ function prefetchConcurrency(value) {
 function attachStackControls(imgs, dir, count, series, label, errorMode) {
   imgs._dir = dir;
   imgs._pending = imgs._pending || new Map();
+  imgs._failed = imgs._failed || new Set();
   imgs._prefetchToken = imgs._prefetchToken || 0;
+  const markFailed = (index) => imgs._failed.add(index);
   imgs.ensureIndex = (index, opts) => {
     if (index < 0 || index >= count) return Promise.resolve(true);
     const pending = imgs._pending.get(index);
     if (pending) return pending;
     const existing = imgs[index];
-    if (existing && !(existing.complete && existing.naturalWidth === 0)) {
-      return loadExistingImage(existing, label, index, errorMode);
+    const failed = imageSlotFailed(existing) || imgs._failed.has(index);
+    if (failed && !opts?.retry) return Promise.resolve(null);
+    if (existing && !imageSlotFailed(existing)) {
+      return loadExistingImage(existing, label, index, errorMode, markFailed);
+    }
+    if (failed && opts?.retry) {
+      imgs._failed.delete(index);
+      allowStackUnavailableNotify(label);
     }
     const img = new Image();
     img.alt = '';
     imgs[index] = img;
-    const loader = loadFreshImage(img, imageUrlForStack(dir, index, series), label, index, errorMode, opts?.priority);
+    const loader = loadFreshImage(
+      img,
+      imageUrlForStack(dir, index, series),
+      label,
+      index,
+      errorMode,
+      opts?.priority,
+      markFailed,
+    );
     imgs._pending.set(index, loader);
     loader.finally(() => imgs._pending.delete(index));
     return loader;
@@ -177,6 +197,7 @@ function attachStackControls(imgs, dir, count, series, label, errorMode) {
       if (index < 0 || index >= count) return;
       if (index >= center - radius && index <= center + radius) return;
       if (imgs[index]?.complete && imgs[index].naturalWidth > 0) return;
+      if (imageSlotFailed(imgs[index]) || imgs._failed.has(index)) return;
       indexes.push(index);
     };
     if (Number.isFinite(limit)) {
@@ -228,38 +249,50 @@ export function loadImageStack(
   { label = dir, errorMode = 'soft', windowRadius = null, initialIndex = 0 } = {},
 ) {
   const indexes = initialLoadIndexes(count, windowRadius, initialIndex);
-  const priorityFor = (index) => (index === initialIndex ? { priority: 'high' } : undefined);
+  const ensureOpts = (index) => {
+    const options = { retry: true };
+    if (index === initialIndex) options.priority = 'high';
+    return options;
+  };
   const local = state._localStacks?.[dir];
   if (local && local.length === count) {
     attachStackControls(local, dir, count, series, label, errorMode);
-    const loaders = indexes.map(index => local.ensureIndex(index, priorityFor(index)));
+    const loaders = indexes.map(index => local.ensureIndex(index, ensureOpts(index)));
     return { imgs: local, loaders };
   }
 
   if (existing && existing.length === count && existing._dir === dir) {
     attachStackControls(existing, dir, count, series, label, errorMode);
-    const loaders = indexes.map(index => existing.ensureIndex(index, priorityFor(index)));
+    const loaders = indexes.map(index => existing.ensureIndex(index, ensureOpts(index)));
     return { imgs: existing, loaders };
   }
   const imgs = attachStackControls(new Array(count), dir, count, series, label, errorMode);
-  const loaders = indexes.map(index => imgs.ensureIndex(index, priorityFor(index)));
+  const loaders = indexes.map(index => imgs.ensureIndex(index, ensureOpts(index)));
   return { imgs, loaders };
 }
 
 // Loaders resolve to null rather than rejecting, so callers never see a rejection
 // to surface. Hard-mode stacks therefore have to raise the toast from here, or an
 // unloadable series renders an empty viewport with nothing but console output.
-// notify() dedupes on id, collapsing every failed slice in a stack into one toast.
-function notifyStackUnavailable(label) {
-  if (typeof document === 'undefined') return;
-  notify(`${label} unavailable`, { id: `stack-unavailable:${label}`, duration: 6000 });
+const _stackUnavailableNotified = new Set();
+
+function allowStackUnavailableNotify(label) {
+  _stackUnavailableNotified.delete(label);
 }
 
-function wrapLoader(promise, label, index, errorMode) {
+function notifyStackUnavailable(label) {
+  if (!globalThis.document) return;
+  if (_stackUnavailableNotified.has(label)) return;
+  _stackUnavailableNotified.add(label);
+  notify(`${label} unavailable`, { id: `stack-unavailable:${label}`, kind: 'error' });
+}
+
+function wrapLoader(promise, label, index, errorMode, onFail) {
   return promise.catch((error) => {
     const err = error instanceof Error ? error : new Error(String(error || 'Unknown error'));
     const prefix = errorMode === 'hard' ? 'Image load failed' : 'Image preload skipped';
     console.warn(`[${label} image ${index + 1}] ${prefix}:`, err);
+    onFail?.(index);
     if (errorMode === 'hard') notifyStackUnavailable(label);
     return null;
   });

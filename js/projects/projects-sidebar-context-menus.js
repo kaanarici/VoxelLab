@@ -1,6 +1,9 @@
 // Sidebar popovers and context menus: folder menu, sort popover, and the
 // series / folder / empty-sidebar right-click menus.
 
+import { $, escapeHtml, showDialog } from '../dom.js';
+import { notify } from '../notify.js';
+import { removeSeriesFromViewer } from '../series/remove-series.js';
 import { getAllProjects, getPinnedSlugs } from './projects-store.js';
 import {
   assignSeriesToProject,
@@ -10,58 +13,48 @@ import {
   sidebar,
   togglePin,
 } from './projects-sidebar-state.js';
-import { showRenameDialog } from './projects-sidebar-rename-dialog.js';
 import { sortManifestSeries, saveSidebarSort, SORT_POPOVER_OPTIONS } from './projects-sidebar-sort.js';
 
-export function showFolderMenu(anchor, project) {
-  document.querySelectorAll('.folder-menu').forEach(m => m.remove());
+async function showRenameDialog(project) {
+  const dialog = await import('./projects-sidebar-rename-dialog.js');
+  dialog.showRenameDialog(project);
+}
 
-  const menu = document.createElement('div');
-  menu.className = 'folder-menu popover-menu';
-
-  const renameItem = document.createElement('div');
-  renameItem.className = 'popover-item';
-  renameItem.innerHTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-    </svg>
-    <span>Rename</span>
-  `;
-  renameItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    menu.remove();
-    anchor.focus();
-    showRenameDialog(project);
-  });
-
-  const deleteItem = document.createElement('div');
-  deleteItem.className = 'popover-item danger';
-  deleteItem.innerHTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-    </svg>
-    <span>Delete</span>
-  `;
-  deleteItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    menu.remove();
-    removeProject(project.id);
-  });
-
-  menu.appendChild(renameItem);
-  menu.appendChild(deleteItem);
-
-  anchor.classList.add('project-menu-anchor');
-  anchor.appendChild(menu);
-
-  const close = (ev) => {
-    if (!menu.contains(ev.target)) {
-      menu.remove();
-      document.removeEventListener('click', close);
+function confirmProjectRemoval(project) {
+  const close = showDialog('Delete folder?', `
+    <div class="dlg-sub-spaced">
+      Delete <b>${escapeHtml(project.name || 'this folder')}</b>? Studies stay open in VoxelLab and source files on your computer are not changed.
+    </div>
+    <div class="dlg-actions">
+      <button class="annot-btn" id="delete-folder-cancel" type="button">Cancel</button>
+      <button class="annot-btn danger" id="delete-folder-confirm" type="button">Delete folder</button>
+    </div>
+  `);
+  $('delete-folder-cancel').onclick = close;
+  $('delete-folder-confirm').onclick = async () => {
+    const button = $('delete-folder-confirm');
+    if (button) button.disabled = true;
+    try {
+      await removeProject(project.id);
+      close();
+    } catch {
+      if (button) button.disabled = false;
+      notify('Could not delete the folder. Try again.', { kind: 'error' });
     }
   };
-  setTimeout(() => document.addEventListener('click', close), 0);
+  $('delete-folder-cancel')?.focus();
+}
+
+export function showFolderMenu(anchor, project) {
+  if (anchor.getAttribute('aria-expanded') === 'true') {
+    anchor._dismissPopover?.(true);
+    return;
+  }
+  const rect = anchor.getBoundingClientRect();
+  showContextMenu(rect.right, rect.bottom, [
+    { label: 'Rename', icon: CTX_ICONS.pencil, action: () => { void showRenameDialog(project); } },
+    { label: 'Delete folder', icon: CTX_ICONS.trash, danger: true, action: () => confirmProjectRemoval(project) },
+  ], { anchor, className: 'folder-menu' });
 }
 
 export function showSortPopover(anchor, manifest) {
@@ -76,7 +69,8 @@ export function showSortPopover(anchor, manifest) {
   pop.style.zIndex = '300';
 
   for (const opt of SORT_POPOVER_OPTIONS) {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'popover-item';
     const isActive = sidebar.currentSort === opt.key;
     item.innerHTML = `
@@ -104,12 +98,29 @@ export function showSortPopover(anchor, manifest) {
   setTimeout(() => document.addEventListener('click', close), 0);
 }
 
-function showContextMenu(x, y, items) {
-  document.querySelectorAll('.context-menu').forEach(m => m.remove());
+function showContextMenu(x, y, items, { anchor = null, className = '' } = {}) {
+  document.querySelectorAll('.context-menu').forEach(menu => menu._dismissPopover?.() || menu.remove());
 
   const menu = document.createElement('div');
-  menu.className = 'popover-menu context-menu';
+  menu.className = `popover-menu context-menu${className ? ` ${className}` : ''}`;
   menu.style.cssText = `position:fixed; left:${x}px; top:${y}px; z-index:300;`;
+  let close;
+  let onCtx;
+  const dismiss = (restoreFocus = false) => {
+    menu.remove();
+    document.removeEventListener('mousedown', close);
+    document.removeEventListener('contextmenu', onCtx);
+    if (anchor) {
+      anchor.setAttribute('aria-expanded', 'false');
+      anchor._dismissPopover = null;
+      if (restoreFocus) anchor.focus();
+    }
+  };
+  menu._dismissPopover = dismiss;
+  if (anchor) {
+    anchor.setAttribute('aria-expanded', 'true');
+    anchor._dismissPopover = dismiss;
+  }
 
   for (const it of items) {
     if (!it) {
@@ -118,38 +129,41 @@ function showContextMenu(x, y, items) {
       menu.appendChild(sep);
       continue;
     }
-    const row = document.createElement('div');
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'popover-item' + (it.danger ? ' danger' : '');
     row.innerHTML = (it.icon ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg>` : '')
       + `<span>${it.label}</span>`;
     row.addEventListener('click', (e) => {
       e.stopPropagation();
-      menu.remove();
+      dismiss(!!anchor);
       it.action();
     });
     menu.appendChild(row);
   }
 
   document.body.appendChild(menu);
+  menu.querySelector('.popover-item')?.focus();
 
   const r = menu.getBoundingClientRect();
   if (r.right > window.innerWidth - 8) menu.style.left = `${x - r.width}px`;
   if (r.bottom > window.innerHeight - 8) menu.style.top = `${y - r.height}px`;
 
-  const close = (ev) => {
+  close = (ev) => {
     if (!menu.contains(ev.target)) {
-      menu.remove();
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('contextmenu', onCtx);
+      dismiss();
     }
   };
-  const onCtx = (ev) => {
+  onCtx = (ev) => {
     if (!menu.contains(ev.target)) {
-      menu.remove();
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('contextmenu', onCtx);
+      dismiss();
     }
   };
+  menu.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    dismiss(!!anchor);
+  });
   setTimeout(() => {
     document.addEventListener('mousedown', close);
     document.addEventListener('contextmenu', onCtx);
@@ -164,6 +178,46 @@ const CTX_ICONS = {
   pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
   moveOut: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5V20"/>',
 };
+
+function confirmSeriesRemoval(slugs) {
+  const series = (sidebar.manifest?.series || []).filter(item => slugs.includes(item.slug));
+  if (!series.length) return;
+  const count = series.length;
+  const label = count === 1 ? series[0].name || series[0].slug : `${count} selected series`;
+  const close = showDialog('Remove from viewer?', `
+    <div class="dlg-sub-spaced">
+      Remove <b>${escapeHtml(label)}</b> from VoxelLab? Source files on your computer will not be changed or deleted.
+    </div>
+    <div class="dlg-actions">
+      <button class="annot-btn" id="remove-series-cancel" type="button">Cancel</button>
+      <button class="annot-btn danger" id="remove-series-confirm" type="button">Remove</button>
+    </div>
+  `);
+  $('remove-series-cancel').onclick = close;
+  $('remove-series-confirm').onclick = async () => {
+    const button = $('remove-series-confirm');
+    if (button) button.disabled = true;
+    try {
+      const result = await removeSeriesFromViewer(slugs, {
+        selectSeries: sidebar.selectSeries,
+        onUpdate: sidebar.onUpdate,
+        refreshActiveView: sidebar.refreshActiveView,
+      });
+      multiSel.clear();
+      close();
+      notify(
+        result.organizationCleanupFailed
+          ? `Removed ${result.removed} series, but folder and pin cleanup could not be saved. Source files were left untouched.`
+          : `Removed ${result.removed} series from VoxelLab. Source files were left untouched.`,
+        result.organizationCleanupFailed ? { kind: 'warning' } : undefined,
+      );
+    } catch {
+      if (button) button.disabled = false;
+      notify('Could not remove the selected series. Try again.', { kind: 'error' });
+    }
+  };
+  $('remove-series-cancel')?.focus();
+}
 
 export async function showSeriesContextMenu(x, y, slug) {
   if (!multiSel.has(slug)) {
@@ -210,15 +264,22 @@ export async function showSeriesContextMenu(x, y, slug) {
       for (const s of slugs) togglePin(s);
     },
   });
+  items.push(null);
+  items.push({
+    label: count > 1 ? `Remove ${count} series from viewer` : 'Remove from viewer',
+    icon: CTX_ICONS.trash,
+    danger: true,
+    action: () => confirmSeriesRemoval(slugs),
+  });
   showContextMenu(x, y, items);
 }
 
 export function showFolderContextMenu(x, y, project) {
   showContextMenu(x, y, [
-    { label: 'Rename', icon: CTX_ICONS.pencil, action: () => showRenameDialog(project) },
+    { label: 'Rename', icon: CTX_ICONS.pencil, action: () => { void showRenameDialog(project); } },
     { label: 'New folder', icon: CTX_ICONS.folderPlus, action: () => createProject() },
     null,
-    { label: 'Delete folder', icon: CTX_ICONS.trash, danger: true, action: () => removeProject(project.id) },
+    { label: 'Delete folder', icon: CTX_ICONS.trash, danger: true, action: () => confirmProjectRemoval(project) },
   ]);
 }
 

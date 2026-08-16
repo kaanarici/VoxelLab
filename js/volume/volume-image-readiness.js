@@ -1,7 +1,7 @@
 export function workerFlattenAvailable() {
-  return typeof Worker !== 'undefined'
-    && typeof OffscreenCanvas !== 'undefined'
-    && typeof createImageBitmap === 'function';
+  return globalThis.Worker instanceof Function
+    && globalThis.OffscreenCanvas instanceof Function
+    && globalThis.createImageBitmap instanceof Function;
 }
 
 export function hasDenseLoadedImages(imgs, count) {

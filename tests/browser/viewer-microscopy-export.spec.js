@@ -67,9 +67,12 @@ test('microscopy screenshot export includes calibrated scale bar in PNG and rend
   await page.locator('#btn-annot').click();
   await clickCanvasPixel(page, 150, 92);
   await expect(page.locator('#annot-modal')).toBeVisible();
+  await expect(page.locator('#annot-save')).toBeDisabled();
   await page.locator('#annot-text').fill('Mitotic edge check');
+  await expect(page.locator('#annot-save')).toBeEnabled();
   await page.locator('#annot-save').click();
   await expect(page.locator('#annot-modal')).not.toBeVisible();
+  await expect(page.locator('#toolbox-measure .toolbox-trigger')).toBeFocused();
   await expect(page.locator('#annot-list')).toContainText('Mitotic edge check');
 
   await page.evaluate(() => {

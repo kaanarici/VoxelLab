@@ -1,11 +1,22 @@
 import { expect, test } from '@playwright/test';
+import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
 
 /* global document, requestAnimationFrame, setTimeout, window */
 
-test('MPR oblique pane keeps display aspect in the real browser layout', async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 900 });
+async function openBrowserFixture(page, slug) {
+  await routeLocalVolumeStudy(page, [
+    localVolumeSeries(slug, 'MPR stability fixture', { width: 32, height: 32, slices: 8 }),
+  ]);
   const response = await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
   expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
+  await expect(page.locator('#series-list li').first()).toBeVisible();
+  await page.locator('#series-list li').first().click();
+  await expect(page.locator('#viewer-spinner')).toBeHidden();
+}
+
+test('MPR oblique pane keeps display aspect in the real browser layout', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await openBrowserFixture(page, 'mpr_aspect_boot');
 
   const metrics = await page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
@@ -84,12 +95,29 @@ test('MPR oblique pane keeps display aspect in the real browser layout', async (
   expect(metrics.fitsCell, JSON.stringify(metrics)).toBe(true);
   expect(metrics.rootScrollWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(metrics.viewportWidth + 1);
   expect(metrics.centerMax, JSON.stringify(metrics)).toBeGreaterThan(0);
+
+  await page.setViewportSize({ width: 900, height: 720 });
+  await expect.poll(() => page.locator('#mpr-ob').evaluate((canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    return Math.abs((rect.width / rect.height) - (canvas.width / canvas.height));
+  })).toBeLessThan(0.02);
+  const resized = await page.locator('#mpr-ob').evaluate((canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const cell = canvas.parentElement.getBoundingClientRect();
+    return {
+      displayWidth: Math.round(rect.width),
+      displayHeight: Math.round(rect.height),
+      fitsCell: rect.right <= cell.right + 1 && rect.bottom <= cell.bottom + 1,
+    };
+  });
+  expect(resized.displayWidth, JSON.stringify(resized)).toBeGreaterThan(0);
+  expect(resized.displayHeight, JSON.stringify(resized)).toBeGreaterThan(0);
+  expect(resized.fitsCell, JSON.stringify(resized)).toBe(true);
 });
 
 test('MPR Z scrub keeps oblique pane geometry stable through settle redraw', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const response = await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
-  expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
+  await openBrowserFixture(page, 'mpr_scrub_boot');
 
   const snapshots = await page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');

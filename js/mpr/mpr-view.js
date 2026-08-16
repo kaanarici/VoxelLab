@@ -6,18 +6,26 @@ import { state } from '../core/state.js';
 import { SEG_PALETTE } from '../core/constants.js';
 import { drawingEntriesForSeries } from '../overlay/annotation-graph.js';
 import { renderInspectionReadout, resolveVoxelInspection } from '../inspection-readout.js';
-import { sampleLanczosZ, sampleLinearZ } from '../lanczos.js';
 import { geometryFromSeries } from '../core/geometry.js';
+import { mprPaneLabels } from '../core/view-orientation.js';
 import { COLORMAPS, getFusedWLLut, getFusedWLU32 } from '../colormap.js';
 import { ensureActiveOverlayVolumes } from '../overlay/overlay-volumes.js';
 import { drawCompositeSlice } from '../slice-compositor.js';
-import { setMprPosition, setMprQuality } from '../core/state/viewer-commands.js';
+import { setMprPosition, setMprProjection, setMprQuality } from '../core/state/viewer-commands.js';
 import { beginPerfTrace, endPerfTrace, hasPendingPerfTrace } from '../core/perf-trace.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
 import { selectionRegionColors } from '../runtime/region-color-isolation.js';
 import { overlaySessionForSeries, reviewReadinessForSeries } from '../runtime/review-readiness.js';
 import { updateMprOrientationMarkers } from '../shell/viewport.js';
-import { obliqueBasis, drawObliqueMPR, fitObliqueCanvas, obliquePlaneExtentMm, obliqueRasterSize } from './mpr-oblique.js';
+import { sampleTrilinear } from './mpr-sampling.js';
+import {
+  obliqueBasis,
+  drawObliqueMPR,
+  fitObliqueCanvas,
+  obliquePlaneExtentMm,
+  obliqueRasterSize,
+  obliqueSamplingCenterVoxel,
+} from './mpr-oblique.js';
 import {
   createMprProjection,
   planeForAxis,
@@ -25,22 +33,25 @@ import {
   projectDiscreteSlabLabel,
   projectVolumeSample,
   projectionCacheToken,
+  maximumAccurateSlabThicknessMm,
 } from './mpr-projection.js';
 import { mprPlaneSizes, mprVoxelForPixel } from './mpr-geometry.js';
 
 let _ensureVoxels = () => false;
 let _isMprActive = () => false;
 let _resizeInvalidatorWired = false;
+let _mprResizeFrame = 0;
 let _obliqueInteractionTimer = 0;
 let _mprInteractiveAxis = '';
 let _mprGpuApi = {
   canUseGpuMpr: () => false,
   drawGpuMprSlice: () => false,
+  releaseGpuMprVolumeTextures: () => {},
 };
 let _mprGpuLoading = null;
 
 function ensureMprGpuApi({ redraw = false } = {}) {
-  if (_mprGpuLoading || typeof document === 'undefined') return _mprGpuLoading;
+  if (_mprGpuLoading || !globalThis.document) return _mprGpuLoading;
   _mprGpuLoading = import('./mpr-gpu.js')
     .then((mod) => {
       _mprGpuApi = mod;
@@ -52,14 +63,19 @@ function ensureMprGpuApi({ redraw = false } = {}) {
 }
 
 export function initMprView(deps) {
-  if (typeof deps.ensureVoxels === 'function') _ensureVoxels = deps.ensureVoxels;
-  if (typeof deps.isMprActive === 'function') _isMprActive = deps.isMprActive;
+  if (deps.ensureVoxels instanceof Function) _ensureVoxels = deps.ensureVoxels;
+  if (deps.isMprActive instanceof Function) _isMprActive = deps.isMprActive;
   if (!_resizeInvalidatorWired) {
     window.addEventListener('resize', () => {
       for (const id of ['mpr-ax-cross', 'mpr-co-cross', 'mpr-sa-cross']) {
         const el = $(id);
         if (el) el._mprBoundsReady = false;
       }
+      if (_mprResizeFrame || !_isMprActive()) return;
+      _mprResizeFrame = requestAnimationFrame(() => {
+        _mprResizeFrame = 0;
+        if (_isMprActive()) drawMPR();
+      });
     });
     _resizeInvalidatorWired = true;
   }
@@ -162,6 +178,15 @@ function activeMprGpu() {
   if (_mprGpuApi.canUseGpuMpr()) return true;
   ensureMprGpuApi({ redraw: true });
   return false;
+}
+
+function syncMprRendererStatus(renderer) {
+  const note = $('mpr-gpu-note');
+  if (!note) return;
+  note.textContent = renderer === 'gpu' ? 'GPU' : renderer === 'cpu' ? 'CPU' : 'CPU fallback';
+  note.dataset.renderer = renderer;
+  const reason = renderer === 'fallback' ? _mprGpuApi.gpuMprFailureReason?.() : '';
+  note.title = reason || '';
 }
 
 function fitCanvasDisplay(canvas, width, height, maxWidth, maxHeight) {
@@ -301,11 +326,42 @@ function syncMprOverlayStatus(series) {
 }
 
 function updateMprLabels(series) {
+  const labels = mprPaneLabels(series);
+  for (const [axis, canvasId] of [['ax', 'mpr-ax'], ['co', 'mpr-co'], ['sa', 'mpr-sa'], ['ob', 'mpr-ob']]) {
+    const label = $(`${canvasId}-label`);
+    const canvas = $(canvasId);
+    if (label) label.textContent = labels[axis];
+    canvas?.setAttribute?.('aria-label', `${labels[axis]} slice`);
+  }
   $('mpr-ax-idx').textContent = `Z ${state.mprZ + 1}/${series.slices}`;
   $('mpr-co-idx').textContent = `Y ${state.mprY + 1}/${series.height}`;
   $('mpr-sa-idx').textContent = `X ${state.mprX + 1}/${series.width}`;
   updateMprOrientationMarkers(series);
   syncMprOverlayStatus(series);
+}
+
+function formatSlabThickness(value) {
+  if (value >= 10) return `${Number(value.toFixed(1))} mm`;
+  if (value >= 1) return `${Number(value.toFixed(2))} mm`;
+  return `${Number(value.toFixed(3))} mm`;
+}
+
+function syncMprSlabLimit(series) {
+  const geo = geometryFromSeries(series);
+  const spacing = { row: geo.rowSpacing, col: geo.colSpacing, slice: geo.sliceSpacing };
+  const maximum = Math.min(40, maximumAccurateSlabThicknessMm(spacing));
+  if (state.mpr.slabThicknessMm > maximum) {
+    setMprProjection({ slabThicknessMm: maximum });
+  }
+  const slider = $('mpr-slab');
+  if (slider) {
+    slider.max = String(maximum);
+    slider.step = maximum >= 10 ? '1' : maximum >= 1 ? '0.1' : maximum >= 0.1 ? '0.01' : '0.001';
+    if (slider !== document.activeElement) slider.value = String(state.mpr.slabThicknessMm);
+  }
+  const value = $('mpr-slab-val');
+  if (value) value.textContent = formatSlabThickness(state.mpr.slabThicknessMm);
+  return spacing;
 }
 
 // Shape: { interactive: true } for wheel-driven x/y scrub.
@@ -317,6 +373,7 @@ function drawMprFrame({ interactive = false } = {}) {
     setMprQuality('fast');
   }
   const series = state.manifest.series[state.seriesIdx];
+  syncMprSlabLimit(series);
   if (!hasMprBaseVolume(series) && !_ensureVoxels()) return;
   ensureActiveOverlayVolumes();
   clampMpr(series);
@@ -459,7 +516,7 @@ export function drawObliqueCell() {
 
   const lo = state.level - state.window / 2;
   const hi = state.level + state.window / 2;
-  const sampleVolume = state.mprQuality === 'fast' ? sampleLinearZ : sampleLanczosZ;
+  const sampleVolume = sampleTrilinear;
   const basis = obliqueBasis(state.obYaw, state.obPitch);
   const stepUMm = extentMm.widthMm / Math.max(1, targetWidth - 1);
   const stepVMm = extentMm.heightMm / Math.max(1, targetHeight - 1);
@@ -473,7 +530,15 @@ export function drawObliqueCell() {
     basis.v[1] * stepVMm / spacing.row,
     basis.v[2] * stepVMm / spacing.slice,
   ];
-  const plane = planeForOblique(targetWidth, targetHeight, [state.mprX, state.mprY, state.mprZ], du, dv);
+  const crosshair = [state.mprX, state.mprY, state.mprZ];
+  const samplingCenter = obliqueSamplingCenterVoxel(
+    crosshair,
+    spacing,
+    state.obYaw,
+    state.obPitch,
+    extentMm,
+  );
+  const plane = planeForOblique(targetWidth, targetHeight, samplingCenter, du, dv);
   const projection = createMprProjection({
     mode: state.mpr.projectionMode,
     slabThicknessMm: state.mpr.slabThicknessMm,
@@ -507,8 +572,10 @@ export function drawObliqueCell() {
       hotLut: overlayOptions.hotLut,
     });
     if (rendered) {
+      syncMprRendererStatus('gpu');
       const lab = $('mpr-ob-idx');
-      if (lab) lab.textContent = `yaw ${state.obYaw}° · pitch ${state.obPitch}°`;
+      if (lab) lab.textContent = `grid yaw ${state.obYaw}° · pitch ${state.obPitch}°`;
+      updateMprOrientationMarkers(series);
       if (hasPendingPerfTrace('mpr-oblique-paint')) {
         endPerfTrace('mpr-oblique-paint', { slug: series.slug, yaw: state.obYaw, pitch: state.obPitch, renderer: 'gpu' });
       }
@@ -516,11 +583,13 @@ export function drawObliqueCell() {
     }
   }
 
+  syncMprRendererStatus(state.mprGpuEnabled ? 'fallback' : 'cpu');
+
   drawObliqueMPR(
     canvas, vox, voxScale,
     { W, H, D },
     spacing,
-    [state.mprX, state.mprY, state.mprZ],
+    crosshair,
     state.obYaw, state.obPitch,
     extentMm, lo, hi,
     overlayOptions,
@@ -529,7 +598,8 @@ export function drawObliqueCell() {
   );
 
   const lab = $('mpr-ob-idx');
-  if (lab) lab.textContent = `yaw ${state.obYaw}° · pitch ${state.obPitch}°`;
+  if (lab) lab.textContent = `grid yaw ${state.obYaw}° · pitch ${state.obPitch}°`;
+  updateMprOrientationMarkers(series);
   if (hasPendingPerfTrace('mpr-oblique-paint')) {
     endPerfTrace('mpr-oblique-paint', { slug: series.slug, yaw: state.obYaw, pitch: state.obPitch, renderer: 'cpu' });
   }
@@ -595,14 +665,15 @@ function drawMPRCell(canvas, axis, outW, outH) {
       hotLut,
     });
     if (rendered) {
+      syncMprRendererStatus('gpu');
       drawMprNotePins(ctx, axis, outW, outH, series);
       return;
     }
   }
 
-  const sampleGray = state.mprQuality === 'fast'
-    ? (volume, x, y, z) => sampleLinearZ(volume, x, y, z, W, H, D)
-    : (volume, x, y, z) => sampleLanczosZ(volume, x, y, z, W, H, D);
+  syncMprRendererStatus(state.mprGpuEnabled ? 'fallback' : 'cpu');
+
+  const sampleGray = (volume, x, y, z) => sampleTrilinear(volume, x, y, z, W, H, D);
   const isThinProjection = projection.sampleCount <= 1 || projection.mode === 'thin';
   const sampleProjectedBase = isThinProjection
     ? (x, y, z) => sampleGray(vox, x, y, z)
@@ -645,9 +716,7 @@ function drawMPRCell(canvas, axis, outW, outH) {
   }
   const cacheKey = cellCacheKey(axis, outW, outH, series, useHR, useSeg, useRegions, useSym, useFusion, projection);
   let cached = readCellSamples(cacheKey);
-  const sampleOverlay = state.mprQuality === 'fast'
-    ? (vol, x, y, z) => sampleLinearZ(vol, x, y, z, W, H, D)
-    : (vol, x, y, z) => sampleLanczosZ(vol, x, y, z, W, H, D);
+  const sampleOverlay = (vol, x, y, z) => sampleTrilinear(vol, x, y, z, W, H, D);
   const sampleProjectedOverlay = isThinProjection
     ? (vol, x, y, z) => sampleOverlay(vol, x, y, z)
     : (vol, x, y, z) => projectVolumeSample(vol, x, y, z, dims, sampleOverlay, projection);
@@ -703,6 +772,10 @@ export function clearMprCellCache() {
   _cellSampleCacheBytes = 0;
 }
 
+export function releaseMprGpuVolumes() {
+  _mprGpuApi.releaseGpuMprVolumeTextures?.();
+}
+
 // Shape: { entries: 6, bytes: 7340032 } for devtools/tests.
 export function getMprCellCacheStats() {
   return {
@@ -731,6 +804,7 @@ export function __setMprGpuApiForTests(api) {
   _mprGpuApi = api || {
     canUseGpuMpr: () => false,
     drawGpuMprSlice: () => false,
+    releaseGpuMprVolumeTextures: () => {},
   };
 }
 

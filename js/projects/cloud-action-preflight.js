@@ -10,7 +10,7 @@ const PROJECTION_GEOMETRIES = new Set(['parallel-beam-stack', 'circular-cbct', '
 const ULTRASOUND_MODES = new Set(['stacked-sector', 'tracked-freehand-sector']);
 const ULTRASOUND_PROBE_GEOMETRIES = new Set(['sector', 'curvilinear', 'linear']);
 const REGISTRATION_TRANSFORMS = new Set(['rigid', 'translation']);
-const MAX_OUTPUT_SHAPE_DIM = 4096;
+const MAX_OUTPUT_DIMENSION = 4096;
 const MAX_OUTPUT_VOXELS = 256 * 1024 * 1024;
 
 function isCloudSourceManifestFile(file = {}) {
@@ -67,7 +67,7 @@ export async function readCloudSourceManifest(files = []) {
     return { payload: null, error: 'Select exactly one voxellab.source.json calibration manifest for a cloud reconstruction action.' };
   }
   const file = sourceFiles[0];
-  if (typeof file.text !== 'function') {
+  if (!(file.text instanceof Function)) {
     return { payload: null, error: `${file.name || 'voxellab.source.json'} could not be read.` };
   }
   try {
@@ -112,9 +112,9 @@ function numberArray(value) {
   return parsed.every(Number.isFinite) ? parsed : [];
 }
 
-function outputShapeOk(value) {
+function outputDimensionsValid(value) {
   if (!Array.isArray(value) || value.length !== 3) return false;
-  if (!value.every(item => Number.isInteger(item) && item > 0 && item <= MAX_OUTPUT_SHAPE_DIM)) return false;
+  if (!value.every(item => Number.isInteger(item) && item > 0 && item <= MAX_OUTPUT_DIMENSION)) return false;
   return value.reduce((product, item) => product * item, 1) <= MAX_OUTPUT_VOXELS;
 }
 
@@ -168,14 +168,14 @@ function projectionManifestPreflightError(sourceManifest = {}, projectionCount =
     return 'voxellab.source.json seriesUID does not match the selected projection DICOM series.';
   }
   const projection = sourceManifest.projection;
-  if (!projection || typeof projection !== 'object') return 'voxellab.source.json must include a projection calibration object.';
+  if (!projection || Array.isArray(projection) || Object.getPrototypeOf(projection) !== Object.prototype) return 'voxellab.source.json must include a projection calibration object.';
   const geometry = String(projection.geometryModel || projection.geometry || '').trim();
   if (!PROJECTION_GEOMETRIES.has(geometry)) return 'voxellab.source.json projection geometry is not supported.';
   const angles = numberArray(projection.anglesDeg);
   if (angles.length !== projectionCount) {
     return `voxellab.source.json has ${angles.length} calibrated angle${angles.length === 1 ? '' : 's'} but ${projectionCount} DICOM file${projectionCount === 1 ? '' : 's'} selected.`;
   }
-  if (!outputShapeOk(projection.outputShape)) return 'voxellab.source.json projection outputShape must be [width, height, depth] positive integers.';
+  if (!outputDimensionsValid(projection["outputShape"])) return 'voxellab.source.json projection outputShape must be [width, height, depth] positive integers.';
   const spacing = numberList(projection.outputSpacingMm, 3);
   if (spacing.length !== 3 || spacing.some(value => value <= 0)) return 'voxellab.source.json projection outputSpacingMm must contain three positive numbers.';
   if (numberList(projection.firstIPP, 3).length !== 3) return 'voxellab.source.json projection firstIPP must be [x, y, z].';
@@ -190,7 +190,7 @@ function ultrasoundManifestPreflightError(sourceManifest = {}, frameCount = 0, s
     return 'voxellab.source.json seriesUID does not match the selected ultrasound DICOM series.';
   }
   const ultrasound = sourceManifest.ultrasound;
-  if (!ultrasound || typeof ultrasound !== 'object') return 'voxellab.source.json must include an ultrasound calibration object.';
+  if (!ultrasound || Array.isArray(ultrasound) || Object.getPrototypeOf(ultrasound) !== Object.prototype) return 'voxellab.source.json must include an ultrasound calibration object.';
   const mode = String(ultrasound.mode || '').trim();
   if (!ULTRASOUND_MODES.has(mode)) return 'voxellab.source.json ultrasound mode is not supported.';
   if (!ULTRASOUND_PROBE_GEOMETRIES.has(String(ultrasound.probeGeometry || '').trim())) return 'voxellab.source.json ultrasound probeGeometry is not supported.';
@@ -198,7 +198,7 @@ function ultrasoundManifestPreflightError(sourceManifest = {}, frameCount = 0, s
   if (theta.length !== 2 || theta[0] === theta[1]) return 'voxellab.source.json ultrasound thetaRangeDeg must be [min, max] with nonzero span.';
   const radius = numberList(ultrasound.radiusRangeMm, 2);
   if (radius.length !== 2 || !(radius[1] > radius[0] && radius[0] >= 0)) return 'voxellab.source.json ultrasound radiusRangeMm must be [min, max] in mm.';
-  if (!outputShapeOk(ultrasound.outputShape)) return 'voxellab.source.json ultrasound outputShape must be [width, height, depth] positive integers.';
+  if (!outputDimensionsValid(ultrasound["outputShape"])) return 'voxellab.source.json ultrasound outputShape must be [width, height, depth] positive integers.';
   const spacing = numberList(ultrasound.outputSpacingMm, 3);
   if (spacing.length !== 3 || spacing.some(value => value <= 0)) return 'voxellab.source.json ultrasound outputSpacingMm must contain three positive numbers.';
   if (numberList(ultrasound.firstIPP, 3).length !== 3) return 'voxellab.source.json ultrasound firstIPP must be [x, y, z].';
@@ -214,7 +214,7 @@ function ultrasoundManifestPreflightError(sourceManifest = {}, frameCount = 0, s
 function registrationManifestPreflightError(sourceManifest = {}, seriesUIDs = new Set()) {
   if (sourceManifest?.sourceKind !== 'registration') return 'voxellab.source.json sourceKind must be registration.';
   const registration = sourceManifest.registration;
-  if (!registration || typeof registration !== 'object') return 'voxellab.source.json must include a registration object.';
+  if (!registration || Array.isArray(registration) || Object.getPrototypeOf(registration) !== Object.prototype) return 'voxellab.source.json must include a registration object.';
   const fixed = String(registration.fixedSeriesUID || '').trim();
   const moving = String(registration.movingSeriesUID || '').trim();
   if (!fixed) return 'voxellab.source.json registration.fixedSeriesUID is required.';

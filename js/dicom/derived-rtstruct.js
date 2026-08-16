@@ -130,7 +130,7 @@ export function buildRTStructImport(meta, sourceSeries) {
       const key = String(sliceIndex);
       roisBySlice[key] = roisBySlice[key] || [];
       roisBySlice[key].push({
-        shape: 'polygon',
+        "shape": 'polygon',
         pts: polygon,
         text: roiName,
         sourceObjectUID: String(meta.SOPInstanceUID || ''),

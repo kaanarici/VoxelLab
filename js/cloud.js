@@ -102,7 +102,7 @@ function terminalCloudError(message) {
 function cloudStopMessage(signal) {
   const reason = signal?.reason;
   if (reason instanceof Error && reason.message) return reason.message;
-  if (typeof reason === 'string' && reason.trim()) return reason.trim();
+  if (reason?.constructor === String && reason.trim()) return reason.trim();
   return DEFAULT_CLOUD_STOP_MESSAGE;
 }
 
@@ -277,7 +277,7 @@ async function uploadFiles(items, jobId, onProgress, signal) {
     if (!urlResp.ok) throw new Error(`Failed to get upload URLs: ${urlResp.status}`);
     const { urls, status, error } = await urlResp.json();
     if (status === 'error') throw new Error(error || 'Failed to get upload URLs');
-    if (!urls || typeof urls !== 'object') throw new Error('Failed to get upload URLs: missing urls');
+    if (!urls || Array.isArray(urls) || Object.getPrototypeOf(urls) !== Object.prototype) throw new Error('Failed to get upload URLs: missing urls');
 
     const uploadTasks = urlBatch.map(item => async () => {
       throwIfStopped(signal);

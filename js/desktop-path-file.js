@@ -63,6 +63,7 @@ class DesktopPathFile extends DesktopPathBlob {
     this.size = size;
     this.lastModified = Number(record.lastModified || Date.now());
     this.webkitRelativePath = String(record.relativePath || '');
+    this._desktopImportId = String(record.savedImportId || '');
   }
 
   slice(start = 0, end = this.size, type = '') {

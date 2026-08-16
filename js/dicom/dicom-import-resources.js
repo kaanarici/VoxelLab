@@ -6,14 +6,14 @@
 export const DICOM_IMPORT_LIMITS = Object.freeze({
   maxFiles: 8_192,
   maxFileBytes: 256 * 1024 * 1024,
-  maxInputBytes: 512 * 1024 * 1024,
+  maxInputBytes: 2 * 1024 * 1024 * 1024,
   maxRows: 8_192,
   maxColumns: 8_192,
   maxFramesPerInstance: 4_096,
   maxDatasets: 8_192,
   maxVoxelsPerSlice: 16 * 1024 * 1024,
-  maxTotalVoxels: 32 * 1024 * 1024,
-  maxWorkingSetBytes: 512 * 1024 * 1024,
+  maxTotalVoxels: 96 * 1024 * 1024,
+  maxWorkingSetBytes: 768 * 1024 * 1024,
 });
 
 function resourceError(detail) {
@@ -47,7 +47,14 @@ function fileLabel(file, index = 0) {
 function strictPositiveInteger(meta, key, fallback) {
   const source = meta?.[key];
   const value = source == null ? fallback : (Array.isArray(source) ? source[0] : source);
-  const number = typeof value === 'number' ? value : Number(String(value).trim());
+  let number = value;
+  if (!Number.isSafeInteger(number)) {
+    if (!(value?.trim instanceof Function)) {
+      throw resourceError(`${key} must be a positive safe integer`);
+    }
+    const lexeme = value.trim();
+    number = /^[+]?[0-9]+$/.test(lexeme) ? Number(lexeme) : Number.NaN;
+  }
   if (!Number.isSafeInteger(number) || number <= 0) {
     throw resourceError(`${key} must be a positive safe integer`);
   }
@@ -57,7 +64,7 @@ function strictPositiveInteger(meta, key, fallback) {
 function viewByteLength(value) {
   if (value instanceof ArrayBuffer) return value.byteLength;
   if (ArrayBuffer.isView(value)) return value.byteLength;
-  if (typeof value !== 'string') return 0;
+  if (!(value?.charCodeAt instanceof Function)) return 0;
   // This is deliberately conservative and does not validate Base64. The
   // actual decoder still validates it before pixels are used.
   return safeMultiply(Math.ceil(value.length / 4), 3, 'inline binary byte count');
@@ -120,7 +127,7 @@ export function addDICOMActualInputBytes(totalBytes, byteLength, file, index = 0
   return total;
 }
 
-export function dicomShape(meta) {
+export function dicomDimensions(meta) {
   const rows = strictPositiveInteger(meta, 'Rows');
   const columns = strictPositiveInteger(meta, 'Columns');
   const frames = strictPositiveInteger(meta, 'NumberOfFrames', 1);
@@ -143,8 +150,8 @@ export function assertDICOMDatasetMetadata(datasets) {
     throw resourceError(`${datasets.length} image datasets exceeds the ${DICOM_IMPORT_LIMITS.maxDatasets} dataset limit`);
   }
   for (const item of datasets) {
-    const shape = dicomShape(item?.meta || item);
-    const instanceVoxels = safeMultiply(shape.voxelsPerSlice, shape.frames, 'instance voxel count');
+    const dimensions = dicomDimensions(item?.meta || item);
+    const instanceVoxels = safeMultiply(dimensions.voxelsPerSlice, dimensions.frames, 'instance voxel count');
     if (instanceVoxels > DICOM_IMPORT_LIMITS.maxTotalVoxels) {
       throw resourceError(`instance voxel count ${instanceVoxels} exceeds the ${DICOM_IMPORT_LIMITS.maxTotalVoxels} voxel limit`);
     }
@@ -156,8 +163,8 @@ export function assertDICOMSeriesWorkingSet(datasets) {
   if (datasets.length > DICOM_IMPORT_LIMITS.maxDatasets) {
     throw resourceError(`${datasets.length} image datasets exceeds the ${DICOM_IMPORT_LIMITS.maxDatasets} dataset limit`);
   }
-  const shape = dicomShape(datasets[0]?.meta || datasets[0]);
-  const totalVoxels = safeMultiply(shape.voxelsPerSlice, datasets.length, 'series voxel count');
+  const dimensions = dicomDimensions(datasets[0]?.meta || datasets[0]);
+  const totalVoxels = safeMultiply(dimensions.voxelsPerSlice, datasets.length, 'series voxel count');
   if (totalVoxels > DICOM_IMPORT_LIMITS.maxTotalVoxels) {
     throw resourceError(`series voxel count ${totalVoxels} exceeds the ${DICOM_IMPORT_LIMITS.maxTotalVoxels} voxel limit`);
   }
@@ -166,29 +173,27 @@ export function assertDICOMSeriesWorkingSet(datasets) {
   const sourceIds = new Set();
   for (let index = 0; index < datasets.length; index += 1) {
     const item = datasets[index];
-    dicomShape(item?.meta || item);
+    dicomDimensions(item?.meta || item);
     const sourceId = item?.sourceId ?? item?.file ?? `dataset:${index}`;
     if (sourceIds.has(sourceId)) continue;
     sourceIds.add(sourceId);
     retainedInputBytes = safeAdd(retainedInputBytes, itemSourceByteLength(item), 'retained source byte count');
   }
 
-  // Peak construction memory includes the full provisional Float32 volume,
-  // its possible trim copy after bad slices, retained RGBA canvas backing,
-  // one ImageData plane, a decoded native plane, and conservative DOM object
-  // overhead. This is assessed before either the Float32Array or canvases.
+  // The worker can briefly retain its parsed input while the structured clone
+  // reaches the renderer. Construction then keeps one Float32 volume, one
+  // grayscale display byte per voxel, and one decoded native plane. This is
+  // assessed before either full-volume output allocation.
   const rawVolumeBytes = safeMultiply(totalVoxels, Float32Array.BYTES_PER_ELEMENT, 'normalized raw byte count');
-  const canvasBytes = safeMultiply(totalVoxels, 4, 'canvas backing byte count');
-  const imageDataBytes = safeMultiply(shape.voxelsPerSlice, 4, 'ImageData byte count');
-  const decodedPlaneBytes = safeMultiply(shape.voxelsPerSlice, 2, 'decoded plane byte count');
-  const canvasOverhead = safeMultiply(datasets.length, 4 * 1024, 'canvas object overhead');
-  const parts = [retainedInputBytes, rawVolumeBytes, rawVolumeBytes, canvasBytes, imageDataBytes, decodedPlaneBytes, canvasOverhead];
+  const displayBytes = totalVoxels;
+  const decodedPlaneBytes = safeMultiply(dimensions.voxelsPerSlice, 2, 'decoded plane byte count');
+  const parts = [retainedInputBytes, retainedInputBytes, rawVolumeBytes, displayBytes, decodedPlaneBytes];
   let workingSetBytes = 0;
   for (const part of parts) workingSetBytes = safeAdd(workingSetBytes, part, 'DICOM working-set byte count');
   if (workingSetBytes > DICOM_IMPORT_LIMITS.maxWorkingSetBytes) {
     throw resourceError(`modeled working set ${workingSetBytes} bytes exceeds the ${DICOM_IMPORT_LIMITS.maxWorkingSetBytes} byte limit`);
   }
-  return { ...shape, totalVoxels, retainedInputBytes, workingSetBytes };
+  return { ...dimensions, totalVoxels, retainedInputBytes, workingSetBytes };
 }
 
 export function isDICOMResourceLimit(error) {

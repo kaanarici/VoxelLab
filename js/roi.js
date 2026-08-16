@@ -93,10 +93,10 @@ function sameMicroscopyScope(roi, scope) {
 // for inclusion, and accumulate statistics from the stored 8-bit slice
 // PNG data. This is the same display-domain source the hover readout
 // uses. Only the ADC branch below converts back into physical units.
-function computeStats(pts, shape) {
+function computeStats(pts, roiKind) {
   const { state: host, getRawSliceData } = state.deps;
   const series = host.manifest.series[host.seriesIdx];
-  if (shape === 'polyline') {
+  if (roiKind === 'polyline') {
     const spacing = inPlanePixelSpacing(series);
     let lengthPx = 0;
     let lengthMm = 0;
@@ -128,7 +128,7 @@ function computeStats(pts, shape) {
       ? (px, py) => CT_HU_LO + host.hrVoxels[zBase + py * W + px] * CT_HU_RANGE
       : (px, py) => raw[(py * W + px) * 4];
 
-  if (shape === 'point') {
+  if (roiKind === 'point') {
     let n = 0, sum = 0, sum2 = 0, min = Infinity, max = -Infinity;
     for (const [x, y] of pts) {
       const px = Math.max(0, Math.min(W - 1, Math.round(x)));
@@ -161,7 +161,7 @@ function computeStats(pts, shape) {
   maxY = Math.min(H - 1, Math.ceil(maxY));
 
   // Inclusion test per shape
-  const inside = shape === 'ellipse'
+  const inside = roiKind === 'ellipse'
     ? ellipseInclusion(pts)
     : polygonInclusion(pts);
 
@@ -251,7 +251,7 @@ function renderOne(svg, roi, i) {
   const g = document.createElementNS(NS, 'g');
   g.setAttribute('class', 'roi-group');
 
-  if (roi.shape === 'point') {
+  if (roi["shape"] === 'point') {
     for (const [x, y] of roi.pts) {
       const mark = document.createElementNS(NS, 'circle');
       mark.setAttribute('cx', x); mark.setAttribute('cy', y);
@@ -259,7 +259,7 @@ function renderOne(svg, roi, i) {
       mark.setAttribute('class', 'roi-shape roi-point');
       g.appendChild(mark);
     }
-  } else if (roi.shape === 'ellipse') {
+  } else if (roi["shape"] === 'ellipse') {
     const [[x1, y1], [x2, y2]] = roi.pts;
     const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
     const rx = Math.abs(x2 - x1) / 2;
@@ -269,7 +269,7 @@ function renderOne(svg, roi, i) {
     el.setAttribute('rx', rx); el.setAttribute('ry', ry);
     el.setAttribute('class', 'roi-shape');
     g.appendChild(el);
-  } else if (roi.shape === 'polyline') {
+  } else if (roi["shape"] === 'polyline') {
     const polyline = document.createElementNS(NS, 'polyline');
     polyline.setAttribute('points', roi.pts.map(p => p.join(',')).join(' '));
     polyline.setAttribute('fill', 'none');
@@ -292,11 +292,11 @@ function renderOne(svg, roi, i) {
   txt.setAttribute('text-anchor', 'start');
   txt.setAttribute('class', 'roi-label');
   const s = roi.stats || {};
-  let line = (typeof roi.label === 'string' && roi.label.trim())
-    || (typeof roi.text === 'string' && roi.text.trim())
+  let line = (roi.label?.constructor === String && roi.label.trim())
+    || (roi.text?.constructor === String && roi.text.trim())
     || `ROI ${i + 1}`;
-  if (roi.shape === 'point') line += ` · count ${Number.isFinite(s.count) ? s.count : roi.pts.length}`;
-  if (roi.shape === 'polyline') {
+  if (roi["shape"] === 'point') line += ` · count ${Number.isFinite(s.count) ? s.count : roi.pts.length}`;
+  if (roi["shape"] === 'polyline') {
     const length = Number.isFinite(s.length_mm) ? `${s.length_mm.toFixed(2)} mm` : `${Number(s.length_px || 0).toFixed(1)} px`;
     line += ` · ${length}`;
   }
@@ -353,7 +353,7 @@ function renderOne(svg, roi, i) {
 function renderPending(svg, pending) {
   const g = document.createElementNS(NS, 'g');
   g.setAttribute('class', 'roi-group roi-pending');
-  if (pending.shape === 'ellipse' && pending.pts.length === 2) {
+  if (pending["shape"] === 'ellipse' && pending.pts.length === 2) {
     const [[x1, y1], [x2, y2]] = pending.pts;
     const el = document.createElementNS(NS, 'ellipse');
     el.setAttribute('cx', (x1 + x2) / 2);
@@ -362,7 +362,7 @@ function renderPending(svg, pending) {
     el.setAttribute('ry', Math.abs(y2 - y1) / 2);
     el.setAttribute('class', 'roi-shape roi-pending-shape');
     g.appendChild(el);
-  } else if (pending.shape === 'polygon' && pending.pts.length >= 1) {
+  } else if (pending["shape"] === 'polygon' && pending.pts.length >= 1) {
     if (pending.pts.length >= 2) {
       const line = document.createElementNS(NS, 'polyline');
       line.setAttribute('points', pending.pts.map(p => p.join(',')).join(' '));
@@ -427,7 +427,7 @@ export function onROIDown(px, py) {
 
   if (state.mode === 'ellipse') {
     if (!state.pending) {
-      state.pending = { shape: 'ellipse', pts: [[px, py], [px, py]] };
+      state.pending = { "shape": 'ellipse', pts: [[px, py], [px, py]] };
     } else {
       // Second click finalizes
       state.pending.pts[1] = [px, py];
@@ -435,7 +435,7 @@ export function onROIDown(px, py) {
     }
   } else if (state.mode === 'polygon') {
     if (!state.pending) {
-      state.pending = { shape: 'polygon', pts: [[px, py]] };
+      state.pending = { "shape": 'polygon', pts: [[px, py]] };
     } else {
       state.pending.pts.push([px, py]);
     }
@@ -475,15 +475,15 @@ async function ensureCtHuVolume() {
 
 async function finalize() {
   if (!state.pending) return;
-  const { pts, shape } = state.pending;
+  const { pts, "shape": roiKind } = state.pending;
   await ensureCtHuVolume();
   if (!state.pending) return; // cancelled while the volume loaded
-  const stats = computeStats(pts, shape);
+  const stats = computeStats(pts, roiKind);
   if (!stats) { state.pending = null; state.deps.onROIChange?.(); return; }
   const list = listHere();
   list.push({
     id:    nextDrawingEntryId(list),
-    shape,
+    "shape": roiKind,
     pts:   pts.map(p => [Math.round(p[0]), Math.round(p[1])]),
     stats,
     microscopy: currentMicroscopyScope(),
@@ -500,7 +500,7 @@ function appendPointCount(px, py) {
   const point = [Math.round(px), Math.round(py)];
   let targetIndex = -1;
   for (let index = list.length - 1; index >= 0; index -= 1) {
-    if (list[index].shape === 'point' && sameMicroscopyScope(list[index], scope)) {
+    if (list[index]["shape"] === 'point' && sameMicroscopyScope(list[index], scope)) {
       targetIndex = index;
       break;
     }
@@ -517,7 +517,7 @@ function appendPointCount(px, py) {
     if (!stats) return;
     list.push({
       id: nextDrawingEntryId(list),
-      shape: 'point',
+      "shape": 'point',
       pts: [point],
       stats,
       microscopy: scope,
@@ -535,7 +535,7 @@ export function refreshROIStatsHere() {
   const list = listHere();
   if (!list.length) return;
   for (const roi of list) {
-    const fresh = computeStats(roi.pts, roi.shape);
+    const fresh = computeStats(roi.pts, roi["shape"]);
     if (fresh) roi.stats = fresh;
   }
   setHere(list);

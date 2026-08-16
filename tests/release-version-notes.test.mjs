@@ -8,10 +8,11 @@ import { extractReleaseNotes } from '../scripts/extract_release_notes.mjs';
 const packageJson = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
 const packageLock = JSON.parse(readFileSync(fileURLToPath(new URL('../package-lock.json', import.meta.url)), 'utf8'));
 const pyprojectText = readFileSync(fileURLToPath(new URL('../pyproject.toml', import.meta.url)), 'utf8');
+const indexHtml = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
 const changelog = readFileSync(fileURLToPath(new URL('../CHANGELOG.md', import.meta.url)), 'utf8');
 
 test('release version matches package metadata and tag', () => {
-  assert.equal(assertReleaseVersion({ packageJson, packageLock, pyprojectText, refName: `v${packageJson.version}` }), packageJson.version);
+  assert.equal(assertReleaseVersion({ packageJson, packageLock, pyprojectText, indexHtml, refName: `v${packageJson.version}` }), packageJson.version);
   assert.throws(
     () => assertReleaseVersion({ packageJson, packageLock, refName: 'v9.9.9' }),
     /release tag must match/,
@@ -23,6 +24,14 @@ test('release version matches package metadata and tag', () => {
       pyprojectText: pyprojectText.replace(/version\s*=\s*["'][^"']+["']/, 'version = "9.9.9"'),
     }),
     /pyproject\.toml version must match/,
+  );
+  assert.throws(
+    () => assertReleaseVersion({
+      packageJson,
+      packageLock,
+      indexHtml: indexHtml.replace(`content="${packageJson.version}"`, 'content="9.9.9"'),
+    }),
+    /browser application version must match/,
   );
 });
 

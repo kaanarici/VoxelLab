@@ -50,15 +50,16 @@
     --chrome-header-pl: 12px;   /* padding-inline-start */
     --chrome-header-pr: 8px;    /* padding-inline-end */
     --sidebar-header-left-pl: 7px;
-    --rail-left-w:  208px;      /* left series sidebar grid column */
-    --rail-right-w: 312px;      /* right details panel grid column */
+    --rail-left-min: 208px;     /* floor for left series sidebar resize */
+    --rail-left-w:  var(--rail-left-min); /* left series sidebar grid column */
+    --rail-right-w: 312px;      /* right details panel; also max left-rail width */
     --desktop-window-control-inset: var(--chrome-header-pl);
     /* Right panel sections: same horizontal inset as chrome + vertical rhythm */
     --rail-section-padding: var(--space-md) var(--chrome-header-pr) var(--space-md) var(--chrome-header-pl);
 
     /* Shadows */
     --shadow-popover: 0 0 0 1px rgba(255,255,255,0.08), 0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
-    --shadow-modal:   0 0 0 1px rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.3);
+    --shadow-modal:   0 8px 24px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.3);
 
     /* Right rail typography hierarchy (see panels.css, sidebar.css aside.right) */
     --rail-title: #a0a0a0;
@@ -210,7 +211,7 @@
     --active-bg: rgba(0,0,0,0.07);
     --danger:  #c62828;
     --shadow-popover: 0 0 0 1px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.08);
-    --shadow-modal:   0 0 0 1px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.08);
+    --shadow-modal:   0 8px 24px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.08);
 
     --rail-title: #4a4a4a;
     --rail-label: #5c5c5c;
@@ -221,7 +222,7 @@
     /* Motion/semantic tokens that don't auto-derive from a flipped base var.
        (--danger-bg/border, --abnormal-strong, --shadow-knob* track via var().) */
     --success:      #2e7d32;   /* darker so success isn't neon on light surfaces */
-    --scrim:        rgba(255, 255, 255, 0.55);
+    --scrim:        rgba(0, 0, 0, 0.28);
     --selection-bg: rgba(0, 0, 0, 0.15);
     --focus-ring:   0 0 0 2px var(--bg), 0 0 0 4px rgba(0, 0, 0, 0.25);
   }
@@ -403,6 +404,7 @@
   }
   .popover-item {
     display: flex; align-items: center; gap: var(--space-sm);
+    width: 100%; border: 0; background: transparent; font: inherit; text-align: left;
     min-height: 30px; padding: 0 var(--space-sm); font-size: var(--fs-body-lg); color: var(--text);
     cursor: pointer; white-space: nowrap;
     border-radius: var(--radius);
@@ -460,6 +462,7 @@
     .scrubber input[type=range]::-webkit-slider-thumb:active,
     .cine-speed input[type=range]:hover::-webkit-slider-thumb,
     .overlay-opacity-wrap input[type=range]:hover::-webkit-slider-thumb,
+    .mpr-tb-sl:hover::-webkit-slider-thumb,
     aside.right input[type=range]:hover::-webkit-slider-thumb,
     .ui-checkbox:hover .ui-checkbox-box,
     .icon-btn:active:not(:disabled),
@@ -509,10 +512,10 @@
   /* Before module JS runs: same layout as .left-collapsed / .right-collapsed (see index.html + shell-layout-toggles.js). */
   @media (min-width: 1101px) {
     html[data-shell-left-collapsed="true"] .app {
-      grid-template-columns: 0px 1fr 312px;
+      grid-template-columns: 0px 1fr var(--rail-right-w);
     }
     html[data-shell-right-collapsed="true"] .app {
-      grid-template-columns: 208px 1fr 0px;
+      grid-template-columns: var(--rail-left-w) 1fr 0px;
     }
     html[data-shell-left-collapsed="true"][data-shell-right-collapsed="true"] .app {
       grid-template-columns: 0px 1fr 0px;
@@ -558,15 +561,27 @@
   /* Notifications */
   /* Notification container */
   #notify-container {
-    position: fixed; bottom: var(--space-lg); right: var(--space-lg);
+    position: fixed;
+    bottom: calc(var(--space-lg) + 28px + env(safe-area-inset-bottom, 0px));
+    inset-inline-end: calc(var(--space-lg) + env(safe-area-inset-right, 0px));
+    right: auto;
     display: flex; flex-direction: column-reverse; gap: var(--space-sm);
     z-index: var(--z-toast); pointer-events: none; max-width: 380px;
+  }
+  body:has(.ask-composer:not([hidden])) #notify-container {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  .notify-live {
+    position: absolute;
+    width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap; border: 0;
   }
   /* Keep toasts clear of the open right panel (desktop only — below 1101px the
      panel is an overlay and the toast already outranks it via --z-toast). */
   @media (min-width: 1101px) {
     .app:not(.right-collapsed) ~ #notify-container {
-      right: calc(var(--rail-right-w) + var(--space-lg));
+      inset-inline-end: calc(var(--rail-right-w) + var(--space-lg) + env(safe-area-inset-right, 0px));
     }
   }
 
@@ -582,15 +597,28 @@
   }
 
   .notify-item {
+    position: relative;
     background: var(--panel); border: var(--border-w) solid var(--border);
     border-radius: var(--radius-lg); padding: var(--space-10) var(--space-14);
-    font: var(--fs-body-lg)/var(--lh-normal) system-ui, -apple-system, sans-serif;
+    font: var(--fs-body-lg)/var(--lh-normal) var(--ff-sans);
     color: var(--text); pointer-events: auto;
     box-shadow: var(--shadow-popover);
     animation: notify-in var(--dur-fast) var(--ease-smooth);
     transition: opacity var(--panel-close-dur) var(--ease-smooth), transform var(--panel-close-dur) var(--ease-smooth);
     display: flex; align-items: flex-start; gap: var(--space-10);
   }
+  .notify-item::before {
+    content: '';
+    position: absolute;
+    inset-block: 8px;
+    inset-inline-start: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--muted);
+  }
+  .notify-item[data-notify-kind="confirm"]::before { background: var(--success); }
+  .notify-item[data-notify-kind="warning"]::before { background: var(--color-attention); }
+  .notify-item[data-notify-kind="error"]::before { background: var(--danger); }
   .notify-item.exiting { opacity: 0; transform: translateX(20px); }
   .notify-item.shake { animation: notify-shake var(--shake-dur-a) var(--shake-ease); }
   .notify-body { flex: 1; min-width: 0; }
@@ -611,11 +639,11 @@
     transition: color var(--dur-quick) var(--ease-tip), background var(--dur-quick) var(--ease-tip);
     position: relative;
   }
-  /* Extend hit area to 36x36 without enlarging the visible glyph */
+  /* Extend hit area to 40x40 without enlarging the visible glyph */
   .notify-dismiss::before {
     content: '';
     position: absolute;
-    inset: -6px;
+    inset: -8px;
   }
   .notify-cmd {
     display: flex; align-items: center; gap: var(--space-2sm);
@@ -657,5 +685,13 @@
     0% { transform: translateX(-100%); }
     50% { transform: translateX(200%); }
     100% { transform: translateX(-100%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .notify-item {
+      animation: none;
+      transition: opacity var(--panel-close-dur) var(--ease-smooth);
+    }
+    .notify-item.exiting { transform: none; }
+    .notify-item.shake { animation: none; }
   }
   @keyframes spin { to { transform: rotate(360deg); } }

@@ -4,6 +4,8 @@ import { renderInspectionReadout, resolveVoxelInspection } from '../inspection-r
 import { state } from '../core/state.js';
 import { getThreeRuntime } from '../runtime/viewer-runtime.js';
 import * as THREE from './vendor-three.js';
+import { volumeHoverPointVisible } from './volume-hover-visibility.js';
+export { volumeHoverPointVisible } from './volume-hover-visibility.js';
 
 let _hideHover = () => {};
 
@@ -28,6 +30,7 @@ export function show3DHover(ev, renderer, camera) {
   const W = series.width, H = series.height, D = series.slices;
   const WH = W * H;
   const mesh = three.mesh;
+  const uniforms = mesh.material?.uniforms || {};
 
   const rect = renderer.domElement.getBoundingClientRect();
   _hoverNDC.set(
@@ -65,6 +68,7 @@ export function show3DHover(ev, renderer, camera) {
     const vy = Math.min(H - 1, Math.max(0, Math.round(ty * (H - 1))));
     const vz = Math.min(D - 1, Math.max(0, Math.round(tz * (D - 1))));
     const vi = vz * WH + vy * W + vx;
+    if (!volumeHoverPointVisible([tx, ty, tz], vi, uniforms)) continue;
 
     let normVal;
     if (hr && hr.length === W * H * D) {

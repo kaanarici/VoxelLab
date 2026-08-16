@@ -246,7 +246,7 @@ test('applyMicroscopyWorkflowRecipe restores embedded ROI results without a sepa
   resetHost(measuredHost);
   setRoiEntriesForSlice('cells_recipe', 0, [{
     id: 4,
-    shape: 'polygon',
+    'shape': 'polygon',
     pts: [[1, 1], [9, 1], [9, 7], [1, 7]],
     stats: { pixels: 48, area_mm2: 0.000006 },
   }]);
@@ -276,7 +276,7 @@ test('applyMicroscopyWorkflowRecipe rejects partial embedded ROI results before 
   resetHost(measuredHost);
   setRoiEntriesForSlice('cells_recipe', 0, [{
     id: 5,
-    shape: 'polygon',
+    'shape': 'polygon',
     pts: [[1, 1], [9, 1], [9, 7], [1, 7]],
     stats: { pixels: 48, area_mm2: 0.000006 },
   }]);
@@ -421,7 +421,7 @@ test('applyMicroscopyWorkflowRecipe replays TIFF sequence calibration before emb
   resetHost(measuredHost);
   setRoiEntriesForSlice('cells_recipe', 0, [{
     id: 9,
-    shape: 'polygon',
+    'shape': 'polygon',
     pts: [[1, 1], [9, 1], [9, 7], [1, 7]],
     stats: { pixels: 48, area_mm2: 0.000006 },
   }]);
@@ -467,7 +467,7 @@ test('applyMicroscopyWorkflowRecipe rejects mismatched embedded ROI results befo
   resetHost(measuredHost);
   setRoiEntriesForSlice('cells_recipe', 0, [{
     id: 6,
-    shape: 'polygon',
+    'shape': 'polygon',
     pts: [[1, 1], [9, 1], [9, 7], [1, 7]],
     stats: { pixels: 48, area_mm2: 0.000006 },
   }]);

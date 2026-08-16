@@ -11,7 +11,7 @@ for clinical use.
 ## Requirements
 
 - Node.js 22.12.0
-- Python 3.11 or newer
+- Python 3.13 for local tooling (setup accepts 3.11+; the Modal image uses 3.11)
 - A Cloudflare account with R2 enabled
 - A Modal account
 
@@ -39,7 +39,7 @@ Example CORS policy:
 ```json
 [
   {
-    "AllowedOrigins": ["http://127.0.0.1:8000", "https://viewer.example.com"],
+    "AllowedOrigins": ["http://127.0.0.1:8000", "http://localhost:8000", "https://viewer.example.com"],
     "AllowedMethods": ["GET", "HEAD", "PUT"],
     "AllowedHeaders": ["Content-Type"],
     "ExposeHeaders": ["ETag"],
@@ -48,7 +48,10 @@ Example CORS policy:
 ]
 ```
 
-Use the narrowest origins and credentials that fit your deployment.
+Use the narrowest origins and credentials that fit your deployment. The local
+server binds `127.0.0.1`. `http://localhost:8000` is a different CORS origin —
+include both if you open the viewer that way. The desktop app origin is
+`voxellab://app`; add it if you process from Electron.
 
 ## Configure Local Secrets
 
@@ -65,12 +68,20 @@ R2_PUBLIC_URL=https://<public-r2-host>
 MODAL_WEBHOOK_BASE=https://<modal-deployment-base>
 MODAL_AUTH_TOKEN=<long-random-token>
 TRUSTED_UPLOAD_ORIGINS=https://<account-id>.r2.cloudflarestorage.com
+VIEWER_CLOUD_PROCESSING=true
 ```
 
+`VIEWER_CLOUD_PROCESSING=true` is required for the in-app **Process CT/MR on
+cloud GPU** action. Filling Modal and R2 URLs is not enough: committed
+`config.json` keeps cloud processing off. You can also enable it later in
+**Cloud settings** (Upload study → Advanced, or the desktop menu).
+
 `TRUSTED_UPLOAD_ORIGINS` means the exact HTTPS origins allowed in returned
-presigned PUT URLs, not browser origins. The local server derives the R2 S3
-origin from `R2_ENDPOINT` automatically. Desktop/static deployments must set
-it explicitly. Presigned URLs cannot use an R2 public custom domain.
+presigned PUT URLs, not browser origins. Use the R2 S3 API host
+(`https://<account-id>.r2.cloudflarestorage.com`), never an `r2.dev` or
+custom-domain public URL. The local server derives that S3 origin from
+`R2_ENDPOINT` automatically. Desktop/static deployments must set it
+explicitly. Presigned URLs cannot use an R2 public custom domain.
 
 The bucket CORS `AllowedOrigins` list has the separate meaning shown above: it
 contains browser viewer origins such as `http://127.0.0.1:8000`.
@@ -91,14 +102,26 @@ other values stop deployment.
 
 ## Configure Modal
 
+Log in once:
+
+```bash
+. .venv/bin/activate
+modal login
+```
+
 Create a Modal secret named by `MRI_VIEWER_MODAL_R2_SECRET`. The default name is
 `r2-creds`. It must provide `R2_ENDPOINT`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_UPLOAD_BUCKET`,
 `R2_RESULTS_BUCKET`, `R2_PUBLIC_URL`, and `MODAL_AUTH_TOKEN` to
-`python/modal_app.py`. Then deploy:
+`python/modal_app.py`.
+
+Export `.env` into the current shell before deploy. `python/modal_app.py` reads
+process environment at import time and does not load `.env` itself:
 
 ```bash
-. .venv/bin/activate
+set -a
+. ./.env
+set +a
 modal deploy python/modal_app.py
 ```
 
@@ -121,7 +144,9 @@ PY
 ```
 
 The check starts one bounded GPU container and performs `HeadBucket` against
-both buckets; it does not upload, modify, or process study data.
+both buckets; it does not upload, modify, or process study data. It also
+confirms CUDA and `TotalSegmentator` on the Modal image. A local
+`npm run setup -- --pipeline` install does not include TotalSegmentator.
 
 Record the deployed endpoint base as `MODAL_WEBHOOK_BASE`, then run the local
 configuration preflight:

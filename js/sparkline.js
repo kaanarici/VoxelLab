@@ -5,6 +5,7 @@
 
 import { $ } from './dom.js';
 import { state } from './core/state.js';
+import { readImageByteData } from './overlay/overlay-data.js';
 
 function barColor(alpha) {
   const isLight = document.documentElement.classList.contains('light');
@@ -29,7 +30,7 @@ function histogramBandStroke(isLight) {
 let getAnnotatedSlices = () => new Set();
 
 export function initSparkline(hook) {
-  if (typeof hook === 'function') getAnnotatedSlices = hook;
+  if (hook instanceof Function) getAnnotatedSlices = hook;
 }
 
 // Shape: persistent offscreen sparkline base, e.g. 640x44 px at DPR=2.
@@ -155,10 +156,8 @@ export function drawSparkline() {
 }
 
 // Per-slice intensity histogram with the current window/level band
-// overlaid. Only renders in 2D mode. Re-uses a scratch canvas (stored
-// as a module-level field) to avoid allocating per frame.
-let _scratch = null;
-const _histCache = { seriesIdx: -1, sliceIdx: -1, bins: null, max: 0 };
+// overlaid. Only renders in 2D mode.
+const _histCache = { image: null, width: 0, height: 0, bins: null, max: 0 };
 
 /** Returns true when the histogram canvas should be drawn; updates empty placeholder otherwise. */
 export function syncHistogramPanel() {
@@ -211,31 +210,28 @@ export function drawHistogram() {
   let bins, max;
   const cacheHit =
     _histCache.bins &&
-    _histCache.seriesIdx === state.seriesIdx &&
-    _histCache.sliceIdx === state.sliceIdx;
+    _histCache.image === img &&
+    _histCache.width === series.width &&
+    _histCache.height === series.height;
 
   if (cacheHit) {
     bins = _histCache.bins;
     max = _histCache.max;
   } else {
-    if (!_scratch) _scratch = document.createElement('canvas');
-    _scratch.width = series.width;
-    _scratch.height = series.height;
-    const sx = _scratch.getContext('2d', { willReadFrequently: true });
-    sx.drawImage(img, 0, 0);
-    const data = sx.getImageData(0, 0, series.width, series.height).data;
+    const data = readImageByteData(img, series.width, series.height);
+    if (!data) return;
 
     bins = new Uint32Array(256);
-    for (let p = 0; p < data.length; p += 4) {
-      const v = data[p];
+    for (const v of data) {
       if (v < 4) continue;  // skip pure background so it doesn't dominate
       bins[v]++;
     }
     max = 0;
     for (let i = 0; i < 256; i++) if (bins[i] > max) max = bins[i];
 
-    _histCache.seriesIdx = state.seriesIdx;
-    _histCache.sliceIdx = state.sliceIdx;
+    _histCache.image = img;
+    _histCache.width = series.width;
+    _histCache.height = series.height;
     _histCache.bins = bins;
     _histCache.max = max;
   }

@@ -15,7 +15,9 @@ export function showRenameDialog(project) {
 
   card.innerHTML = `
     <div id="project-rename-title" class="project-rename-title">Rename folder</div>
-    <input type="text" class="project-rename-dialog-input" value="${escapeHtml(project.name)}" />
+    <label class="project-rename-label" for="project-rename-input">Folder name</label>
+    <input type="text" id="project-rename-input" class="project-rename-dialog-input" value="${escapeHtml(project.name)}" aria-describedby="project-rename-error" />
+    <div id="project-rename-error" class="project-rename-error" role="status"></div>
     <div class="project-rename-actions">
       <button type="button" class="annot-btn rename-cancel">Cancel</button>
       <button type="button" class="annot-btn primary rename-save">Save</button>
@@ -33,6 +35,14 @@ export function showRenameDialog(project) {
   const close = () => { releaseFocus(overlay); overlay.remove(); };
   const save = async () => {
     const newName = input.value.trim();
+    if (!newName) {
+      input.setAttribute('aria-invalid', 'true');
+      card.querySelector('.project-rename-error').textContent = 'Enter a folder name.';
+      input.focus();
+      return;
+    }
+    input.removeAttribute('aria-invalid');
+    card.querySelector('.project-rename-error').textContent = '';
     const renamed = newName && newName !== project.name;
     if (renamed) {
       await renameProject(project.id, newName);
@@ -48,11 +58,16 @@ export function showRenameDialog(project) {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       void save();
     }
-    if (e.key === 'Escape') close();
   });
 }

@@ -10,7 +10,7 @@ try {
   throw new Error(`Electron runtime is not installed correctly: ${error.message}`);
 }
 
-if (typeof electronPath !== 'string' || !existsSync(electronPath) || !statSync(electronPath).isFile()) {
+if (electronPath?.constructor !== String || !existsSync(electronPath) || !statSync(electronPath).isFile()) {
   throw new Error(`Electron runtime path is missing or invalid: ${electronPath || '(empty)'}`);
 }
 

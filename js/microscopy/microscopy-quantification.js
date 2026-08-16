@@ -89,7 +89,7 @@ export function pixelwiseColocalization(planeA, planeB, {
   const ta = Number(thresholdA);
   const tb = Number(thresholdB);
   if (!Number.isFinite(ta) || !Number.isFinite(tb) || ta < 0 || tb < 0) return fail('invalid_threshold');
-  if (mask != null && typeof mask !== 'function') return fail('invalid_mask');
+  if (mask != null && !(mask instanceof Function)) return fail('invalid_mask');
   let n = 0;
   let meanA = 0, meanB = 0, varianceA = 0, varianceB = 0, covariance = 0;
   let aboveA = 0, aboveB = 0, coincidentA = 0, coincidentB = 0;

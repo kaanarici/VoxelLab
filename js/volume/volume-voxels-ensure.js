@@ -3,11 +3,13 @@
 
 import { state } from '../core/state.js';
 import { createImageBitmapBatch } from '../image-bitmap-batch.js';
+import { readImageByteData } from '../overlay/overlay-data.js';
 import { ensureActiveOverlayVolumes } from '../overlay/overlay-volumes.js';
 import { setVoxelCache } from '../runtime/viewer-runtime.js';
 import { syncViewerRuntimeSession } from '../runtime/viewer-session.js';
 import { touchLocalRawVolume } from '../local-raw-volume-cache.js';
 import { seriesVariantKey } from '../series/series-identity.js';
+import { stackHasLocalByteSlices } from '../series/local-byte-slice.js';
 import { hasDenseLoadedImages, workerFlattenAvailable } from './volume-image-readiness.js';
 import { flattenImageBitmapsInWorker } from './volume-worker-client.js';
 
@@ -49,10 +51,11 @@ export async function tryFlattenVoxelsInWorker() {
     touchLocalRawVolume(series.slug);
     return false;
   }
+  const sourceStack = state.imgs;
+  if (stackHasLocalByteSlices(sourceStack, series.slices)) return false;
 
   if (!workerFlattenAvailable()) return false;
   const W = series.width, H = series.height, D = series.slices;
-  const sourceStack = state.imgs;
   if (!hasDenseLoadedImages(sourceStack, D)) return false;
   const requestId = state.selectRequestId;
   const viewerSession = state.viewerSession;
@@ -138,15 +141,10 @@ export function ensureVoxels() {
     for (let i = 0; i < localRaw.length; i++) voxels[i] = Math.max(0, Math.min(255, Math.round(localRaw[i] * 255)));
   } else {
     if (!hasDenseLoadedImages(state.imgs, D)) return false;
-    const tmp = document.createElement('canvas');
-    tmp.width = W; tmp.height = H;
-    const tctx = tmp.getContext('2d', { willReadFrequently: true });
     for (let z = 0; z < D; z++) {
-      tctx.drawImage(state.imgs[z], 0, 0, W, H);
-      const data = tctx.getImageData(0, 0, W, H).data;
-      for (let i = 0, p = z * W * H; i < data.length; i += 4, p++) {
-        voxels[p] = data[i];
-      }
+      const bytes = readImageByteData(state.imgs[z], W, H);
+      if (!bytes) return false;
+      voxels.set(bytes, z * W * H);
     }
   }
   setVoxelCache(voxels, key);

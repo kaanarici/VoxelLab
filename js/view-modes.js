@@ -5,7 +5,6 @@ import { THREE_D_PRESETS, CT_WINDOWS } from './core/constants.js';
 import { isMprActive, is3dActive } from './core/mode-flags.js';
 import { drawMPR } from './slice-view.js';
 import {
-  sync3DScrubber,
   updateUniforms,
   ensureThree,
   setThreeDView,
@@ -23,13 +22,12 @@ import {
 import { zoomToFit } from './shell/viewport.js';
 import { updateClipReadouts } from './clip-readouts.js';
 import { syncPanelRangeFills } from './panel-range-fills.js';
-import { canUseMpr3D, capabilityBlockReason } from './series/series-capabilities.js';
+import { canUseMpr3D } from './series/series-capabilities.js';
 import { showAnatomyLabels, setShowAnatomyLabels } from './atlas/atlas-prefs.js';
 import { setAtlas2DActive } from './atlas/atlas-2d.js';
 import { ensureOverlayStack } from './overlay/overlay-stack.js';
 import { subscribe } from './core/state.js';
 import { seriesIdentityKey } from './series/series-identity.js';
-import { notify } from './notify.js';
 import { syncAskModeAfterViewChange } from './ask-mode.js';
 import { syncHistogramPanel } from './sparkline.js';
 import { getThreeRuntime } from './runtime/viewer-runtime.js';
@@ -39,11 +37,11 @@ import { updateScaleBar } from './overlay/scale-bar.js';
 import { updateThreeDViewLabels } from './shell/viewport.js';
 import { deactivate2dAuthoringTools } from './roi/two-d-tools.js';
 import { setSpinnerPending } from './spinner.js';
+import { notify } from './notify.js';
 import {
   applyViewerPreset,
   setClipRange,
   syncMprSliceIndex,
-  setSliceIndex,
   setViewMode as applyViewModeState,
 } from './core/state/viewer-commands.js';
 
@@ -148,7 +146,7 @@ export function initAnatomyLabels() {
 }
 
 function normalizeSeriesForPreset(seriesOrSlug) {
-  if (typeof seriesOrSlug === 'string') return { slug: seriesOrSlug };
+  if (seriesOrSlug?.constructor === String) return { slug: seriesOrSlug };
   return seriesOrSlug || {};
 }
 
@@ -255,12 +253,25 @@ export async function enter3D() {
   const series = state.manifest.series[state.seriesIdx];
   const requestId = state.selectRequestId;
   const seriesKey = seriesIdentityKey(series, state.manifest);
-  const maxSlice = series.slices - 1;
-  setSliceIndex(maxSlice, series);
   setClipRange([0, 0, 0], [1, 1, 1]);
 
   applyThreeDPresetForSeries(series);
-  await ensureThree();
+  try {
+    await ensureThree();
+  } catch {
+    const currentSeries = state.manifest.series[state.seriesIdx];
+    const requestStillCurrent = state.selectRequestId === requestId
+      && seriesIdentityKey(currentSeries, state.manifest) === seriesKey;
+    if (requestStillCurrent && (state.mode === '3d' || state.mode === 'mpr3d')) {
+      setMode(state.mode === 'mpr3d' ? 'mpr' : '2d');
+      notify('3D rendering is unavailable on this system. Returned to a supported view.', {
+        id: 'three-renderer-unavailable',
+        kind: 'warning',
+      });
+    }
+    endPerfTrace('enter-3d', { failed: true });
+    return;
+  }
   const currentSeries = state.manifest.series[state.seriesIdx];
   if (
     state.selectRequestId !== requestId
@@ -281,7 +292,6 @@ export async function enter3D() {
       syncThreeSurfaceState(series);
     });
   }
-  sync3DScrubber();
   updateUniforms();
   updateClipReadouts();
 
@@ -333,10 +343,7 @@ window.addEventListener('voxellab:relayout', refitViewerLayout);
 
 export function toggle3D() {
   const cur = state.manifest.series[state.seriesIdx];
-  if (!canUseMpr3D(cur)) {
-    notify(capabilityBlockReason(cur));
-    return;
-  }
+  if (!canUseMpr3D(cur)) return;
 
   if (state.mode === 'mpr3d') {
     setMode('mpr');
@@ -353,10 +360,7 @@ export function toggle3D() {
 
 export function toggleMPR() {
   const cur = state.manifest.series[state.seriesIdx];
-  if (!canUseMpr3D(cur)) {
-    notify(capabilityBlockReason(cur));
-    return;
-  }
+  if (!canUseMpr3D(cur)) return;
 
   if (state.mode === 'mpr3d') {
     setMode('3d');

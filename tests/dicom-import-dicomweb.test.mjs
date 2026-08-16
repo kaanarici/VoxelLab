@@ -90,7 +90,7 @@ test('importDicomwebSeries imports an enhanced multi-frame CT series through the
   assert.equal(result.entry.reconstructionCapability, 'display-volume');
   assert.deepEqual(result.entry.firstIPP, [0, 0, 0]);
   assert.deepEqual(result.entry.lastIPP, [0, 0, 1]);
-  assert.equal(result.sliceCanvases.length, 2);
+  assert.equal(result.sliceBytes.length, 2);
   assert.equal(result.rawVolume.length, 8);
   assert.equal(calls[0].headers.Authorization, 'Bearer secret');
 });
@@ -134,7 +134,7 @@ test('importDicomwebSeries keeps ultrasound cine as 2D-only image stack', async 
   assert.equal(result.entry.geometryKind, 'imageStack');
   assert.equal(result.entry.reconstructionCapability, '2d-only');
   assert.equal(result.entry.renderability, '2d');
-  assert.equal(result.sliceCanvases.length, 3);
+  assert.equal(result.sliceBytes.length, 3);
 });
 
 test('importDicomwebSeries rejects missing connection details', async () => {
@@ -219,5 +219,5 @@ test('importDicomwebSeries reuses resumable DICOMweb session cache across retrie
   assert.equal(frameCalls, 2);
   assert.equal(first.entry.geometryKind, 'volumeStack');
   assert.equal(second.entry.geometryKind, 'volumeStack');
-  assert.equal(second.sliceCanvases.length, 2);
+  assert.equal(second.sliceBytes.length, 2);
 });

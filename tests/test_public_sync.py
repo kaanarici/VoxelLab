@@ -127,6 +127,7 @@ def test_public_export_preserves_desktop_release_proof_files(tmp_path):
     assert not (export_dir / "scripts" / "sync_public_repo.py").exists()
     assert not (export_dir / "MISSION.md").exists()
     assert not (export_dir / "plans").exists()
+    assert not (export_dir / "tests" / "documentation-check.test.mjs").exists()
     sync_public_repo.assert_public_export_clean(export_dir)
 
 

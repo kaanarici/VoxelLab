@@ -39,6 +39,16 @@ function inlineSvgExportStyles(source, clone) {
   });
   clone.querySelectorAll('.roi-del-bg,.roi-del-x,.roi-del-hit,.m-del-bg,.m-del-x,.m-del-hit')
     .forEach(node => node.remove());
+  clone.querySelectorAll('.angle-group .m-line')
+    .forEach((node) => {
+      node.style.setProperty('stroke-width', '3px');
+      node.style.setProperty('stroke-linecap', 'round');
+    });
+  clone.querySelectorAll('.angle-group path')
+    .forEach((node) => {
+      node.style.setProperty('stroke', '#fff');
+      node.style.setProperty('stroke-width', '2px');
+    });
 }
 
 async function compose2DScreenshotCanvas() {

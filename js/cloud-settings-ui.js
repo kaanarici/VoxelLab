@@ -82,7 +82,7 @@ function wireCloudSettingsModal() {
       const settings = await saveCloudSettings(payloadFromForm());
       await refreshRuntimeCloud();
       applySettingsToForm(settings);
-      notify('Cloud settings saved.', { duration: 3000 });
+      notify('Cloud settings saved.');
     } catch (error) {
       setStatus(error?.message || 'Cloud settings could not be saved.', 'error');
     }
@@ -93,7 +93,7 @@ function wireCloudSettingsModal() {
       const settings = await saveCloudSettings(payloadFromForm({ clearModalAuthToken: true, modalAuthToken: '' }));
       await refreshRuntimeCloud();
       applySettingsToForm(settings);
-      notify('Saved Modal token removed.', { duration: 3000 });
+      notify('Saved Modal token removed.');
     } catch (error) {
       setStatus(error?.message || 'Saved token could not be removed.', 'error');
     }

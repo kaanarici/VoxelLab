@@ -1,5 +1,5 @@
 // Series sort options and ordering helpers shared by tree-render (row layout,
-// study-type grouping) and context-menus (sort popover). DOM-free.
+// modality grouping) and context-menus (sort popover). DOM-free.
 
 import { state } from '../core/state.js';
 import { syncSeriesIdxForActiveSlug } from '../core/state/viewer-commands.js';
@@ -7,7 +7,7 @@ import { syncSeriesIdxForActiveSlug } from '../core/state/viewer-commands.js';
 export const SORT_POPOVER_OPTIONS = [
   { label: 'Name A→Z', key: 'name-asc' },
   { label: 'Name Z→A', key: 'name-desc' },
-  { label: 'Study type', key: 'study-type' },
+  { label: 'Modality', key: 'study-type' },
   { label: 'Slices ↑', key: 'slices-asc' },
   { label: 'Slices ↓', key: 'slices-desc' },
 ];
@@ -34,9 +34,19 @@ export function saveSidebarSort(key) {
   }
 }
 
-// DICOM modality code → display label. Non-obvious codes only; self-explanatory
-// codes (CT, MR, US, etc.) pass through. Example: { PT: 'PET', CR: 'X-Ray' }
-const MODALITY_LABEL = { PT: 'PET', NM: 'Nuclear Medicine', CR: 'X-Ray', DX: 'X-Ray', XA: 'Angiography' };
+// DICOM modality code → display label. Self-explanatory codes (CT, MR) pass
+// through. OT is DICOM Other and the NIfTI fallback; MIC is the local
+// microscopy series flag, not a DICOM code.
+const MODALITY_LABEL = {
+  PT: 'PET',
+  NM: 'Nuclear Medicine',
+  CR: 'X-Ray',
+  DX: 'X-Ray',
+  XA: 'Angiography',
+  US: 'Ultrasound',
+  OT: 'Other',
+  MIC: 'Microscopy',
+};
 
 export function studyType(s) {
   const mod = (s.modality || '').toUpperCase();

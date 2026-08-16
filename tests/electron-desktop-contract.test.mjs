@@ -30,6 +30,7 @@ const {
   saveCloudSettings,
 } = await import('../electron/main/cloud-settings.js');
 const {
+  LATEST_RELEASE_URL,
   isTrustedExternalUrl,
 } = await import('../electron/main/external-urls.js');
 const {
@@ -59,6 +60,7 @@ const {
 } = await import('../electron/main/launch-paths.js');
 const {
   handleWindowsSquirrelEvent,
+  windowsFileAssociationCleanupCommands,
   windowsFileAssociationCommands,
 } = await import('../electron/main/windows-file-associations.js');
 const {
@@ -67,6 +69,12 @@ const {
   rememberRecentDocuments,
   removeRecentDocuments,
 } = await import('../electron/main/recent-documents.js');
+const {
+  readSavedImports,
+  rememberSavedImport,
+  removeSavedImports,
+  savedImportId,
+} = await import('../electron/main/saved-imports.js');
 
 function waitForConversionStatus(manager, id, expected) {
   const statuses = new Set(Array.isArray(expected) ? expected : [expected]);
@@ -170,6 +178,21 @@ test('desktop open payload separates supported and unsupported paths', () => {
   assert.deepEqual(payload.supported.map(item => item.name), ['scan.dcm', 'cells.roi', 'cells-rois.zip']);
   assert.deepEqual(payload.convertible.map(item => item.name), ['cells.czi', 'cells.lsm']);
   assert.deepEqual(payload.unsupported.map(item => item.reason), ['unsupported_extension', 'folder_empty_or_unsupported']);
+});
+
+test('desktop open payload carries only an opaque saved-import id into File objects', () => {
+  const payload = openPathsPayload([{
+    path: '/study/scan.dcm',
+    size: 12,
+    lastModified: 42,
+    savedImportId: 'import-0123456789abcdef01234567',
+  }]);
+  const file = desktopFileFromRecord(payload.supported[0], {
+    readFileRange: async () => ({ bytes: new ArrayBuffer(0) }),
+  });
+
+  assert.equal(file._desktopImportId, 'import-0123456789abcdef01234567');
+  assert.equal(file.path, '/study/scan.dcm');
 });
 
 test('desktop folder import expands folders into supported and convertible files', async () => {
@@ -309,7 +332,7 @@ test('desktop folder OME-Zarr records parse through the browser importer', async
   }));
   await fs.writeFile(path.join(level, '.zarray'), JSON.stringify({
     zarr_format: 2,
-    shape: [1, 2, 2],
+    "shape": [1, 2, 2],
     chunks: [1, 2, 2],
     dtype: '|u1',
     compressor: null,
@@ -485,7 +508,9 @@ test('desktop static protocol resolves only bundled app assets', () => {
 });
 
 test('desktop external URL policy only trusts project documentation HTTPS links', () => {
+  assert.equal(LATEST_RELEASE_URL, 'https://github.com/kaanarici/VoxelLab/releases/latest');
   assert.equal(isTrustedExternalUrl('https://github.com/kaanarici/VoxelLab'), true);
+  assert.equal(isTrustedExternalUrl(LATEST_RELEASE_URL), true);
   assert.equal(isTrustedExternalUrl('https://github.com/kaanarici/VoxelLab/issues'), true);
   assert.equal(isTrustedExternalUrl('http://github.com/kaanarici/VoxelLab'), false);
   assert.equal(isTrustedExternalUrl('https://github.com/other/VoxelLab'), false);
@@ -499,9 +524,9 @@ test('desktop packaged manifest fallback stays empty and local-first', () => {
 test('desktop Windows Squirrel hooks register file associations for open-with', () => {
   const exePath = 'C:\\Users\\researcher\\AppData\\Local\\VoxelLab\\app-1.0.0\\VoxelLab.exe';
   const commands = windowsFileAssociationCommands(exePath);
-  assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.dcm')));
-  assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.roi')));
-  assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.sr')));
+  assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.dcm\\OpenWithProgids')));
+  assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.roi\\OpenWithProgids')));
+  assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.sr\\OpenWithProgids')));
   assert.equal(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.zip')), false);
   assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.czi')));
   assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.oib')));
@@ -509,8 +534,60 @@ test('desktop Windows Squirrel hooks register file associations for open-with', 
   assert.ok(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.lsm')));
   assert.equal(commands.some(([, args]) => args.join(' ').includes('HKCU\\Software\\Classes\\.gz')), false);
   assert.ok(commands.some(([, args]) => args.join(' ').includes('"C:\\Users\\researcher\\AppData\\Local\\VoxelLab\\app-1.0.0\\VoxelLab.exe" "%1"')));
+  assert.deepEqual(
+    commands.find(([, args]) => args.includes('HKCU\\Software\\Classes\\.dcm\\OpenWithProgids')),
+    ['reg.exe', [
+      'add',
+      'HKCU\\Software\\Classes\\.dcm\\OpenWithProgids',
+      '/v',
+      'VoxelLab.dicom',
+      '/t',
+      'REG_NONE',
+      '/f',
+    ]],
+  );
+  assert.equal(
+    commands.some(([, args]) => args[0] === 'add'
+      && args[1] === 'HKCU\\Software\\Classes\\.dcm'
+      && args.includes('/ve')),
+    false,
+  );
+  assert.equal(
+    commands.filter(([, args]) => args[0] === 'add'
+      && args[1] === 'HKCU\\Software\\Classes\\VoxelLab.dicom').length,
+    1,
+  );
+
+  const cleanupCommands = windowsFileAssociationCleanupCommands();
+  assert.deepEqual(
+    cleanupCommands.find(([, args]) => args.includes('HKCU\\Software\\Classes\\.dcm\\OpenWithProgids')),
+    ['reg.exe', [
+      'delete',
+      'HKCU\\Software\\Classes\\.dcm\\OpenWithProgids',
+      '/v',
+      'VoxelLab.dicom',
+      '/f',
+    ]],
+  );
+  assert.equal(
+    cleanupCommands.some(([, args]) => args[0] === 'delete'
+      && args[1] === 'HKCU\\Software\\Classes\\.dcm'
+      && !args.includes('/v')),
+    false,
+  );
 
   const spawned = [];
+  const registryQueries = [];
+  const queryRegistry = (command, args) => {
+    registryQueries.push([command, args]);
+    if (args[1] === 'HKCU\\Software\\Classes\\.dcm') {
+      return { status: 0, stdout: '\n    (Default)    REG_SZ    VoxelLab.dicom\n' };
+    }
+    if (args[1] === 'HKCU\\Software\\Classes\\.roi') {
+      return { status: 0, stdout: '\n    (Default)    REG_SZ    OtherViewer.roi\n' };
+    }
+    return { status: 1, stdout: '' };
+  };
   const handled = handleWindowsSquirrelEvent(
     ['VoxelLab.exe', '--squirrel-install'],
     exePath,
@@ -519,10 +596,40 @@ test('desktop Windows Squirrel hooks register file associations for open-with', 
       return { unref() {} };
     },
     'win32',
+    queryRegistry,
   );
   assert.equal(handled, true);
   assert.ok(spawned.some(([command]) => command === 'reg.exe'));
   assert.ok(spawned.some(([, args]) => args.includes('--createShortcut')));
+  assert.ok(registryQueries.some(([command, args]) => command === 'reg.exe'
+    && args.join(' ') === 'query HKCU\\Software\\Classes\\.dcm /ve'));
+  assert.ok(spawned.some(([, args]) => args.join(' ')
+    === 'delete HKCU\\Software\\Classes\\.dcm /ve /f'));
+  assert.equal(spawned.some(([, args]) => args.join(' ')
+    === 'delete HKCU\\Software\\Classes\\.roi /ve /f'), false);
+  assert.equal(spawned.some(([, args]) => args.join(' ')
+    === 'delete HKCU\\Software\\Classes\\.nii /ve /f'), false);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    assert.equal(handleWindowsSquirrelEvent(
+      ['VoxelLab.exe', '--squirrel-uninstall'],
+      exePath,
+      (command, args) => {
+        spawned.push([command, args]);
+        return { unref() {} };
+      },
+      'win32',
+      queryRegistry,
+    ), true);
+  }
+  assert.ok(spawned.some(([, args]) => args.includes('--removeShortcut')));
+  assert.throws(() => handleWindowsSquirrelEvent(
+    ['VoxelLab.exe', '--squirrel-install'],
+    exePath,
+    () => ({ unref() {} }),
+    'win32',
+    () => ({ status: null, stdout: '', error: new Error('registry command unavailable') }),
+  ), /registry command unavailable/);
   assert.equal(handleWindowsSquirrelEvent(['VoxelLab.exe'], exePath, () => {}, 'darwin'), false);
 });
 
@@ -544,9 +651,11 @@ test('desktop IPC contract exposes only named bridge channels', () => {
     'openRecentPath',
     'readFileRange',
     'recentDocumentsChanged',
+    'removeImportedSeries',
     'rendererReady',
     'revealPath',
     'saveCloudSettings',
+    'saveImportedSeries',
     'startConversionJob',
     'windowState',
     'windowStateChanged',
@@ -948,6 +1057,45 @@ test('desktop recent documents persist opened files and folders without duplicat
   assert.deepEqual(await clearRecentDocuments(appLike, { storePath }), []);
 });
 
+test('desktop saved imports are deterministic records removable by opaque id', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-saved-imports-'));
+  const storePath = path.join(root, 'saved-imports.json');
+  const appLike = { getPath: () => root };
+  const firstPaths = ['/archive/Seri8/1001.dcm', '/archive/Seri8/1000.dcm'];
+  const first = await rememberSavedImport(appLike, firstPaths, {
+    storePath,
+    now: Date.parse('2026-01-01T00:00:00Z'),
+  });
+  assert.equal(first.record.id, savedImportId(firstPaths));
+  assert.deepEqual(first.record.paths, firstPaths);
+
+  const repeated = await rememberSavedImport(appLike, firstPaths.slice().reverse(), {
+    storePath,
+    now: Date.parse('2026-01-02T00:00:00Z'),
+  });
+  assert.equal(repeated.record.id, first.record.id);
+  assert.equal(repeated.records.length, 1);
+  assert.deepEqual((await readSavedImports(appLike, { storePath })).map(record => record.id), [first.record.id]);
+  assert.deepEqual(await removeSavedImports(appLike, [first.record.id], { storePath }), []);
+});
+
+test('desktop saved imports remove a requested batch with one persisted result', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-saved-import-batch-'));
+  const storePath = path.join(root, 'saved-imports.json');
+  const appLike = { getPath: () => root };
+  const first = await rememberSavedImport(appLike, ['/archive/first.dcm'], { storePath });
+  const second = await rememberSavedImport(appLike, ['/archive/second.dcm'], { storePath });
+  const third = await rememberSavedImport(appLike, ['/archive/third.dcm'], { storePath });
+
+  const remaining = await removeSavedImports(appLike, [first.record.id, third.record.id], { storePath });
+
+  assert.deepEqual(remaining.map(record => record.id), [second.record.id]);
+  assert.deepEqual(
+    (await readSavedImports(appLike, { storePath })).map(record => record.id),
+    [second.record.id],
+  );
+});
+
 test('desktop launch parser ignores app bootstrap args and keeps opened file paths', () => {
   const root = path.resolve('/tmp/voxellab');
   const image = path.join(root, 'sample.ome.tif');
@@ -981,7 +1129,10 @@ test('desktop launch parser preserves native Windows absolute and relative paths
   assert.deepEqual(
     launchPathsFromArgv([
       'VoxelLab.exe',
+      '--inspect=9229',
+      '--user-data-dir=C:\\Users\\researcher\\VoxelLab Profile',
       'C:\\Studies\\scan.dcm',
+      'c:\\studies\\SCAN.dcm',
       'D:/Microscopy/cells.ome.tif',
       'relative\\series\\IM0001',
     ], {
@@ -993,5 +1144,24 @@ test('desktop launch parser preserves native Windows absolute and relative paths
       'D:\\Microscopy\\cells.ome.tif',
       'C:\\Users\\researcher\\relative\\series\\IM0001',
     ],
+  );
+});
+
+test('desktop launch parser preserves Windows UNC and extended-length paths', () => {
+  const unc = '\\\\server\\share\\研究\\cells with space.ome.tif';
+  const extended = '\\\\?\\C:\\Very Long Study\\患者\\scan.dcm';
+  const extendedUnc = '\\\\?\\UNC\\server\\share\\long series\\IM0001';
+
+  assert.deepEqual(
+    launchPathsFromArgv([
+      'VoxelLab.exe',
+      unc,
+      extended,
+      extendedUnc,
+    ], {
+      cwd: 'C:\\Users\\researcher',
+      rootDir: 'C:\\Program Files\\VoxelLab\\resources\\app',
+    }),
+    [unc, extended, extendedUnc],
   );
 });

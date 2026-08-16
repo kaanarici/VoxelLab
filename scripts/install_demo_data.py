@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
+import re
 import shutil
 import sys
 import tempfile
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -19,6 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON_ROOT = ROOT / "python"
 CATALOG_PATH = ROOT / "demo_packs" / "catalog.json"
 SOURCE_ZIP_MARKER = ".voxellab-source-zip.json"
+REMOTE_DOWNLOAD_MAX_ATTEMPTS = 64
+REMOTE_DOWNLOAD_MAX_NO_PROGRESS = 3
+REMOTE_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -82,6 +88,41 @@ def write_json(path: Path, payload: Any) -> None:
             temp_path.unlink(missing_ok=True)
 
 
+def _response_status(response: Any) -> int | None:
+    status = getattr(response, "status", None)
+    if status is not None:
+        return int(status)
+    getcode = getattr(response, "getcode", None)
+    if callable(getcode):
+        code = getcode()
+        return int(code) if code is not None else None
+    return None
+
+
+def _response_header(response: Any, name: str) -> str | None:
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        value = headers.get(name)
+        return str(value) if value is not None else None
+    getheader = getattr(response, "getheader", None)
+    if callable(getheader):
+        value = getheader(name)
+        return str(value) if value is not None else None
+    return None
+
+
+def _parse_content_range(value: str, target_name: str) -> tuple[int, int, int | None]:
+    match = re.fullmatch(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", value.strip(), flags=re.IGNORECASE)
+    if match is None:
+        raise ValueError(f"{target_name}: invalid Content-Range {value!r}")
+    start = int(match.group(1))
+    end = int(match.group(2))
+    total = None if match.group(3) == "*" else int(match.group(3))
+    if end < start or (total is not None and end >= total):
+        raise ValueError(f"{target_name}: invalid Content-Range {value!r}")
+    return start, end, total
+
+
 def download_to_path(
     url: str,
     target: Path,
@@ -92,29 +133,118 @@ def download_to_path(
     temp_target = target.with_name(f".{target.name}.download")
     temp_target.unlink(missing_ok=True)
     parsed = urllib.parse.urlparse(url)
+    if max_bytes is not None and expected_bytes is not None and expected_bytes > max_bytes:
+        raise ValueError(f"{target.name}: expected size {expected_bytes} exceeds download limit {max_bytes}")
     try:
         if parsed.scheme in {"", "file"}:
             source = Path(parsed.path if parsed.scheme else url)
             if not source.is_absolute():
                 source = ROOT / source
-            if max_bytes is not None and source.stat().st_size > max_bytes:
+            source_size = source.stat().st_size
+            if max_bytes is not None and source_size > max_bytes:
                 raise ValueError(f"{target.name}: download exceeded expected size {max_bytes}")
+            if expected_bytes is not None and source_size != expected_bytes:
+                raise ValueError(f"{target.name}: incomplete download size {source_size} != expected {expected_bytes}")
             _ = shutil.copy2(source, temp_target)
         else:
-            for attempt in range(3):
-                with urllib.request.urlopen(url, timeout=120) as response, temp_target.open("wb") as handle:
-                    written = 0
-                    for chunk in iter(lambda: response.read(1024 * 1024), b""):
-                        written += len(chunk)
-                        if max_bytes is not None and written > max_bytes:
+            download_expected = expected_bytes
+            high_water = 0
+            no_progress_attempts = 0
+            last_error: BaseException | None = None
+            complete = False
+            for _attempt in range(REMOTE_DOWNLOAD_MAX_ATTEMPTS):
+                offset = temp_target.stat().st_size if temp_target.exists() else 0
+                if download_expected is not None:
+                    if offset == download_expected:
+                        complete = True
+                        break
+                    if offset > download_expected:
+                        raise ValueError(f"{target.name}: incomplete download {offset} != expected {download_expected}")
+
+                request: str | urllib.request.Request = url
+                if offset:
+                    request = urllib.request.Request(url, headers={"Range": f"bytes={offset}-"})
+
+                response_completed = False
+                try:
+                    with urllib.request.urlopen(request, timeout=120) as response:
+                        status = _response_status(response)
+                        content_range = _response_header(response, "Content-Range")
+                        content_length_raw = _response_header(response, "Content-Length")
+                        content_length = int(content_length_raw) if content_length_raw is not None else None
+                        base_offset = 0
+                        mode = "wb"
+
+                        if status == 206:
+                            if content_range is None:
+                                raise ValueError(f"{target.name}: partial response omitted Content-Range")
+                            range_start, _range_end, range_total = _parse_content_range(content_range, target.name)
+                            if range_start != offset:
+                                raise ValueError(
+                                    f"{target.name}: partial response started at {range_start}, expected {offset}"
+                                )
+                            if download_expected is not None and range_total is not None and range_total != download_expected:
+                                raise ValueError(
+                                    f"{target.name}: remote size {range_total} != expected {download_expected}"
+                                )
+                            if download_expected is None and range_total is not None:
+                                download_expected = range_total
+                            base_offset = offset
+                            mode = "ab"
+                        elif offset:
+                            base_offset = 0
+                            mode = "wb"
+
+                        if download_expected is None and status != 206 and content_length is not None:
+                            download_expected = content_length
+                        if max_bytes is not None and content_length is not None and base_offset + content_length > max_bytes:
                             raise ValueError(f"{target.name}: download exceeded expected size {max_bytes}")
-                        _ = handle.write(chunk)
-                if expected_bytes is None or written == expected_bytes:
+
+                        with temp_target.open(mode) as handle:
+                            written = base_offset
+                            for chunk in iter(lambda: response.read(REMOTE_DOWNLOAD_CHUNK_BYTES), b""):
+                                written += len(chunk)
+                                if max_bytes is not None and written > max_bytes:
+                                    raise ValueError(f"{target.name}: download exceeded expected size {max_bytes}")
+                                _ = handle.write(chunk)
+                    response_completed = True
+                    last_error = None
+                except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as exc:
+                    last_error = exc
+
+                current_size = temp_target.stat().st_size if temp_target.exists() else 0
+                if download_expected is not None:
+                    if current_size == download_expected:
+                        complete = True
+                        break
+                    if current_size > download_expected:
+                        raise ValueError(
+                            f"{target.name}: incomplete download {current_size} != expected {download_expected}"
+                        )
+                elif response_completed:
+                    complete = True
                     break
-                temp_target.unlink(missing_ok=True)
-                if attempt == 2:
-                    raise ValueError(f"{target.name}: incomplete download {written} != expected {expected_bytes}")
-        _ = shutil.move(str(temp_target), target)
+
+                if current_size > high_water:
+                    high_water = current_size
+                    no_progress_attempts = 0
+                else:
+                    no_progress_attempts += 1
+                if no_progress_attempts >= REMOTE_DOWNLOAD_MAX_NO_PROGRESS:
+                    detail = f"{current_size} != expected {download_expected}" if download_expected is not None else str(current_size)
+                    message = f"{target.name}: incomplete download {detail}; no progress after {no_progress_attempts} retries"
+                    if last_error is not None:
+                        raise ValueError(message) from last_error
+                    raise ValueError(message)
+
+            if not complete:
+                current_size = temp_target.stat().st_size if temp_target.exists() else 0
+                detail = f"{current_size} != expected {download_expected}" if download_expected is not None else str(current_size)
+                message = f"{target.name}: incomplete download {detail} after {REMOTE_DOWNLOAD_MAX_ATTEMPTS} attempts"
+                if last_error is not None:
+                    raise ValueError(message) from last_error
+                raise ValueError(message)
+        _ = temp_target.replace(target)
     finally:
         temp_target.unlink(missing_ok=True)
     return target

@@ -2,6 +2,8 @@ const TRUSTED_EXTERNAL_URLS = Object.freeze([
   'https://github.com/kaanarici/VoxelLab',
 ]);
 
+export const LATEST_RELEASE_URL = 'https://github.com/kaanarici/VoxelLab/releases/latest';
+
 export function isTrustedExternalUrl(value) {
   try {
     const url = new URL(String(value || ''));

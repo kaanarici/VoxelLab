@@ -22,9 +22,10 @@ export function getStr(meta, key, fallback = '') {
 export function getFloatArray(meta, key) {
   const v = meta[key];
   if (!v) return null;
-  if (Array.isArray(v)) return v.map(Number);
-  if (typeof v === 'string') return v.split('\\').map(Number);
-  return null;
+  const values = Array.isArray(v) ? v : (v?.split instanceof Function ? v.split('\\') : null);
+  if (!values) return null;
+  const parsed = values.map(Number);
+  return parsed.every(Number.isFinite) ? parsed : null;
 }
 
 export function getStrArray(meta, key) {

@@ -52,11 +52,6 @@
   </div>
 </div>
 
-<div class="rp-section collapsible collapsed panel-init-hidden" id="cloud-results-panel" data-panel="cloud-results">
-  <div class="sec-title"><span class="sec-title-text"><span>Cloud Results</span><span class="panel-count" id="cloud-results-count" hidden></span></span><span class="rp-collapse-ico" aria-hidden="true"><svg class="rp-collapse-svg"><use href="icons.svg#i-plus"/></svg></span></div>
-  <div class="rp-body"><div class="rp-body-inner" id="cloud-results"></div></div>
-</div>
-
 <div class="rp-section collapsible collapsed panel-init-hidden" id="microscopy-stack-panel" data-panel="microscopy-stack">
   <div class="sec-title"><span class="sec-title-text"><span>Hyperstack</span></span><span class="rp-collapse-ico" aria-hidden="true"><svg class="rp-collapse-svg"><use href="icons.svg#i-plus"/></svg></span></div>
   <div class="rp-body"><div class="rp-body-inner" id="microscopy-stack-controls"></div></div>
@@ -175,9 +170,9 @@
   <div class="rp-body"><div class="rp-body-inner">
 
   <div class="pill-group" id="render-mode">
-    <div class="pill active" data-mode="alpha" data-tip="Alpha-compositing volume render">Volume</div>
-    <div class="pill" data-mode="mip" data-tip="Maximum intensity projection">MIP</div>
-    <div class="pill" data-mode="minip" data-tip="Minimum intensity projection">MinIP</div>
+    <button class="pill active" type="button" data-mode="alpha" data-tip="Alpha-compositing volume render" aria-pressed="true">Volume</button>
+    <button class="pill" type="button" data-mode="mip" data-tip="Sampled maximum-intensity preview; use MPR slabs for voxel-accurate extrema" aria-pressed="false">MIP preview</button>
+    <button class="pill" type="button" data-mode="minip" data-tip="Sampled minimum-intensity preview; use MPR slabs for voxel-accurate extrema" aria-pressed="false">MinIP preview</button>
   </div>
 
   <div class="sec-subtitle" id="ct-window-title" hidden>CT HU Range</div>
@@ -199,6 +194,7 @@
     <button class="preset-btn" data-view="right" data-tip="Right lateral">R</button>
     <button class="preset-btn" data-view="flipH" data-tip="Flip left/right" aria-label="Flip left and right"><svg class="preset-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/></svg></button>
     <button class="preset-btn" data-view="flipV" data-tip="Flip top/bottom" aria-label="Flip top and bottom"><svg class="preset-btn-icon preset-btn-icon-rotated" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/></svg></button>
+    <button class="preset-btn" id="three-turntable" type="button" aria-pressed="false" data-tip="Rotate the volume in a smooth 24-second loop">Turntable</button>
   </div>
 
   <div class="sec-subtitle">Transfer Function</div>
@@ -213,7 +209,7 @@
     <span class="tl-val" id="readout-high">100%</span>
   </div>
   <div class="tool-row">
-    <span class="tl-lbl" data-tip="Overall volume density — opacity & brightness of the whole render">Density</span>
+    <span class="tl-lbl" data-tip="Opacity density for composited volume rendering">Density</span>
     <div class="tl-sl"><input type="range" id="s-gain" min="0.2" max="4" step="0.05" value="1.6" aria-label="Volume density" /></div>
     <span class="tl-val" id="readout-gain">1.60</span>
   </div>
@@ -246,7 +242,7 @@
     </div>
     <div class="clip-pair clip-pair--z">
       <span class="axis">Z</span>
-      <div class="tl-sl clip-z-sl"><input type="range" id="s-zscrub" min="0" max="0" step="1" value="0" aria-label="Slice depth (Z clip)" /></div>
+      <div class="tl-sl clip-z-sl"><input type="range" id="s-zscrub" min="0" max="0" step="1" value="0" aria-label="Z clip depth" /></div>
       <span class="tl-val" id="readout-clipz">0–100%</span>
     </div>
     <fieldset class="clip-plane-controls">

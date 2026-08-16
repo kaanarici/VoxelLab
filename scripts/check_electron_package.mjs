@@ -8,6 +8,7 @@ import {
   DESKTOP_COMPOUND_INPUT_EXTENSIONS,
   DESKTOP_CONVERTIBLE_INPUT_EXTENSIONS,
   DESKTOP_SUPPORTED_INPUT_EXTENSIONS,
+  WINDOWS_APP_USER_MODEL_ID,
 } from '../electron/shared/desktop-contracts.js';
 
 const require = createRequire(import.meta.url);
@@ -27,11 +28,11 @@ export function loadElectronPackageInputs(rootDir = repoRoot) {
 
 export function isIgnoredByPackager(ignore, packagePath) {
   const normalized = packagePath.startsWith('/') ? packagePath : `/${packagePath}`;
-  if (typeof ignore === 'function') return Boolean(ignore(normalized));
+  if (ignore instanceof Function) return Boolean(ignore(normalized));
   const rules = Array.isArray(ignore) ? ignore : [ignore];
   return rules.some((rule) => {
     if (rule instanceof RegExp) return rule.test(normalized);
-    if (typeof rule === 'string') return normalized.includes(rule);
+    if (rule?.constructor === String) return normalized.includes(rule);
     return false;
   });
 }
@@ -85,23 +86,25 @@ export function checkElectronPackageConfig(rootDir = repoRoot) {
   assert.equal(packager.icon, path.join(rootDir, 'electron/assets/icon'));
   assert.equal(packager.appBundleId, 'com.voxellab.viewer');
   assert.equal(packager.appCategoryType, 'public.app-category.medical');
-  if (!process.env.VOXELLAB_OSX_IDENTITY) {
-    const topLevelAppSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app');
-    const helperSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper.app');
-    const rendererSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper (Renderer).app');
-    const gpuSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper (GPU).app');
-    const pluginSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper (Plugin).app');
-    assert.equal(topLevelAppSignOptions.entitlements, path.join(rootDir, 'electron/entitlements/darwin-main.plist'));
-    assert.equal(helperSignOptions.entitlements, path.join(rootDir, 'electron/entitlements/darwin-helper.plist'));
-    assert.equal(rendererSignOptions.entitlements, helperSignOptions.entitlements);
-    assert.equal(gpuSignOptions.entitlements, helperSignOptions.entitlements);
-    assert.equal(pluginSignOptions, null);
-    for (const entitlementPath of [topLevelAppSignOptions.entitlements, helperSignOptions.entitlements]) {
-      assert.ok(
-        readFileSync(entitlementPath, 'utf8').includes('com.apple.security.cs.disable-library-validation'),
-        'ad-hoc macOS app signing must disable library validation so the packaged app can launch before Developer ID signing',
-      );
-    }
+  assert.equal(packager.osxSign.identity, '-');
+  assert.equal(packager.osxSign.identityValidation, false);
+  assert.equal(packager.osxNotarize, undefined, 'unsigned-only releases must not retain a notarization path');
+  assert.equal(packager.windowsSign, undefined, 'unsigned-only releases must not retain a Windows signing path');
+  const topLevelAppSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app');
+  const helperSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper.app');
+  const rendererSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper (Renderer).app');
+  const gpuSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper (GPU).app');
+  const pluginSignOptions = packager.osxSign.optionsForFile('/tmp/VoxelLab.app/Contents/Frameworks/VoxelLab Helper (Plugin).app');
+  assert.equal(topLevelAppSignOptions.entitlements, path.join(rootDir, 'electron/entitlements/darwin-main.plist'));
+  assert.equal(helperSignOptions.entitlements, path.join(rootDir, 'electron/entitlements/darwin-helper.plist'));
+  assert.equal(rendererSignOptions.entitlements, helperSignOptions.entitlements);
+  assert.equal(gpuSignOptions.entitlements, helperSignOptions.entitlements);
+  assert.equal(pluginSignOptions, null);
+  for (const entitlementPath of [topLevelAppSignOptions.entitlements, helperSignOptions.entitlements]) {
+    assert.ok(
+      readFileSync(entitlementPath, 'utf8').includes('com.apple.security.cs.disable-library-validation'),
+      'ad-hoc macOS app signing must disable library validation so the packaged app can launch through Finder',
+    );
   }
   const docExtensions = packager.extendInfo.CFBundleDocumentTypes
     .flatMap(record => record.CFBundleTypeExtensions || []);
@@ -121,22 +124,28 @@ export function checkElectronPackageConfig(rootDir = repoRoot) {
   );
 
   assert.ok(devDependencies['@electron-forge/cli'], 'missing @electron-forge/cli devDependency');
-  assert.ok(devDependencies['@electron-forge/maker-zip'], 'missing macOS zip maker devDependency');
+  assert.equal(devDependencies['@electron-forge/maker-zip'], undefined, 'manual releases must not build a redundant macOS ZIP');
   assert.ok(devDependencies['@electron-forge/maker-dmg'], 'missing macOS dmg maker devDependency');
   assert.ok(devDependencies['@electron-forge/maker-squirrel'], 'missing Windows squirrel maker devDependency');
   assert.ok(devDependencies['@electron-forge/plugin-auto-unpack-natives'], 'missing native unpack plugin devDependency');
 
-  assert.equal(typeof packager.asar, 'object');
+  assert.equal(packager.asar?.constructor, Object);
   assert.match(packager.asar.unpack, /wasm/);
   assert.match(packager.asar.unpack, /node/);
   assert.ok(forgeConfig.plugins?.some(plugin => plugin?.name === '@electron-forge/plugin-auto-unpack-natives'), 'missing auto unpack natives plugin');
 
-  assertMaker(forgeConfig, '@electron-forge/maker-zip', 'darwin');
+  assert.equal(
+    forgeConfig.makers?.some(maker => maker?.name === '@electron-forge/maker-zip'),
+    false,
+    'manual releases must ship one macOS installer format',
+  );
   const dmg = assertMaker(forgeConfig, '@electron-forge/maker-dmg', 'darwin');
   const squirrel = assertMaker(forgeConfig, '@electron-forge/maker-squirrel', 'win32');
   assert.equal(dmg.config?.name, 'VoxelLab');
   assert.equal(dmg.config?.icon, path.join(rootDir, 'electron/assets/icon.icns'));
   assert.equal(squirrel.config?.title, 'VoxelLab');
+  assert.equal(squirrel.config?.name, 'VoxelLab');
+  assert.equal(WINDOWS_APP_USER_MODEL_ID, `com.squirrel.${squirrel.config.name}.${packager.executableName}`);
   assert.equal(squirrel.config?.setupExe, `VoxelLab-${packageJson.version}-Setup.exe`);
   assert.equal(
     squirrel.config?.iconUrl,
@@ -147,7 +156,7 @@ export function checkElectronPackageConfig(rootDir = repoRoot) {
   assertForgeScripts(packageJson);
 
   const ignore = packager.ignore;
-  assert.equal(typeof ignore, 'function', 'packagerConfig.ignore must be an explicit package allowlist');
+  assert.equal(ignore instanceof Function, true, 'packagerConfig.ignore must be an explicit package allowlist');
   for (const packagePath of [
     '/.github/workflows/check.yml',
     '/.gitignore',

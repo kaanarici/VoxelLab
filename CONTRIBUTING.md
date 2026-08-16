@@ -13,7 +13,7 @@ not through a public issue.
 Requirements:
 
 - Node.js 22.12.0, as recorded in `.node-version`
-- Python 3.11 or newer
+- Python 3.13 (setup accepts 3.11 or newer; local lock files and CI use 3.13)
 
 ```bash
 git clone https://github.com/kaanarici/VoxelLab.git
@@ -31,12 +31,16 @@ To run the desktop shell:
 npm run desktop:start
 ```
 
-Optional processing dependencies are installed only when needed:
+Optional processing dependencies are installed only when needed. `--ai` uses
+the lightweight `requirements/ai.lock`; `--pipeline` and `--cloud` use
+`requirements/ci.lock`. `--rtk` is standalone, uses `requirements/rtk.lock`,
+and omits Modal. Run `npm run setup -- --help` for the full flag list. Cloud
+GPU still requires the steps in [R2_SETUP.md](R2_SETUP.md).
 
 ```bash
 npm run setup -- --pipeline
-npm run setup -- --pipeline --cloud
-npm run setup -- --pipeline --rtk
+npm run setup -- --ai --provider claude
+npm run setup -- --rtk
 ```
 
 ## Before You Change Code
@@ -128,3 +132,19 @@ The protected `main` branch accepts changes only through pull requests. Both
 the canonical `check` job and browser suite must pass, review conversations must
 be resolved, and history must remain linear. Releases are a separate manual,
 approval-gated workflow; merging a pull request never publishes a release.
+
+## Releases
+
+VoxelLab uses deliberate, manual updates and intentionally unsigned desktop
+builds. A release is warranted only for a user-facing change: patches fix shipped
+behavior, minors add backward-compatible capability, and internal CI or test
+maintenance does not create a version.
+
+From protected `main`, the manual `Release` workflow verifies the requested
+version, runs the canonical and runtime gates, builds both installers, and pauses
+for approval before creating one immutable tag and GitHub Release. For new
+releases, public downloads are limited to the versioned macOS DMG, versioned
+Windows EXE, and `SHA256SUMS`. Lab-readiness reports, ZIPs, NuGet packages, and
+Squirrel metadata are CI artifacts, not user downloads. The retained v1.1.2
+release predates this policy; published tags, assets, and releases are never
+replaced.

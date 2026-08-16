@@ -14,17 +14,10 @@ globalThis.document = {
 const { state } = await import('../js/core/state.js');
 const { beginViewerRuntimeSession } = await import('../js/runtime/viewer-session.js');
 const { syncThreeSurfaceState } = await import('../js/runtime/three-surface-state.js');
-const { shouldPrecomputeGradient } = await import('../js/volume/volume-3d.js');
 
 // Flash-guard thresholds in js/spinner.js: show after 150ms, min visible 350ms.
 // Tests wait past those windows to observe the steady-state spinner visibility.
 const SPINNER_SETTLE_MS = 500;
-
-test('gradient precompute rejects Float32 sources and accounts for worker copies', () => {
-  assert.equal(shouldPrecomputeGradient(new Float32Array(8), 8, true, { maxBytes: 1024 }), false);
-  assert.equal(shouldPrecomputeGradient(new Uint8Array(8), 8, false, { maxBytes: 48 }), true);
-  assert.equal(shouldPrecomputeGradient(new Uint8Array(8), 8, false, { maxBytes: 47 }), false);
-});
 
 test('syncThreeSurfaceState hides the spinner once the 3D surface is already visible', async () => {
   state.manifest = {

@@ -17,12 +17,12 @@ const bimodal = {
 test('computeThreshold manual returns the exact numeric cut, never the method', () => {
   const t = computeThreshold(bimodal, { method: 'manual', value: 2500 });
   assert.equal(t.resolvedValue, 2500);
-  assert.equal(typeof t.resolvedValue, 'number');
+  assert.equal(Number.isFinite(t.resolvedValue), true);
 });
 
 test('computeThreshold otsu resolves a numeric cut between the two clusters', () => {
   const t = computeThreshold(bimodal, { method: 'otsu' });
-  assert.equal(typeof t.resolvedValue, 'number');
+  assert.equal(Number.isFinite(t.resolvedValue), true);
   assert.ok(t.resolvedValue > 100 && t.resolvedValue < 5000, `otsu cut ${t.resolvedValue} between clusters`);
   assert.equal(t.pixelMin, 100);
   assert.equal(t.pixelMax, 5000);

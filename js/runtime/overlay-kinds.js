@@ -8,8 +8,14 @@ export const LEGACY_OVERLAY_KIND_MAP = Object.freeze({ ...RUNTIME_OVERLAY_KIND_B
 
 const SERIES_OVERLAY_HINTS = '__voxOverlayHints';
 
+function isOverlayRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
 function hintForSeries(series, kind) {
-  return series && typeof series === 'object' ? series[SERIES_OVERLAY_HINTS]?.[kind] || null : null;
+  if (!isOverlayRecord(series)) return null;
+  const hint = series[SERIES_OVERLAY_HINTS]?.[kind];
+  return isOverlayRecord(hint) ? hint : null;
 }
 
 function uniqueStrings(values = []) {
@@ -60,19 +66,19 @@ function defaultDescriptor(kind, series) {
 
 // Shape: { labels: { source: 'dicom-seg', legacyKinds: ['regions', 'seg'] } }.
 export function setSeriesOverlayHints(series, hints = {}) {
-  if (!series || typeof series !== 'object' || !hints || typeof hints !== 'object') return series;
-  const existing = series[SERIES_OVERLAY_HINTS] && typeof series[SERIES_OVERLAY_HINTS] === 'object'
-    ? series[SERIES_OVERLAY_HINTS]
-    : {};
+  if (!isOverlayRecord(series) || !isOverlayRecord(hints)) return series;
+  const storedHints = series[SERIES_OVERLAY_HINTS];
+  const existing = isOverlayRecord(storedHints) ? storedHints : {};
   const next = { ...existing };
   for (const kind of CANONICAL_OVERLAY_KINDS) {
-    if (!(kind in hints) || !hints[kind]) continue;
+    if (!(kind in hints) || !isOverlayRecord(hints[kind])) continue;
     const hint = hints[kind];
+    const previous = isOverlayRecord(existing[kind]) ? existing[kind] : {};
     next[kind] = {
-      ...existing[kind],
+      ...previous,
       ...hint,
-      legacyKinds: uniqueStrings([...(existing[kind]?.legacyKinds || []), ...(hint.legacyKinds || [])]),
-      source: String(hint.source || existing[kind]?.source || '').trim() || null,
+      legacyKinds: uniqueStrings([...(previous.legacyKinds || []), ...(hint.legacyKinds || [])]),
+      source: String(hint.source || previous.source || '').trim() || null,
     };
   }
   Object.defineProperty(series, SERIES_OVERLAY_HINTS, {
@@ -92,7 +98,7 @@ export function overlayKindsForSeries(series) {
     const hint = hintForSeries(series, kind);
     byKind[kind] = {
       ...base,
-      available: typeof hint?.available === 'boolean' ? hint.available : base.available,
+      available: hint?.available === true || hint?.available === false ? hint.available : base.available,
       legacyKinds: uniqueStrings([...(base.legacyKinds || []), ...(hint?.legacyKinds || [])]),
       source: String(hint?.source || base.source || '').trim() || null,
     };

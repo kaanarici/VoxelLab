@@ -107,20 +107,20 @@ export async function slimsamRunDecoder(session, embedBuf, meta, sliceIdx, click
 
   const results = await session.run(feeds);
 
-  let masksData, masksShape;
+  let masksData, maskDimensions;
 
   if (results.masks) {
     masksData = results.masks.data;
-    masksShape = results.masks.dims;
+    maskDimensions = results.masks.dims;
   } else if (results.output_masks) {
     masksData = results.output_masks.data;
-    masksShape = results.output_masks.dims;
+    maskDimensions = results.output_masks.dims;
   } else {
     for (const key of Object.keys(results)) {
       const t = results[key];
       if (t.dims && t.dims.length === 4) {
         masksData = t.data;
-        masksShape = t.dims;
+        maskDimensions = t.dims;
         break;
       }
     }
@@ -143,8 +143,8 @@ export async function slimsamRunDecoder(session, embedBuf, meta, sliceIdx, click
     }
   }
 
-  const maskH = masksShape[2];
-  const maskW = masksShape[3];
+  const maskH = maskDimensions[2];
+  const maskW = maskDimensions[3];
   const maskSize = maskH * maskW;
   const rawMask = masksData.slice(bestIdx * maskSize, (bestIdx + 1) * maskSize);
 

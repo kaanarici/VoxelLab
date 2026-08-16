@@ -20,7 +20,7 @@ import { setMeasurePending } from './core/state/viewer-tool-commands.js';
 const REPEATABLE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 function eventElement(e) {
-  const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+  const path = e.composedPath instanceof Function ? e.composedPath() : [];
   return path.find((node) => node?.nodeType === 1)
     || (e.target?.nodeType === 1 ? e.target : e.target?.parentElement)
     || null;

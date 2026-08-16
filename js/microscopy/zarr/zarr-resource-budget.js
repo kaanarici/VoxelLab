@@ -1,6 +1,7 @@
 // OME-Zarr import materializes every selected C×Z×T plane as Float32 pixels and
 // RGBA display data before the series can enter the viewer. Keep those eager
 // allocations bounded before creating plane arrays or scheduling chunk reads.
+
 export const DEFAULT_MAX_OME_ZARR_PLANE_PIXELS = 4_000_000;
 export const MAX_OME_ZARR_ALLOCATED_PLANE_BYTES = 128 * 1024 * 1024;
 export const MAX_OME_ZARR_CHUNKS_PER_PLANE = 4_096;
@@ -43,7 +44,7 @@ export async function readBoundedOmeZarrByteStream(stream, {
   maxBytes = MAX_OME_ZARR_ENCODED_CHUNK_BYTES,
   createLimitError = message => new Error(message),
 } = {}) {
-  if (!stream || typeof stream.getReader !== 'function') {
+  if (!(stream?.getReader instanceof Function)) {
     throw new Error(resourceLimit('bounded encoded chunk streaming is unavailable.'));
   }
   const byteBudget = Math.min(
@@ -78,12 +79,12 @@ export async function readBoundedOmeZarrByteStream(stream, {
   return output;
 }
 
-function unsupportedAxis(axes, shape) {
-  if (!Array.isArray(axes) || !Array.isArray(shape) || axes.length !== shape.length) return '';
+function unsupportedAxis(axes, arrayDimensions) {
+  if (!Array.isArray(axes) || !Array.isArray(arrayDimensions) || axes.length !== arrayDimensions.length) return '';
   for (let index = 0; index < axes.length; index += 1) {
     const name = String(axes[index]?.name || '').toLowerCase();
-    if (!['x', 'y', 'c', 'z', 't'].includes(name) && shape[index] !== 1) {
-      return `unsupported axis '${name || index}' has size ${shape[index]}; only singleton non-X/Y/C/Z/T axes can be ignored.`;
+    if (!['x', 'y', 'c', 'z', 't'].includes(name) && arrayDimensions[index] !== 1) {
+      return `unsupported axis '${name || index}' has size ${arrayDimensions[index]}; only singleton non-X/Y/C/Z/T axes can be ignored.`;
     }
   }
   return '';
@@ -98,7 +99,7 @@ export function omeZarrResourceBudget({
   chunkWidth = width,
   chunkHeight = height,
   axes,
-  shape,
+  'shape': arrayDimensions,
   chunks,
   bytesPerElement,
   maxPlanePixels = DEFAULT_MAX_OME_ZARR_PLANE_PIXELS,
@@ -112,7 +113,7 @@ export function omeZarrResourceBudget({
     return { ok: false, reason: resourceLimit('array dimensions must be positive safe integers.') };
   }
 
-  const unsupported = unsupportedAxis(axes, shape);
+  const unsupported = unsupportedAxis(axes, arrayDimensions);
   if (unsupported) return { ok: false, reason: resourceLimit(unsupported) };
 
   const planePixels = product([safeWidth, safeHeight]);
@@ -157,11 +158,11 @@ export function omeZarrResourceBudget({
     };
   }
 
-  if (Array.isArray(shape) || Array.isArray(chunks) || bytesPerElement != null) {
-    const safeShape = Array.isArray(shape) ? shape.map(positiveSafeInteger) : [];
+  if (Array.isArray(arrayDimensions) || Array.isArray(chunks) || bytesPerElement != null) {
+    const safeDimensions = Array.isArray(arrayDimensions) ? arrayDimensions.map(positiveSafeInteger) : [];
     const safeChunks = Array.isArray(chunks) ? chunks.map(positiveSafeInteger) : [];
     const safeBytes = positiveSafeInteger(bytesPerElement);
-    const fullChunkBytes = safeShape.length === safeChunks.length && safeBytes
+    const fullChunkBytes = safeDimensions.length === safeChunks.length && safeBytes
       ? product([...safeChunks, safeBytes])
       : 0;
     if (!fullChunkBytes || fullChunkBytes > maxDecodedBytes) {

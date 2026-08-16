@@ -26,7 +26,7 @@ function pageOrigin() {
 }
 
 function originOf(url) {
-  if (!url || typeof url !== 'string') return '';
+  if (!url || url?.constructor !== String) return '';
   try {
     const parsed = new URL(url, globalThis.location?.href || 'http://localhost/');
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
@@ -51,9 +51,9 @@ function collectSeriesUrls(series) {
   if (rawUrl) out.push(rawUrl);
   if (regionUrlBase) out.push(regionUrlBase);
   if (regionMetaUrl) out.push(regionMetaUrl);
-  if (overlayUrlBases && typeof overlayUrlBases === 'object') {
+  if (overlayUrlBases && !Array.isArray(overlayUrlBases) && Object.getPrototypeOf(overlayUrlBases) === Object.prototype) {
     for (const value of Object.values(overlayUrlBases)) {
-      if (typeof value === 'string') out.push(value);
+      if (value?.constructor === String) out.push(value);
     }
   }
   return out;
@@ -84,7 +84,7 @@ function injectLink(rel, href, extras = {}) {
   // Idempotent: skip if we've already injected this exact rel+href.
   const dedupeKey = `${rel}\u0000${href}`;
   if (INJECTED.has(dedupeKey)) return;
-  if (typeof document === 'undefined' || !document.head) return;
+  if (!globalThis.document?.head) return;
   const link = document.createElement('link');
   link.rel = rel;
   link.href = href;

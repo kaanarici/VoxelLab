@@ -40,23 +40,6 @@ const packagedFiles = new Set([
 const darwinMainEntitlements = path.join(__dirname, 'electron/entitlements/darwin-main.plist');
 const darwinHelperEntitlements = path.join(__dirname, 'electron/entitlements/darwin-helper.plist');
 const electronChecksums = require('electron/checksums.json');
-const appleNotarizeOptions = process.env.VOXELLAB_APPLE_API_KEY_PATH
-  && process.env.VOXELLAB_APPLE_API_KEY_ID
-  && process.env.VOXELLAB_APPLE_API_ISSUER
-  ? {
-      appleApiKey: process.env.VOXELLAB_APPLE_API_KEY_PATH,
-      appleApiKeyId: process.env.VOXELLAB_APPLE_API_KEY_ID,
-      appleApiIssuer: process.env.VOXELLAB_APPLE_API_ISSUER,
-    }
-  : undefined;
-const windowsSignOptions = process.env.VOXELLAB_WINDOWS_CERTIFICATE_FILE
-  && process.env.VOXELLAB_WINDOWS_CERTIFICATE_PASSWORD
-  ? {
-      certificateFile: process.env.VOXELLAB_WINDOWS_CERTIFICATE_FILE,
-      certificatePassword: process.env.VOXELLAB_WINDOWS_CERTIFICATE_PASSWORD,
-    }
-  : undefined;
-
 function adHocDarwinSignOptions(filePath) {
   const name = path.basename(filePath);
   if (name === 'VoxelLab.app') return { entitlements: darwinMainEntitlements };
@@ -98,21 +81,14 @@ module.exports = {
     icon: path.join(__dirname, 'electron/assets/icon'),
     appBundleId: 'com.voxellab.viewer',
     appCategoryType: 'public.app-category.medical',
-    // Electron ships ad-hoc signed; packager's edits invalidate that signature,
-    // and an unsigned arm64 app downloaded with a quarantine flag is rejected by
-    // Gatekeeper as "damaged". Re-sign ad-hoc (inside-out, via @electron/osx-sign)
-    // so the app opens via right-click → Open. Set VOXELLAB_OSX_IDENTITY to a
-    // "Developer ID Application" identity to sign properly (then add osxNotarize
-    // and CI credentials for a warning-free download).
-    osxSign: process.env.VOXELLAB_OSX_IDENTITY
-      ? { identity: process.env.VOXELLAB_OSX_IDENTITY, optionsForFile: adHocDarwinSignOptions }
-      : {
-          identity: '-',
-          identityValidation: false,
-          optionsForFile: adHocDarwinSignOptions,
-        },
-    osxNotarize: appleNotarizeOptions,
-    windowsSign: windowsSignOptions,
+    // VoxelLab distributes unsigned binaries. Re-sign the macOS bundle ad hoc
+    // after packaging edits so users can still open it through Finder's
+    // right-click → Open flow; no Developer ID or notarization path exists.
+    osxSign: {
+      identity: '-',
+      identityValidation: false,
+      optionsForFile: adHocDarwinSignOptions,
+    },
     extendInfo: {
       CFBundleDocumentTypes: [
         {
@@ -169,10 +145,6 @@ module.exports = {
   rebuildConfig: {},
   makers: [
     {
-      name: '@electron-forge/maker-zip',
-      platforms: ['darwin'],
-    },
-    {
       name: '@electron-forge/maker-dmg',
       platforms: ['darwin'],
       config: {
@@ -198,7 +170,6 @@ module.exports = {
         setupExe: `VoxelLab-${packageVersion}-Setup.exe`,
         iconUrl: `https://raw.githubusercontent.com/kaanarici/VoxelLab/v${packageVersion}/electron/assets/icon.ico`,
         setupIcon: path.join(__dirname, 'electron/assets/icon.ico'),
-        ...windowsSignOptions,
       },
     },
   ],

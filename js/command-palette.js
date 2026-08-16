@@ -5,7 +5,7 @@
 // Filtering is case-insensitive substring match on label + section.
 // Keyboard: ↑↓ navigate, Enter execute, Escape close.
 
-import { $, escapeHtml } from './dom.js';
+import { $, escapeHtml, releaseFocus, trapFocus } from './dom.js';
 import {
   displayShortcutParts,
   getShortcut,
@@ -46,17 +46,22 @@ let filtered  = [];
 function isOpen() { return backdrop.classList.contains('open'); }
 
 export function openPalette() {
+  if (isOpen()) return;
+  backdrop.inert = false;
   backdrop.classList.add('open');
   input.value = '';
   activeIdx = 0;
   render();
+  trapFocus(backdrop);
   // Defer focus so the transition doesn't fight with the browser
   requestAnimationFrame(() => input.focus());
 }
 
 export function closePalette() {
+  if (!isOpen()) return;
   backdrop.classList.remove('open');
-  input.blur();
+  backdrop.inert = true;
+  releaseFocus(backdrop);
 }
 
 function toggle() { isOpen() ? closePalette() : openPalette(); }

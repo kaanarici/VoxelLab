@@ -6,13 +6,17 @@ import { fileURLToPath, URL } from 'node:url';
 const readmeUrl = new URL('../README.md', import.meta.url);
 const readme = readFileSync(fileURLToPath(readmeUrl), 'utf8');
 
-test('README gives desktop users the real release choices and signing warnings', () => {
+test('README distinguishes current legacy downloads from the next-release asset policy', () => {
   assert.match(readme, /GitHub Releases.*releases\/latest/);
+  assert.match(readme, /manual updates.*Help → Check for Updates/);
   assert.match(readme, /macOS on Apple Silicon \| `VoxelLab\.dmg`/);
   assert.match(readme, /not notarized/);
-  assert.match(readme, /Windows \| Installer \(`\.exe`\)/);
+  assert.match(readme, /Windows \| `VoxelLab-1\.1\.2-Setup\.exe`/);
   assert.match(readme, /installer is unsigned/);
-  assert.doesNotMatch(readme, /Windows.*archive/);
+  assert.match(readme, /v1\.1\.2 release predates the curated asset policy/);
+  assert.match(readme, /next release[\s\S]*`VoxelLab-<version>-macOS-arm64\.dmg`/);
+  assert.match(readme, /next release[\s\S]*`VoxelLab-<version>-Windows-x64\.exe`/);
+  assert.match(readme, /exactly[\s\S]*`SHA256SUMS`/);
 });
 
 test('README offers a short source and demo path without internal release narration', () => {

@@ -14,6 +14,28 @@ import { show3DHover } from './volume-3d-hover.js';
 // camera }. Used by the 3D atlas overlay to reproject its labels in lock-step
 // with the volume (so leader lines stay glued to structures while orbiting).
 const postRenderCallbacks = new Set();
+const ORTHOGRAPHIC_VIEW_HEIGHT = 2.4;
+const TURNTABLE_PERIOD_MS = 24_000;
+const TURNTABLE_FRAME_MS = 1000 / 30;
+let turntableController = null;
+
+function fitOrthographicCamera(camera, width, height) {
+  const halfHeight = ORTHOGRAPHIC_VIEW_HEIGHT / 2;
+  const halfWidth = halfHeight * Math.max(width, 1) / Math.max(height, 1);
+  camera.left = -halfWidth;
+  camera.right = halfWidth;
+  camera.top = halfHeight;
+  camera.bottom = -halfHeight;
+  camera.updateProjectionMatrix();
+}
+
+export function toggleThreeTurntable() {
+  return turntableController?.toggle() || false;
+}
+
+export function stopThreeTurntable() {
+  turntableController?.stop();
+}
 
 /** Register a post-render callback; returns an unsubscribe function. */
 export function onThreePostRender(cb) {
@@ -34,8 +56,7 @@ export function ensureThreeRenderer(deps) {
   const h = container.clientHeight || window.innerHeight - 90;
   if (three.renderer) {
     three.renderer.setSize(w, h);
-    three.camera.aspect = w / h;
-    three.camera.updateProjectionMatrix();
+    fitOrthographicCamera(three.camera, w, h);
     if (three.controls.handleResize) three.controls.handleResize();
     if (three.renderNow) three.renderNow();
     if (three.requestRender) three.requestRender('resize');
@@ -43,15 +64,18 @@ export function ensureThreeRenderer(deps) {
   }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  // Cap the device pixel ratio: a 3× display would otherwise push ~9× the
-  // fragments through the heavy volume raycast shader for no visible gain.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  const settledPixelRatio = Math.min(devicePixelRatio, 1.5);
+  const interactivePixelRatio = Math.min(devicePixelRatio, 1);
+  let currentPixelRatio = settledPixelRatio;
+  renderer.setPixelRatio(currentPixelRatio);
   renderer.setSize(w, h);
   renderer.setClearColor(0x000000, 0);
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+  fitOrthographicCamera(camera, w, h);
   camera.position.set(2.2, 1.8, 2.2);
 
   const controls = new TrackballControls(camera, renderer.domElement);
@@ -88,51 +112,89 @@ export function ensureThreeRenderer(deps) {
 
   let rafId = 0;
   let loopUntil = 0;
-  // While the camera is moving, raycast at a fraction of the full step budget.
-  // The shader's jitter/dither hides the lower sample count during motion, and
-  // the settling frame is redrawn at full quality — this is what keeps zoom,
-  // orbit, and pan smooth instead of stalling on the per-frame volume march.
-  const DRAFT_STEP_SCALE = 0.4;
-  const MIN_DRAFT_STEPS = 96;
-  function applyRenderQuality(draft) {
-    const mat = three.mesh?.material;
-    const u = mat?.uniforms?.uSteps;
-    if (!u) return;
-    // Leave uSteps untouched if the full budget is unknown — never restore to a
-    // draft value (which would lock the volume at low quality).
-    const full = mat.userData.fullSteps;
-    if (!full) return;
-    // Only volumes too large for a precomputed gradient drop quality in motion;
-    // everything else has cheap shading and renders full quality even mid-orbit.
-    const useDraft = draft && mat.userData.progressive === true;
-    const target = useDraft
-      ? Math.max(MIN_DRAFT_STEPS, Math.round(full * DRAFT_STEP_SCALE))
-      : full;
-    if (u.value !== target) u.value = target;
+  let turntableActive = false;
+  let turntableAngle = 0;
+  let turntableLastTime = 0;
+  let turntableLastFrame = 0;
+  const turntableAxis = new THREE.Vector3(0, 1, 0);
+  const turntableTarget = new THREE.Vector3();
+  const turntableOrigin = new THREE.Vector3();
+  const turntableOffset = new THREE.Vector3();
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+
+  function syncTurntableButton() {
+    const button = $('three-turntable');
+    if (!button) return;
+    button.disabled = reducedMotion?.matches === true;
+    button.setAttribute('aria-pressed', String(turntableActive));
+    button.setAttribute('aria-label', turntableActive ? 'Stop turntable' : 'Start turntable');
+  }
+  function setRenderResolution(interactive) {
+    const next = interactive ? interactivePixelRatio : settledPixelRatio;
+    if (next === currentPixelRatio) return;
+    currentPixelRatio = next;
+    renderer.setPixelRatio(next);
+  }
+  function stopTurntable({ render = true } = {}) {
+    if (!turntableActive) return;
+    turntableActive = false;
+    turntableLastTime = 0;
+    syncTurntableButton();
+    if (render) requestRender('turntable-stop', 100);
+  }
+  function toggleTurntable() {
+    if (turntableActive) {
+      stopTurntable();
+      return false;
+    }
+    if (reducedMotion?.matches || !is3dActive()) return false;
+    setThreeDView('reset');
+    turntableTarget.copy(controls.target || new THREE.Vector3());
+    turntableOrigin.copy(camera.position).sub(turntableTarget);
+    turntableAngle = 0;
+    turntableLastTime = 0;
+    turntableLastFrame = 0;
+    turntableActive = true;
+    syncTurntableButton();
+    requestRender('turntable-start');
+    return true;
   }
   function scheduleFrame() {
     if (rafId) return;
     rafId = requestAnimationFrame(renderFrame);
   }
-  function renderScene(draft, { updateControls = true } = {}) {
+  function renderScene({ updateControls = true } = {}) {
     if (!is3dActive()) return;
     if (updateControls) controls.update();
-    applyRenderQuality(draft);
     renderer.render(scene, camera);
     for (const cb of postRenderCallbacks) {
       try { cb({ renderer, scene, camera }); } catch { /* a label overlay error must not kill the loop */ }
     }
   }
-  function renderFrame() {
+  function renderFrame(timestamp) {
     rafId = 0;
-    // controls.update() can dispatch 'change' and extend loopUntil, so read it
-    // after: a frame with time left is mid-motion (draft); the first frame past
-    // the deadline is the settle frame (full quality, then the loop stops).
     if (!is3dActive()) return;
     controls.update();
-    const animating = Date.now() < loopUntil;
-    renderScene(animating, { updateControls: false });
-    if (animating) scheduleFrame();
+    const controlsAnimating = Date.now() < loopUntil;
+    const interactive = controlsAnimating || turntableActive;
+    setRenderResolution(interactive);
+    let shouldRender = true;
+    if (turntableActive) {
+      if (turntableLastTime) {
+        const elapsed = Math.min(timestamp - turntableLastTime, 100);
+        turntableAngle = (turntableAngle + elapsed * Math.PI * 2 / TURNTABLE_PERIOD_MS) % (Math.PI * 2);
+      }
+      turntableLastTime = timestamp;
+      shouldRender = !turntableLastFrame || timestamp - turntableLastFrame >= TURNTABLE_FRAME_MS;
+      if (shouldRender) {
+        turntableLastFrame = timestamp;
+        turntableOffset.copy(turntableOrigin).applyAxisAngle(turntableAxis, turntableAngle);
+        camera.position.copy(turntableTarget).add(turntableOffset);
+        camera.lookAt(turntableTarget);
+      }
+    }
+    if (shouldRender) renderScene({ updateControls: false });
+    if (interactive) scheduleFrame();
   }
   function requestRender(_reason = 'update', burstMs = 0) {
     if (!is3dActive()) return;
@@ -144,17 +206,29 @@ export function ensureThreeRenderer(deps) {
   }
   function stopLoop() {
     loopUntil = 0;
+    stopTurntable({ render: false });
     if (rafId) cancelAnimationFrame(rafId);
     rafId = 0;
+    setRenderResolution(false);
   }
   function renderNow() {
-    renderScene(false);
+    renderScene();
   }
-  controls.addEventListener('start', () => { pointerInteracting = true; requestRender('controls-start', 500); });
+  controls.addEventListener('start', () => {
+    pointerInteracting = true;
+    stopTurntable({ render: false });
+    requestRender('controls-start', 500);
+  });
   controls.addEventListener('change', () => requestRender('controls-change', 220));
   controls.addEventListener('end', () => { pointerInteracting = false; requestRender('controls-end', 160); });
   setThreeRuntimeShell({ renderer, scene, camera, controls, startLoop });
   setThreeRuntimeRenderFns({ startLoop, stopLoop, requestRender, renderNow });
+  turntableController = { toggle: toggleTurntable, stop: stopTurntable };
+  reducedMotion?.addEventListener?.('change', () => {
+    if (reducedMotion.matches) stopTurntable();
+    syncTurntableButton();
+  });
+  syncTurntableButton();
   startLoop();
 
   const syncRendererToContainer = () => {
@@ -162,20 +236,21 @@ export function ensureThreeRenderer(deps) {
     const ch = container.clientHeight;
     if (cw <= 0 || ch <= 0) return;
     renderer.setSize(cw, ch);
-    camera.aspect = cw / ch;
-    camera.updateProjectionMatrix();
+    fitOrthographicCamera(camera, cw, ch);
     if (controls.handleResize) controls.handleResize();
     renderNow();
     requestRender('container-resize', 120);
   };
-  if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(syncRendererToContainer).observe(container);
+  const Observer = globalThis.ResizeObserver;
+  if (Observer) {
+    new Observer(syncRendererToContainer).observe(container);
   } else {
     window.addEventListener('resize', syncRendererToContainer);
   }
 
   renderer.domElement.addEventListener('dblclick', (e) => {
     e.preventDefault();
+    stopTurntable({ render: false });
     setThreeDView('reset');
     requestRender('dblclick-view', 160);
   });

@@ -33,6 +33,21 @@ test('volumeClipPlane honors physical anisotropy for arbitrary orientations', ()
   assert.notEqual(clipPlaneContainsPoint(plane, [0, 0, 0]), clipPlaneContainsPoint(plane, [1, 1, 1]));
 });
 
+test('volumeClipPlane matches the rendered physical box for shallow volumes', () => {
+  const dims = { W: 512, H: 512, D: 2 };
+  const spacing = { row: 1, col: 1, slice: 1 };
+  const plane = volumeClipPlane({ dims, spacing, yaw: 0, pitch: 45, depth: 0.5 });
+  const physicalNormal = [
+    plane[0] / (dims.W * spacing.col),
+    plane[1] / (dims.H * spacing.row),
+    plane[2] / (dims.D * spacing.slice),
+  ];
+  const magnitude = Math.hypot(...physicalNormal);
+  const angleFromZ = Math.acos(Math.abs(physicalNormal[2]) / magnitude) * 180 / Math.PI;
+
+  assert.ok(Math.abs(angleFromZ - 45) < 1e-6);
+});
+
 test('volumeClipPlane inversion retains the opposite half-space', () => {
   const normal = volumeClipPlane({ ...unitVolume, yaw: 0, pitch: 0, depth: 0.5 });
   const inverted = volumeClipPlane({ ...unitVolume, yaw: 0, pitch: 0, depth: 0.5, invert: true });

@@ -60,7 +60,17 @@ export function viewStateForSeries(series, { preserveSlice = false } = {}) {
     };
   }
   if (!saved) {
-    return { mode: '2d', sliceIdx: 0, window: null, level: null, overlays: null, lockedLabels: [], restored: false };
+    const defaultWindow = Number(series?._defaultWindow);
+    const defaultLevel = Number(series?._defaultLevel);
+    return {
+      mode: '2d',
+      sliceIdx: 0,
+      window: Number.isFinite(defaultWindow) ? defaultWindow : null,
+      level: Number.isFinite(defaultLevel) ? defaultLevel : null,
+      overlays: null,
+      lockedLabels: [],
+      restored: false,
+    };
   }
   return {
     mode: normalModeForSeries(series, saved.mode),

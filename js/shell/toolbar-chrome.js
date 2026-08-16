@@ -35,7 +35,7 @@ function wireCtPresetsOnce() {
 
 /** Show CT window presets for CT series in the 2D/compare W/L viewports + mark the active one. */
 export function syncCtPresets() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   const el = document.getElementById('ct-presets');
   if (!el) return;
   const show = hasActiveStack() && isCtSeries() && (state.mode === '2d' || state.mode === 'cmp');
@@ -49,7 +49,7 @@ export function syncCtPresets() {
 
 /** Mirrors CSS skeleton gate (#slice-tot:empty) for assistive tech. */
 export function syncSliceCountAriaBusy() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   const ctr = document.querySelector('.ctr-count');
   const tot = document.getElementById('slice-tot');
   if (!ctr || !tot) return;
@@ -59,7 +59,7 @@ export function syncSliceCountAriaBusy() {
 
 /** MR W/L row + overlay opacity share .tool-group--wl (no .icon-btn); hide when both rows are hidden. */
 export function syncWlToolGroupVisibility() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   const wl = document.querySelector('.tool-group--wl');
   if (!wl) return;
   // W/L sliders are the visible counterpart to Shift+drag — only in the modes
@@ -75,7 +75,7 @@ export function syncWlToolGroupVisibility() {
 }
 
 export function syncMrPresetActiveState() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   document.querySelectorAll('#mr-presets [data-mrpreset]').forEach((btn) => {
     const preset = MR_PRESETS[btn.dataset.mrpreset];
     btn.classList.toggle(
@@ -87,7 +87,7 @@ export function syncMrPresetActiveState() {
 }
 
 export function syncDisplayControlAvailability() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   const disabled = state.mode === '3d';
   for (const id of ['btn-auto', 'btn-invert', 'cmap-trigger']) {
     const el = document.getElementById(id);
@@ -113,7 +113,7 @@ export function syncDisplayControlAvailability() {
 }
 
 export function syncToolbarReadyState() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   const controls = document.querySelector('.controls');
   if (!controls) return;
   controls.classList.toggle('controls--ready', hasActiveStack());

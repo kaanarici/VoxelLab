@@ -36,16 +36,6 @@ async function findArtifact(rootDir, pattern, label) {
   return matches[0];
 }
 
-async function checkZip(zipPath, tempRoot) {
-  const extractDir = path.join(tempRoot, 'zip');
-  await fs.mkdir(extractDir, { recursive: true });
-  run('ditto', ['-x', '-k', zipPath, extractDir]);
-  const appPath = path.join(extractDir, APP_NAME);
-  await fs.access(appPath);
-  const result = await checkPackagedMacAppLaunch(appPath);
-  return { artifact: zipPath, appPath, closeMode: result.closeMode };
-}
-
 async function checkDmg(dmgPath, tempRoot) {
   const mountPoint = path.join(tempRoot, 'dmg');
   await fs.mkdir(mountPoint, { recursive: true });
@@ -79,12 +69,10 @@ export async function checkMacosReleaseArtifacts(rootDir = 'out/forge/make') {
   assert.equal(process.platform, 'darwin', 'macOS release artifact install smoke must run on macOS');
   const resolved = path.resolve(rootDir);
   const dmgPath = await findArtifact(resolved, /\/VoxelLab\.dmg$/, 'macOS DMG');
-  const zipPath = await findArtifact(resolved, /\/VoxelLab-darwin-[^/]+-\d+\.\d+\.\d+\.zip$/, 'macOS ZIP');
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-release-artifacts-'));
   try {
-    const zip = await checkZip(zipPath, tempRoot);
     const dmg = await checkDmg(dmgPath, tempRoot);
-    return { dmg, zip };
+    return { dmg };
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
@@ -92,5 +80,5 @@ export async function checkMacosReleaseArtifacts(rootDir = 'out/forge/make') {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const result = await checkMacosReleaseArtifacts(process.argv[2] || 'out/forge/make');
-  console.log(`OK: macOS release artifacts extract, mount, and launch (${path.basename(result.zip.artifact)}, ${path.basename(result.dmg.artifact)})`);
+  console.log(`OK: macOS release artifact mounts and launches (${path.basename(result.dmg.artifact)})`);
 }

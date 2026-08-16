@@ -16,7 +16,7 @@ import {
   voxelPointForLps,
 } from './derived-common.js';
 
-function shapeColor(index) {
+function segmentColor(index) {
   const hue = (index * 57) % 360;
   const sat = 0.72;
   const light = 0.58;
@@ -225,7 +225,7 @@ function segmentDefinitions(meta) {
     number: Number(segment?.SegmentNumber || index + 1),
     label: index + 1,
     name: String(segment?.SegmentLabel || segment?.SegmentDescription || `Segment ${index + 1}`),
-    color: shapeColor(index + 1),
+    color: segmentColor(index + 1),
     voxelCount: 0,
     kind: 'dicom-seg',
   }));

@@ -15,8 +15,14 @@ function fail(reason) {
   throw new AskEventStreamError(reason);
 }
 
+function isAskEventObject(value) {
+  if (!value || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function objectValue(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('not_object');
+  if (!isAskEventObject(value)) fail('not_object');
   return value;
 }
 
@@ -29,7 +35,7 @@ function allowedFields(payload, allowed) {
 function stringField(payload, key, { allowEmpty = false } = {}) {
   if (!Object.hasOwn(payload, key)) fail(`${key}_missing`);
   const value = payload[key];
-  if (typeof value !== 'string') fail(`${key}_not_string`);
+  if (value?.constructor !== String) fail(`${key}_not_string`);
   if (!allowEmpty && !value) fail(`${key}_empty`);
   return value;
 }

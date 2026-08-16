@@ -66,7 +66,7 @@ export async function splitMicroscopySidecars(files) {
   const imageJRoiSidecarErrors = [];
   const kept = [];
   for (const file of imageFiles) {
-    if (isJsonFile(file) && typeof file.text === 'function') {
+    if (isJsonFile(file) && file.text instanceof Function) {
       try {
         const bundle = JSON.parse(await file.text());
         if (bundle?.schema === ROI_RESULTS_BUNDLE_SCHEMA) {
@@ -81,7 +81,7 @@ export async function splitMicroscopySidecars(files) {
         // Keep malformed or unrelated JSON in the import set so the mixed-format guard rejects it.
       }
     }
-    if ((isImageJRoiFile(file) || isImageJRoiZipFile(file)) && typeof file.arrayBuffer === 'function') {
+    if ((isImageJRoiFile(file) || isImageJRoiZipFile(file)) && file.arrayBuffer instanceof Function) {
       try {
         const isZip = isImageJRoiZipFile(file);
         assertImageJRoiSidecarFileSize(file, isZip);
@@ -126,6 +126,7 @@ export async function importRoiSidecarsForActiveSeries(roiSidecars = [], { isAct
   let importedRows = 0;
   let hasPartialImport = false;
   let skipped = 0;
+  const messages = [];
   const skippedMessages = [];
   const skippedDetails = [];
   for (const sidecar of roiSidecars) {
@@ -145,12 +146,12 @@ export async function importRoiSidecarsForActiveSeries(roiSidecars = [], { isAct
     if (!isActive()) return { applied: importedRows, skipped, stale: true };
     renderRoiResults(state);
     const partial = hasPartialImport ? '; skipped incompatible rows' : '';
-    notify(`Imported ${importedRows} ROI result row${importedRows === 1 ? '' : 's'}${partial} from VoxelLab sidecar${roiSidecars.length === 1 ? '' : 's'}.`);
+    messages.push(`Imported ${importedRows} ROI result row${importedRows === 1 ? '' : 's'}${partial} from VoxelLab sidecar${roiSidecars.length === 1 ? '' : 's'}.`);
   }
   if (skipped > 0) {
-    notify(`Skipped ${skipped} ROI sidecar${skipped === 1 ? '' : 's'}${sidecarSkipDetailsText(skippedDetails, skipped, ' that did not match the imported series.')}`);
+    messages.push(`Skipped ${skipped} ROI sidecar${skipped === 1 ? '' : 's'}${sidecarSkipDetailsText(skippedDetails, skipped, ' that did not match the imported series.')}`);
   }
-  return { applied: importedRows, skipped, skippedMessages, skippedDetails };
+  return { applied: importedRows, skipped, skippedMessages, skippedDetails, messages };
 }
 
 function sidecarSkipSampleText(item = {}) {
@@ -239,11 +240,12 @@ export async function importImageJRoiSidecarsForActiveSeries(imageJRoiSidecars =
   renderRoiResults(state);
   drawMeasurements();
   syncOverlays();
-  if (imported > 0) notify(`Imported ${imported} ImageJ ROI${imported === 1 ? '' : 's'} onto the active microscopy series.`);
+  const messages = [];
+  if (imported > 0) messages.push(`Imported ${imported} ImageJ ROI${imported === 1 ? '' : 's'} onto the active microscopy series.`);
   if (skipped > 0) {
-    notify(`Skipped ${skipped} ImageJ ROI ${skipped === 1 ? 'entry' : 'entries'}${sidecarSkipDetailsText(skippedDetails, skipped, ' that were unsupported or did not fit the active series.')}`);
+    messages.push(`Skipped ${skipped} ImageJ ROI ${skipped === 1 ? 'entry' : 'entries'}${sidecarSkipDetailsText(skippedDetails, skipped, ' that were unsupported or did not fit the active series.')}`);
   }
-  return { applied: imported, skipped, skippedDetails };
+  return { applied: imported, skipped, skippedDetails, messages };
 }
 
 export async function applyRecipeSidecarsForActiveSeries(recipeSidecars = [], { isActive = () => true } = {}) {
@@ -282,11 +284,29 @@ export async function applyRecipeSidecarsForActiveSeries(recipeSidecars = [], { 
   renderRoiResults(state);
   drawMeasurements();
   syncOverlays();
+  const messages = [];
   if (replayed > 0) {
-    notify(`Replayed ${replayed} microscopy workflow recipe${replayed === 1 ? '' : 's'} from VoxelLab sidecar${recipeSidecars.length === 1 ? '' : 's'}.`);
+    messages.push(`Replayed ${replayed} microscopy workflow recipe${replayed === 1 ? '' : 's'} from VoxelLab sidecar${recipeSidecars.length === 1 ? '' : 's'}.`);
   }
   if (skipped > 0) {
-    notify(`Skipped ${skipped} microscopy workflow recipe${skipped === 1 ? '' : 's'}${sidecarSkipDetailsText(skippedDetails, skipped, ' that did not match the imported series.')}`);
+    messages.push(`Skipped ${skipped} microscopy workflow recipe${skipped === 1 ? '' : 's'}${sidecarSkipDetailsText(skippedDetails, skipped, ' that did not match the imported series.')}`);
   }
-  return { applied: replayed, skipped, skippedMessages, skippedDetails };
+  return { applied: replayed, skipped, skippedMessages, skippedDetails, messages };
+}
+
+export function localImportOutcomeNotice(messages = []) {
+  const parts = messages.filter(Boolean);
+  if (!parts.length) return null;
+  const hasIssue = parts.some(part => (
+    /^(Skipped |Holding )/.test(part)
+    || part.includes('open them separately')
+    || (/: /.test(part) && !/^(Imported |Replayed |Skipped |Holding )/.test(part))
+  ));
+  return { message: parts.join(' '), kind: hasIssue ? 'warning' : 'info' };
+}
+
+export function notifyLocalImportOutcome(messages, { id = 'local-import-outcome' } = {}) {
+  const notice = localImportOutcomeNotice(messages);
+  if (!notice) return;
+  notify(notice.message, { id, kind: notice.kind });
 }

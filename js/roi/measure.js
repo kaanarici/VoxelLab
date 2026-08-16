@@ -7,12 +7,13 @@
 // Co-renders any ROI shapes for the current slice because rulers and
 // ROIs share the same overlay SVG.
 
-import { $, clientToCanvasPx } from '../dom.js';
+import { $, canvasScreenScale, clientToCanvasPx } from '../dom.js';
 import { inPlanePixelSpacing } from '../core/geometry.js';
 import { formatLengthFromMm } from '../core/physical-units.js';
 import { updateScaleBar } from '../overlay/scale-bar.js';
 import { state } from '../core/state.js';
 import { drawROIs } from '../roi.js';
+import { notify } from '../notify.js';
 import { measurementEntriesForSlice } from '../overlay/annotation-graph.js';
 import {
   appendMeasurement,
@@ -51,7 +52,7 @@ function measurementVisibleInCurrentScope(measurement) {
 }
 
 function refreshRoiResults() {
-  if (typeof document === 'object' && typeof document.createElement === 'function') renderRoiResults();
+  if (globalThis.document?.createElement instanceof Function) renderRoiResults();
 }
 
 export function toggleMeasure() {
@@ -72,6 +73,11 @@ export function onMeasureClick(ev) {
   } else {
     const series = state.manifest.series[state.seriesIdx];
     if (!series) return;
+    if (Math.hypot(x - state.measurePending.x, y - state.measurePending.y) < 1) {
+      notify('Choose a different endpoint for the ruler.', { kind: 'warning' });
+      drawMeasurements();
+      return;
+    }
     const spacing = inPlanePixelSpacing(series);
     const dx = (x - state.measurePending.x) * spacing.colMm;
     const dy = (y - state.measurePending.y) * spacing.rowMm;
@@ -106,8 +112,10 @@ export function drawMeasurements() {
   const list = measurementsHere().filter(measurementVisibleInCurrentScope);
   const series = state.manifest.series[state.seriesIdx];
   if (!series) return;
-  const labelFontSize = Math.max(11, Math.round(series.width * 0.018));
-  const deleteBtnSize = Math.max(16, Math.round(series.width * 0.024));
+  const displayScale = canvasScreenScale(svg, canvas.width, canvas.height);
+  const scaleX = Math.max(1e-6, displayScale.x);
+  const scaleY = Math.max(1e-6, displayScale.y);
+  const labelFontSize = 11 / scaleY;
   const svgNS = 'http://www.w3.org/2000/svg';
 
   list.forEach((m) => {
@@ -125,9 +133,10 @@ export function drawMeasurements() {
 
     // Endpoint dots — purely visual
     for (const [cx, cy] of [[m.x1, m.y1], [m.x2, m.y2]]) {
-      const dot = document.createElementNS(svgNS, 'circle');
+      const dot = document.createElementNS(svgNS, 'ellipse');
       dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
-      dot.setAttribute('r', 3);
+      dot.setAttribute('rx', 3 / scaleX);
+      dot.setAttribute('ry', 3 / scaleY);
       dot.setAttribute('class', 'm-dot');
       group.appendChild(dot);
     }
@@ -135,31 +144,42 @@ export function drawMeasurements() {
     // Label at the midpoint, raised above the line
     const midX = (m.x1 + m.x2) / 2;
     const midY = (m.y1 + m.y2) / 2;
-    const labelOffset = labelFontSize + 4;
-    const labelY = midY - labelOffset;
+    const screenDx = (m.x2 - m.x1) * scaleX;
+    const screenDy = (m.y2 - m.y1) * scaleY;
+    const lineLength = Math.max(1e-6, Math.hypot(screenDx, screenDy));
+    let normalX = -screenDy / lineLength;
+    let normalY = screenDx / lineLength;
+    if (normalY > 0) {
+      normalX = -normalX;
+      normalY = -normalY;
+    }
+    const labelX = midX + normalX * 15 / scaleX;
+    const labelY = midY + normalY * 15 / scaleY;
     const label = document.createElementNS(svgNS, 'text');
-    label.setAttribute('x', midX);
+    label.setAttribute('x', labelX);
     label.setAttribute('y', labelY);
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('class', 'm-label');
     label.setAttribute('font-size', labelFontSize);
     const spacing = inPlanePixelSpacing(series);
     label.textContent = spacing.known && m.unit !== 'px' ? formatLengthFromMm(m.mm, series) : `${m.mm.toFixed(1)} px`;
+    label.setAttribute('transform', `translate(${labelX} ${labelY}) scale(${scaleY / scaleX} 1) translate(${-labelX} ${-labelY})`);
     group.appendChild(label);
 
     // Explicit delete button — a small circle with × next to the label.
     // Clicking the line itself no longer deletes (too easy to misclick).
-    const btnX = midX + labelFontSize * 2.2;
-    const btnY = labelY - labelFontSize * 0.35;
-    const btn = document.createElementNS(svgNS, 'circle');
+    const btnX = labelX + (label.textContent.length * 3.2 + 10) / scaleX;
+    const btnY = labelY - 4 / scaleY;
+    const btn = document.createElementNS(svgNS, 'ellipse');
     btn.setAttribute('cx', btnX);
     btn.setAttribute('cy', btnY);
-    btn.setAttribute('r', deleteBtnSize / 2);
+    btn.setAttribute('rx', 8 / scaleX);
+    btn.setAttribute('ry', 8 / scaleY);
     btn.setAttribute('class', 'm-del-bg');
     group.appendChild(btn);
 
-    const x1 = btnX - deleteBtnSize * 0.2, x2 = btnX + deleteBtnSize * 0.2;
-    const y1 = btnY - deleteBtnSize * 0.2, y2 = btnY + deleteBtnSize * 0.2;
+    const x1 = btnX - 3.2 / scaleX, x2 = btnX + 3.2 / scaleX;
+    const y1 = btnY - 3.2 / scaleY, y2 = btnY + 3.2 / scaleY;
     const cross1 = document.createElementNS(svgNS, 'line');
     cross1.setAttribute('x1', x1); cross1.setAttribute('y1', y1);
     cross1.setAttribute('x2', x2); cross1.setAttribute('y2', y2);
@@ -173,10 +193,11 @@ export function drawMeasurements() {
 
     // Transparent hit-target over the delete button so the whole circle
     // is clickable, not just the thin × strokes.
-      const hit = document.createElementNS(svgNS, 'circle');
+    const hit = document.createElementNS(svgNS, 'ellipse');
     hit.setAttribute('cx', btnX);
     hit.setAttribute('cy', btnY);
-    hit.setAttribute('r', deleteBtnSize / 2);
+    hit.setAttribute('rx', 8 / scaleX);
+    hit.setAttribute('ry', 8 / scaleY);
     hit.setAttribute('class', 'm-del-hit');
     hit.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -192,10 +213,11 @@ export function drawMeasurements() {
   // In-progress preview — shows the first click point before the user
   // picks the second endpoint.
   if (state.measurePending) {
-    const dot = document.createElementNS(svgNS, 'circle');
+    const dot = document.createElementNS(svgNS, 'ellipse');
     dot.setAttribute('cx', state.measurePending.x);
     dot.setAttribute('cy', state.measurePending.y);
-    dot.setAttribute('r', 4);
+    dot.setAttribute('rx', 4 / scaleX);
+    dot.setAttribute('ry', 4 / scaleY);
     dot.setAttribute('class', 'm-dot');
     svg.appendChild(dot);
   }

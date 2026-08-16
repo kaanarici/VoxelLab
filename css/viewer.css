@@ -233,9 +233,9 @@
      delete button below is. This prevents accidental deletions when the
      user is trying to do anything near an existing line. */
   .m-line   { stroke: #ffffff; stroke-width: 1.5; fill: none;
-              pointer-events: none; }
+              pointer-events: none; vector-effect: non-scaling-stroke; }
   .m-dot    { fill: #ffffff; stroke: #000; stroke-width: 1;
-              pointer-events: none; }
+              pointer-events: none; vector-effect: non-scaling-stroke; }
   .m-label  {
     fill: #ffffff; font-weight: 500;
     font-family: -apple-system, system-ui, sans-serif;
@@ -250,6 +250,15 @@
   .m-group:hover .m-del-bg { fill: var(--abnormal-strong); }
   .m-group:hover .m-line { stroke: var(--color-abnormal); }
   .m-group:hover .m-label { fill: var(--color-abnormal); }
+
+  @media (hover: hover) and (pointer: fine) {
+    .m-del-bg,
+    .m-del-x { opacity: 0; }
+    .m-group:hover .m-del-bg,
+    .m-group:hover .m-del-x,
+    .angle-group:hover .m-del-bg,
+    .angle-group:hover .m-del-x { opacity: 1; }
+  }
 
   /* Brief reveal of delete button on newly placed measurements */
   @keyframes m-del-hint {
@@ -384,7 +393,7 @@
       grid-template-columns: 1fr;
       grid-template-rows: repeat(4, 1fr) auto;
     }
-    .mpr-toolbar { padding: 3px var(--space-2sm); }
+    .mpr-toolbar { padding: var(--space-10) var(--space-sm); }
     .mpr-proj-btn,
     .mpr-tb-btn,
     .mpr-toolbar .ui-unit-field { min-height: 44px; }
@@ -503,82 +512,134 @@
   .mpr-toolbar-wrap.has-overflow-left::before { opacity: 1; }
   .mpr-toolbar-wrap.has-overflow-right::after { opacity: 1; }
   .mpr-toolbar {
-    display: flex; align-items: center; gap: var(--space-sm);
+    display: flex; align-items: center; gap: var(--space-md);
     flex-wrap: nowrap; justify-content: flex-start;
     min-width: 0;
     overflow-x: auto; overflow-y: hidden;
     overscroll-behavior-x: contain;
     scrollbar-width: none; -ms-overflow-style: none;
     scroll-behavior: smooth;
-    padding: var(--space-2sm) var(--space-md);
+    padding: var(--space-10) var(--space-md);
     background: var(--mpr-tb-bg);
     border-top: var(--border-w) solid var(--mpr-tb-border);
-    font-size: var(--fs-caption); color: var(--mpr-tb-text);
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    color: var(--mpr-tb-text);
   }
   .mpr-toolbar::-webkit-scrollbar { display: none; }
   .mpr-toolbar > * { flex-shrink: 0; }
   .mpr-tb-group {
     display: flex; align-items: center; gap: var(--space-2sm);
+    height: var(--btn-toolbar);
   }
-  .mpr-tb-lbl { color: var(--mpr-tb-muted); white-space: nowrap; }
+  .mpr-tb-lbl {
+    color: var(--mpr-tb-muted);
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-snug);
+    line-height: var(--btn-toolbar);
+    white-space: nowrap;
+  }
   .mpr-tb-val {
-    min-width: 30px; text-align: center;
-    color: var(--mpr-tb-text); font-variant-numeric: tabular-nums;
+    min-width: 6ch; text-align: right;
+    color: var(--mpr-tb-text);
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-snug);
+    line-height: var(--btn-toolbar);
   }
+  #mpr-zoom-val { min-width: 4ch; }
   .mpr-toolbar .ui-unit-field {
-    --ui-unit-border: var(--mpr-tb-surface-soft);
-    --ui-unit-border-hover: var(--mpr-tb-surface-strong);
+    --ui-unit-border: var(--mpr-tb-border);
+    --ui-unit-border-hover: var(--dim);
     --ui-unit-border-focus: var(--mpr-tb-text);
-    --ui-unit-bg: var(--mpr-tb-surface);
+    --ui-unit-bg: transparent;
     --ui-unit-text: var(--mpr-tb-text);
     --ui-unit-muted: var(--mpr-tb-muted);
+    height: var(--btn-toolbar);
+    min-height: var(--btn-toolbar);
+    font-size: var(--fs-body-lg);
+  }
+  .mpr-toolbar .ui-unit-input {
+    font-size: var(--fs-body-lg);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-snug);
+  }
+  .mpr-toolbar .ui-unit {
+    font-size: var(--fs-body-lg);
+    font-variant-numeric: tabular-nums;
   }
   .mpr-tb-sep {
-    width: var(--border-w); height: 16px; background: var(--mpr-tb-surface-soft); flex-shrink: 0;
+    width: var(--border-w); height: 18px; background: var(--mpr-tb-surface-soft); flex-shrink: 0;
+    margin: 0 var(--space-xs);
   }
   .mpr-tb-sl {
     appearance: none; -webkit-appearance: none;
-    width: 64px; height: 2px; background: var(--mpr-tb-surface-strong); margin: 0;
+    width: 64px; height: 5px;
+    background: var(--mpr-tb-surface-strong);
+    border-radius: var(--radius-sm);
+    margin: 0; padding: 0; display: block;
+    cursor: pointer; outline: none;
   }
-  .mpr-tb-sl--slab { width: 56px; }
   .mpr-tb-sl::-webkit-slider-thumb {
-    -webkit-appearance: none; width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
+    -webkit-appearance: none;
+    width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
     background: var(--mpr-tb-text); cursor: pointer;
     border: var(--knob-border) solid var(--mpr-tb-knob-border);
-    box-shadow: 0 0 0 1px var(--mpr-tb-text), 0 1px 3px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow-knob);
+    transition: transform var(--dur-quick) var(--ease-smooth);
   }
+  .mpr-tb-sl:hover::-webkit-slider-thumb { transform: scale(1.15); }
   .mpr-tb-sl::-moz-range-thumb {
     width: var(--compact-range-thumb); height: var(--compact-range-thumb); border-radius: 50%;
     background: var(--mpr-tb-text); cursor: pointer;
     border: var(--knob-border) solid var(--mpr-tb-knob-border);
-    box-shadow: 0 0 0 1px var(--mpr-tb-text), 0 1px 3px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow-knob);
   }
   .mpr-tb-btn {
-    background: rgba(255,255,255,0.05); border: var(--border-w) solid var(--mpr-tb-border);
-    color: var(--mpr-tb-text); border-radius: var(--radius); cursor: pointer; font: inherit;
-    padding: 3px 7px; font-size: var(--fs-caption);
-    text-transform: uppercase; letter-spacing: var(--tracking-wide);
+    box-sizing: border-box;
+    height: var(--btn-toolbar);
+    min-width: var(--btn-toolbar);
+    padding: 0 var(--space-10);
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: var(--border-w) solid var(--mpr-tb-border);
+    color: var(--mpr-tb-text);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-snug);
+    white-space: nowrap;
   }
-  .mpr-tb-btn:hover { background: var(--mpr-tb-surface); }
+  .mpr-tb-btn:hover { background: var(--hover); border-color: var(--dim); }
   .mpr-tb-btn:active { opacity: 0.7; }
-  /* Segmented pill group — mirrors codebase pill-group/pill pattern,
-     hardcoded to dark palette since toolbar is always on black. */
+  #mpr-zoom-out, #mpr-zoom-in { padding: 0; }
+  /* Segmented pill group — same 30px height and 11px type as the main controls row */
   .mpr-tb-pills {
     display: flex;
     flex-shrink: 0;
+    height: var(--btn-toolbar);
     border: var(--border-w) solid var(--mpr-tb-surface-soft);
     border-radius: var(--radius);
     overflow: hidden;
   }
   .mpr-proj-btn {
-    padding: 3px 9px;
-    font: inherit; font-size: var(--fs-caption); font-weight: var(--fw-medium);
+    padding: 0 var(--space-10);
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font: inherit; font-size: var(--fs-body); font-weight: var(--fw-medium);
     color: var(--mpr-tb-muted);
     background: transparent;
     border: none;
     border-right: var(--border-w) solid var(--mpr-tb-surface-soft);
     cursor: pointer;
-    letter-spacing: var(--tracking-snug);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
     transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap);
   }
   .mpr-proj-btn:last-child { border-right: none; }
@@ -587,9 +648,14 @@
   .mpr-proj-btn.active { color: var(--mpr-tb-text); background: rgba(255,255,255,0.07); }
   /* GPU path toggle — custom switch (native checkbox hidden); MPR chrome stays dark-on-canvas */
   .mpr-tb-gpu.ui-switch {
-    display: flex; align-items: center; gap: 5px;
+    display: flex; align-items: center; gap: var(--space-2sm);
+    height: var(--btn-toolbar);
     position: relative;
-    cursor: pointer; color: var(--mpr-tb-muted); white-space: nowrap;
+    cursor: pointer;
+    color: var(--mpr-tb-muted);
+    font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
   }
   .mpr-tb-gpu .ui-switch-input {
     position: absolute;
@@ -647,7 +713,6 @@
 
   .cmp-cell canvas {
     max-width: 100%; max-height: 100%;
-    object-fit: contain;
   }
   .cmp-cell .cmp-lbl {
     position: absolute; top: var(--space-sm); left: var(--space-10);

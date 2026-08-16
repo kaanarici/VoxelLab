@@ -47,7 +47,13 @@ test('microscopy ruler stores calibrated micrometer distance and renders without
     const series = state.manifest.series[state.seriesIdx];
     const measurement = measurementEntriesForSlice(state, series, state.sliceIdx)[0] || null;
     const labelEl = document.querySelector('#overlay-svg .m-label');
+    const deleteBackground = document.querySelector('#overlay-svg .m-del-bg');
+    const deleteTarget = document.querySelector('#overlay-svg .m-del-hit');
     const labelRect = labelEl?.getBoundingClientRect();
+    const deleteBackgroundRect = deleteBackground?.getBoundingClientRect();
+    const deleteRect = deleteTarget?.getBoundingClientRect();
+    const canvasRect = document.querySelector('#view')?.getBoundingClientRect();
+    const overlayRect = document.querySelector('#overlay-svg')?.getBoundingClientRect();
     return {
       mm: measurement?.mm,
       unit: measurement?.unit,
@@ -57,6 +63,13 @@ test('microscopy ruler stores calibrated micrometer distance and renders without
       y1: measurement?.y1,
       y2: measurement?.y2,
       label: labelEl?.textContent || '',
+      labelHeight: labelRect?.height || 0,
+      deleteBackgroundWidth: deleteBackgroundRect?.width || 0,
+      deleteWidth: deleteRect?.width || 0,
+      canvasWidth: canvasRect?.width || 0,
+      canvasHeight: canvasRect?.height || 0,
+      overlayWidth: overlayRect?.width || 0,
+      overlayHeight: overlayRect?.height || 0,
       labelFitsViewport: !!labelRect && labelRect.left >= -1 && labelRect.right <= innerWidth + 1,
       rootScrollWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
@@ -73,6 +86,9 @@ test('microscopy ruler stores calibrated micrometer distance and renders without
   expect(snapshot.y1, JSON.stringify(snapshot)).toBeCloseTo(8, 6);
   expect(snapshot.y2, JSON.stringify(snapshot)).toBeCloseTo(8, 6);
   expect(snapshot.labelFitsViewport, JSON.stringify(snapshot)).toBe(true);
+  expect(snapshot.labelHeight, JSON.stringify(snapshot)).toBeLessThanOrEqual(18);
+  expect(snapshot.deleteBackgroundWidth, JSON.stringify(snapshot)).toBeLessThanOrEqual(24);
+  expect(snapshot.deleteWidth, JSON.stringify(snapshot)).toBeLessThanOrEqual(36);
   expect(snapshot.rootScrollWidth, JSON.stringify(snapshot)).toBeLessThanOrEqual(snapshot.viewportWidth + 1);
 
   await page.locator('#roi-results-panel .sec-title').click();

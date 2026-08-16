@@ -23,8 +23,7 @@ import {
 } from './core/state/viewer-commands.js';
 
 function canUseGpuMpr() {
-  return typeof document !== 'undefined'
-    && typeof WebGL2RenderingContext !== 'undefined';
+  return Boolean(globalThis.document && globalThis.WebGL2RenderingContext);
 }
 
 function paneForCanvas(canvas) {
@@ -113,12 +112,10 @@ export function wireMprPanel(deps) {
   const { hideHover } = deps;
   let activePan = null;
   const gpuToggle = $('mpr-gpu-toggle');
-  const gpuNote = $('mpr-gpu-note');
   const syncGpuUi = () => {
     const available = canUseGpuMpr();
     gpuToggle.checked = !!state.mprGpuEnabled;
     gpuToggle.disabled = !available;
-    gpuNote.textContent = !available ? 'N/A' : state.mprGpuEnabled ? 'GPU' : 'CPU';
   };
   syncGpuUi();
 

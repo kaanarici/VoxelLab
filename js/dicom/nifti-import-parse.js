@@ -6,9 +6,7 @@ import { DEFAULT_IOP, normalize3 } from '../core/geometry.js';
 
 let pako = null;
 let fallbackImportSequence = 0;
-const IN_NODE = typeof globalThis.process !== 'undefined'
-  && Boolean(globalThis.process.versions?.node)
-  && typeof globalThis.window === 'undefined';
+const IN_NODE = Boolean(globalThis.process?.versions?.node) && !('window' in globalThis);
 
 async function ensurePako() {
   if (pako) return pako;
@@ -69,7 +67,7 @@ async function inflateGzipWithPlatform(bytes, maxBytes, expectedBytes) {
 async function inflateGzipWithPako(bytes, maxBytes, expectedBytes) {
   const pk = await ensurePako();
   const Inflate = pk.Inflate || pk.default?.Inflate;
-  if (typeof Inflate !== 'function') throw niftiError('gzip decoder pako.Inflate is unavailable.');
+  if (!(Inflate instanceof Function)) throw niftiError('gzip decoder pako.Inflate is unavailable.');
   const inflator = new Inflate({ chunkSize: 64 * 1024 });
   const output = boundedInflatedOutput(expectedBytes, maxBytes);
   inflator.onData = part => output.append(part);
@@ -84,7 +82,7 @@ async function inflateGzipWithPako(bytes, maxBytes, expectedBytes) {
 }
 
 async function inflateGzipBytes(bytes, maxBytes, expectedBytes) {
-  if (typeof DecompressionStream === 'function') {
+  if (globalThis.DecompressionStream instanceof Function) {
     try {
       return await inflateGzipWithPlatform(bytes, maxBytes, expectedBytes);
     } catch (error) {
@@ -335,7 +333,7 @@ function niftiHeader(source) {
 function niftiImportSeed() {
   try {
     const uuid = globalThis.crypto?.randomUUID?.();
-    if (typeof uuid === 'string' && uuid) return uuid.toLowerCase().replaceAll('-', '');
+    if (uuid?.toLowerCase instanceof Function && uuid) return uuid.toLowerCase().replaceAll('-', '');
   } catch {
     // Monotonic process-local fallback below.
   }
@@ -648,6 +646,7 @@ export async function parseNIfTISeries(
       firstIPP: [...firstIPP],
       lastIPP: [...lastIPP],
       orientation: [...orientation],
+      patientFrameTrusted: !!affineFromHeader,
       group: null,
       hasBrain: false, hasSeg: false, hasSym: false, hasRegions: false,
       hasStats: false, hasAnalysis: false, hasMaskRaw: false, hasRaw: true,

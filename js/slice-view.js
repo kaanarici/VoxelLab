@@ -23,6 +23,7 @@ import {
   beginObliqueInteraction,
   beginMprInteraction,
   clearMprCellCache,
+  releaseMprGpuVolumes,
   getMprCellCacheStats,
   getMprVolumeReadiness,
   mprClickToVoxel,
@@ -44,7 +45,7 @@ export function markViewAwaitingSliceFade() {
 function revealViewSliceIfPending() {
   const el = $('view-xform');
   if (!el || !el.classList.contains(VIEW_AWAITING_SLICE)) return;
-  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (globalThis.matchMedia instanceof Function && matchMedia('(prefers-reduced-motion: reduce)').matches) {
     el.classList.remove(VIEW_AWAITING_SLICE);
     return;
   }
@@ -62,6 +63,7 @@ export {
   beginObliqueInteraction,
   beginMprInteraction,
   clearMprCellCache,
+  releaseMprGpuVolumes,
   getMprCellCacheStats,
   getMprVolumeReadiness,
   mprClickToVoxel,
@@ -104,7 +106,7 @@ function microscopyCompositeSources(series) {
 }
 
 export function initSliceView(deps) {
-  if (typeof deps.hideHover === 'function') _hideHover = deps.hideHover;
+  if (deps.hideHover instanceof Function) _hideHover = deps.hideHover;
   initMprView({
     ensureVoxels: deps.ensureVoxels,
     isMprActive: deps.isMprActive,

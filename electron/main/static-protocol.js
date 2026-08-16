@@ -64,7 +64,7 @@ export function resolveStaticAssetPath(requestUrl, rootDir) {
 
 export function registerStaticProtocol({ protocol, net, scheme, rootDir, handleApiRequest = null }) {
   protocol.handle(scheme, async (request) => {
-    if (typeof handleApiRequest === 'function') {
+    if (handleApiRequest instanceof Function) {
       const apiResponse = await handleApiRequest(request);
       if (apiResponse) return apiResponse;
     }

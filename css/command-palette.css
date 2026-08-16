@@ -10,9 +10,9 @@
 .cmdk-backdrop.open { opacity: 1; pointer-events: auto; }
 
 .cmdk-dialog {
-  width: 100%; max-width: 520px;
+  width: 100%; max-width: 640px;
   background: var(--panel);
-  border: var(--border-w) solid var(--border);
+  border: 0;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
   overflow: hidden;
@@ -67,10 +67,26 @@
 }
 .cmdk-row-shortcut kbd, .cmdk-hint kbd {
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 18px; height: 18px; padding: 0 var(--space-xs);
+  min-width: 20px; height: 20px; padding: 0 var(--space-xs);
   border-radius: var(--radius);
-  background: var(--elev); border: var(--border-w) solid var(--border);
-  font: inherit; font-size: var(--fs-caption); color: var(--muted);
+  background: var(--elev);
+  font: inherit; font-size: var(--fs-caption); line-height: 1; color: var(--muted);
+  box-sizing: border-box;
+}
+.cmdk-keys {
+  display: inline-flex; align-items: center; gap: var(--space-xs);
+}
+.cmdk-key {
+  width: 20px; min-width: 20px; padding: 0;
+}
+.cmdk-key-run {
+  line-height: 0;
+}
+.cmdk-key-run svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .cmdk-empty {

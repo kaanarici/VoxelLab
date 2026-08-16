@@ -2,12 +2,14 @@ import { state, batch } from '../state.js';
 import { $ } from '../../dom.js';
 import { syncSliceCountAriaBusy } from '../../shell/toolbar-chrome.js';
 import { clampSlabThicknessMm, normalizeMprProjectionMode } from '../../mpr/mpr-projection.js';
+import { geometryFromSeries } from '../geometry.js';
 import { normalizeRegionMeta } from '../../region-meta.js';
 import {
   clampClipPlaneDepth,
   clampObliquePitch,
   clampObliqueYaw,
 } from '../../volume/volume-clip-plane.js';
+import { volumeProjectionSamplingSupport } from '../../volume/volume-raycast-steps.js';
 import {
   clearRuntimeSelectionCaches,
   restoreRuntimeVolumeCache,
@@ -135,8 +137,21 @@ export function setFusionOpacity(opacity) {
 }
 
 export function setRenderMode(mode) {
-  state.renderMode = mode;
+  const requested = mode === 'mip' || mode === 'minip' ? mode : 'alpha';
+  const series = getCurrentSeries();
+  if (!renderModeSupportedForSeries(requested, series)) return state.renderMode;
+  state.renderMode = requested;
   return state.renderMode;
+}
+
+function renderModeSupportedForSeries(mode, series) {
+  if (mode !== 'mip' && mode !== 'minip') return true;
+  if (!series) return false;
+  return volumeProjectionSamplingSupport({
+    width: series.width,
+    height: series.height,
+    depth: series.slices,
+  }).supported;
 }
 
 export function setColormap(name) {
@@ -162,7 +177,10 @@ export function applyViewerPreset(preset = {}) {
     if (preset.clipMin) state.clipMin = preset.clipMin.slice();
     if (preset.clipMax) state.clipMax = preset.clipMax.slice();
     if (preset.clipPlaneEnabled !== undefined) state.clipPlaneEnabled = !!preset.clipPlaneEnabled;
-    if (preset.mode) state.renderMode = preset.mode;
+    if (preset.mode) {
+      const requestedMode = preset.mode === 'mip' || preset.mode === 'minip' ? preset.mode : 'alpha';
+      if (renderModeSupportedForSeries(requestedMode, getCurrentSeries())) state.renderMode = requestedMode;
+    }
   });
   return {
     lowT: state.lowT,
@@ -316,9 +334,16 @@ export function setMprProjection({
   mode = state.mpr.projectionMode,
   slabThicknessMm = state.mpr.slabThicknessMm,
 } = {}) {
+  const series = getCurrentSeries();
+  const geometry = series ? geometryFromSeries(series) : null;
+  const spacing = geometry ? {
+    row: geometry.rowSpacing,
+    col: geometry.colSpacing,
+    slice: geometry.sliceSpacing,
+  } : null;
   batch(() => {
     state.mpr.projectionMode = normalizeMprProjectionMode(mode);
-    state.mpr.slabThicknessMm = clampSlabThicknessMm(slabThicknessMm);
+    state.mpr.slabThicknessMm = clampSlabThicknessMm(slabThicknessMm, spacing);
   });
   return {
     mode: state.mpr.projectionMode,
@@ -357,21 +382,21 @@ export function beginSeriesSelection(index, { preserveSlice = false } = {}) {
   const previousSeries = getCurrentSeries();
   const previousVariant = state.useBrain && previousSeries?.hasBrain ? 'brain' : 'base';
   const series = state.manifest.series[index];
-  rememberSeriesViewState(previousSeries);
+  if (state.loaded || state.selectRequestId > 0) rememberSeriesViewState(previousSeries);
   const nextView = viewStateForSeries(series, { preserveSlice });
   let requestId = 0;
   stashRuntimeVolumeCache(previousSeries, { variant: previousVariant });
   batch(() => {
     requestId = ++state.selectRequestId;
     state.seriesIdx = index;
+    if (!renderModeSupportedForSeries(state.renderMode, series)) state.renderMode = 'alpha';
     state.mode = nextView.mode;
     state.sliceIdx = nextView.sliceIdx;
-    // Restore per-series window/level and overlay toggles when this series has a
-    // remembered view. Unsupported overlays are corrected by
-    // initializeSeriesViewState's capability guards immediately after selection.
+    if (nextView.window != null) state.window = nextView.window;
+    if (nextView.level != null) state.level = nextView.level;
+    // Unsupported overlays are corrected by initializeSeriesViewState's
+    // capability guards immediately after selection.
     if (nextView.restored) {
-      if (nextView.window != null) state.window = nextView.window;
-      if (nextView.level != null) state.level = nextView.level;
       if (nextView.overlays) {
         state.useBrain = !!nextView.overlays.useBrain;
         state.useSeg = !!nextView.overlays.useSeg;

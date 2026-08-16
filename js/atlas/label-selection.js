@@ -18,7 +18,7 @@ function asNumber(value) {
 /** Real anatomy label ids from regionMeta (keys, not a hardcoded 1..255 range). */
 export function allLabelsFromMeta(regionMeta) {
   const regions = regionMeta?.regions;
-  if (!regions || typeof regions !== 'object') return new Set();
+  if (!regions || Array.isArray(regions) || Object.getPrototypeOf(regions) !== Object.prototype) return new Set();
   const out = new Set();
   for (const key of Object.keys(regions)) {
     const id = asNumber(key);

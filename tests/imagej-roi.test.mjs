@@ -77,7 +77,7 @@ function writeInternalRoiName(buffer, label) {
 test('parseImageJRoi decodes ImageJ polygon coordinates relative to bounds', () => {
   const roi = polygonRoi({ points: [[2, 3], [12, 4], [8, 11]] });
 
-  assert.equal(roi.shape, 'polygon');
+  assert.equal(roi['shape'], 'polygon');
   assert.equal(roi.name, 'nucleus');
   assert.deepEqual(roi.points, [[2, 3], [12, 4], [8, 11]]);
 });
@@ -96,7 +96,7 @@ test('parseImageJRoi reads absolute sub-pixel coordinates from two-vertex PolyLi
 
   const roi = parseImageJRoi(buffer, { name: 'subpixel-segment.roi' });
 
-  assert.equal(roi.shape, 'line');
+  assert.equal(roi['shape'], 'line');
   assert.deepEqual(roi.points, [[2.25, 4.5], [10.75, 10.125]]);
 });
 
@@ -137,10 +137,10 @@ test('parseImageJRoi decodes freehand and traced ROI coordinates as polygon geom
   const freehand = polygonRoi({ type: 7, name: 'freehand-cell.roi', points });
   const traced = polygonRoi({ type: 8, name: 'traced-cell.roi', points });
 
-  assert.equal(freehand.shape, 'polygon');
+  assert.equal(freehand['shape'], 'polygon');
   assert.equal(freehand.name, 'freehand-cell');
   assert.deepEqual(freehand.points, points);
-  assert.equal(traced.shape, 'polygon');
+  assert.equal(traced['shape'], 'polygon');
   assert.equal(traced.name, 'traced-cell');
   assert.deepEqual(traced.points, points);
 });
@@ -149,7 +149,7 @@ test('parseImageJRoi decodes oval ROI bounds as VoxelLab ellipse points', () => 
   const buffer = roiHeader({ type: 2, left: 4, top: 5, right: 13, bottom: 15 });
   const roi = parseImageJRoi(buffer, { name: 'cell-body.roi' });
 
-  assert.equal(roi.shape, 'ellipse');
+  assert.equal(roi['shape'], 'ellipse');
   assert.equal(roi.name, 'cell-body');
   assert.deepEqual(roi.points, [[4, 5], [13, 15]]);
 });
@@ -158,7 +158,7 @@ test('parseImageJRoi decodes rectangular ROI bounds as polygon corners', () => {
   const buffer = roiHeader({ type: 1, left: 3, top: 4, right: 12, bottom: 13 });
   const roi = parseImageJRoi(buffer, { name: 'cell-box.roi' });
 
-  assert.equal(roi.shape, 'polygon');
+  assert.equal(roi['shape'], 'polygon');
   assert.equal(roi.name, 'cell-box');
   assert.deepEqual(roi.points, [[3, 4], [12, 4], [12, 13], [3, 13]]);
 });
@@ -171,7 +171,7 @@ test('parseImageJRoi decodes straight line coordinates', () => {
   buffer.writeFloatBE(14, 30);
   const roi = parseImageJRoi(buffer, { name: 'axon-length.roi' });
 
-  assert.equal(roi.shape, 'line');
+  assert.equal(roi['shape'], 'line');
   assert.equal(roi.name, 'axon-length');
   assert.deepEqual(roi.points, [[3, 4], [12, 14]]);
 });
@@ -202,7 +202,7 @@ test('parseImageJRoi normalizes a two-vertex PolyLine into a positioned straight
     time: 4,
   }), { name: 'axon-segment.roi' });
 
-  assert.equal(roi.shape, 'line');
+  assert.equal(roi['shape'], 'line');
   assert.equal(roi.name, 'axon-segment');
   assert.equal(roi.label, 'Curated axon segment');
   assert.deepEqual(roi.points, [[2, 4], [10, 10]]);
@@ -228,7 +228,7 @@ test('parseImageJRoi preserves multi-vertex PolyLines as open geometry', () => {
     points: [[2, 4], [7, 4], [7, 10], [12, 10]],
   });
 
-  assert.equal(roi.shape, 'polyline');
+  assert.equal(roi['shape'], 'polyline');
   assert.deepEqual(roi.points, [[2, 4], [7, 4], [7, 10], [12, 10]]);
 });
 
@@ -247,7 +247,7 @@ test('parseImageJRoi decodes angle ROI coordinates', () => {
     points: [[6, 4], [2, 4], [6, 8]],
   });
 
-  assert.equal(roi.shape, 'angle');
+  assert.equal(roi['shape'], 'angle');
   assert.equal(roi.name, 'branch-angle');
   assert.deepEqual(roi.points, [[6, 4], [2, 4], [6, 8]]);
 });
@@ -298,7 +298,7 @@ test('imageJRoiToAnnotation maps stack positions and microscopy scope', () => {
   }, 0);
 
   assert.equal(converted.sliceIdx, 1);
-  assert.equal(converted.entry.shape, 'point');
+  assert.equal(converted.entry['shape'], 'point');
   assert.deepEqual(converted.entry.pts, [[3, 6], [7, 8]]);
   assert.deepEqual(converted.entry.stats, { count: 2, pixels: 2 });
   assert.deepEqual(converted.entry.microscopy, { channelIndex: 1, channelName: 'GFP', timeIndex: 0 });
@@ -458,7 +458,7 @@ test('imageJRoiToAnnotation maps an open PolyLine into a calibrated ROI length',
   }, 0);
 
   assert.equal(converted.kind, 'roi');
-  assert.equal(converted.entry.shape, 'polyline');
+  assert.equal(converted.entry['shape'], 'polyline');
   assert.equal(converted.entry.stats.length_px, 7);
   assert.equal(converted.entry.stats.length_mm, 0.01);
 });
@@ -474,7 +474,7 @@ test('encodeImageJRoi preserves polygon geometry and C/Z/T positions', () => {
   });
   const roi = parseImageJRoi(bytes, { name: 'cell.roi' });
 
-  assert.equal(roi.shape, 'polygon');
+  assert.equal(roi['shape'], 'polygon');
   assert.equal(roi.label, 'cell');
   assert.deepEqual(roi.points, [[2, 3], [12, 4], [8, 11]]);
   assert.equal(roi.zPosition, 3);
@@ -528,7 +528,7 @@ test('encodeImageJRoi preserves straight line geometry and C/Z/T positions', () 
   });
   const roi = parseImageJRoi(bytes, { name: 'axon.roi' });
 
-  assert.equal(roi.shape, 'line');
+  assert.equal(roi['shape'], 'line');
   assert.equal(roi.label, 'axon');
   assert.deepEqual(roi.points, [[2, 4], [10, 4]]);
   assert.equal(roi.zPosition, 2);
@@ -548,7 +548,7 @@ test('encodeImageJRoi round-trips open PolyLine geometry', () => {
   });
   const roi = parseImageJRoi(bytes, { name: 'axon-path.roi' });
 
-  assert.equal(roi.shape, 'polyline');
+  assert.equal(roi['shape'], 'polyline');
   assert.equal(roi.label, 'axon path');
   assert.deepEqual(roi.points, points);
   assert.equal(roi.zPosition, 2);
@@ -565,7 +565,7 @@ test('imageJRoiZip round-trips multiple VoxelLab ROI and measurement rows as unc
   const rois = await parseImageJRoiZip(zip);
 
   assert.equal(rois.length, 5);
-  assert.deepEqual(rois.map(roi => roi.shape), ['ellipse', 'point', 'line', 'polyline', 'angle']);
+  assert.deepEqual(rois.map(roi => roi['shape']), ['ellipse', 'point', 'line', 'polyline', 'angle']);
   assert.deepEqual(rois.map(roi => roi.label), ['cell body', 'spots', 'axon length', 'axon path', 'branch angle']);
   assert.deepEqual(rois[0].points, [[4, 5], [13, 15]]);
   assert.deepEqual(rois[1].points, [[3, 6], [7, 8]]);
@@ -603,7 +603,7 @@ test('imageJRoiZip keeps duplicate labels as distinct ROI Manager entries', asyn
     'axon_z1_c1_t1-2',
     'axon_z1_c1_t1-3',
   ]);
-  assert.deepEqual(rois.map(roi => roi.shape), ['line', 'line', 'angle']);
+  assert.deepEqual(rois.map(roi => roi['shape']), ['line', 'line', 'angle']);
   assert.deepEqual(rois[1].points, [[2, 2], [5, 2]]);
   assert.deepEqual(rois[2].points, [[6, 4], [2, 4], [6, 8]]);
 });
@@ -623,7 +623,7 @@ test('parseImageJRoiZip imports deflated ROI Manager entries for supported ROI t
 
   assert.equal(rois.length, 1);
   assert.equal(rois[0].name, 'compressed-cell');
-  assert.equal(rois[0].shape, 'polygon');
+  assert.equal(rois[0]['shape'], 'polygon');
   assert.deepEqual(rois[0].points, [[2, 3], [12, 4], [8, 11]]);
   assert.equal(rois[0].zPosition, 2);
   assert.equal(rois[0].timePosition, 3);
@@ -631,7 +631,7 @@ test('parseImageJRoiZip imports deflated ROI Manager entries for supported ROI t
 
 test('parseImageJRoiZip uses native deflate streams for compressed ROI Manager entries', async () => {
   const nativeDecompressionStream = globalThis.DecompressionStream;
-  assert.equal(typeof nativeDecompressionStream, 'function');
+  assert.equal(nativeDecompressionStream instanceof Function, true);
   const formats = [];
   globalThis.DecompressionStream = class CountingDecompressionStream {
     constructor(format) {
@@ -653,7 +653,7 @@ test('parseImageJRoiZip uses native deflate streams for compressed ROI Manager e
 
     assert.equal(rois.length, 1);
     assert.equal(rois[0].name, 'native-stream-axon');
-    assert.equal(rois[0].shape, 'line');
+    assert.equal(rois[0]['shape'], 'line');
     assert.deepEqual(rois[0].points, [[2, 4], [10, 4]]);
     assert.deepEqual(formats, ['deflate-raw']);
   } finally {
@@ -662,7 +662,7 @@ test('parseImageJRoiZip uses native deflate streams for compressed ROI Manager e
 });
 
 test('parseImageJRoiZip bounds native inflation by the declared decoded size', async () => {
-  assert.equal(typeof globalThis.DecompressionStream, 'function');
+  assert.equal(globalThis.DecompressionStream instanceof Function, true);
   const payload = encodeImageJRoi({
     kind: 'line',
     label: 'forged native stream',
@@ -691,7 +691,7 @@ test('parseImageJRoiZip imports deflated ROI Manager entries that use data descr
 
   assert.equal(rois.length, 1);
   assert.equal(rois[0].name, 'axon');
-  assert.equal(rois[0].shape, 'line');
+  assert.equal(rois[0]['shape'], 'line');
   assert.deepEqual(rois[0].points, [[2, 4], [10, 4]]);
   assert.equal(rois[0].channelPosition, 2);
 });
@@ -760,7 +760,7 @@ test('parseImageJRoiZip normalizes Windows-style folder paths to ROI basenames',
 
   assert.equal(rois.length, 1);
   assert.equal(rois[0].name, 'branch-angle');
-  assert.equal(rois[0].shape, 'angle');
+  assert.equal(rois[0]['shape'], 'angle');
   assert.deepEqual(rois[0].points, [[6, 4], [2, 4], [6, 8]]);
 });
 
@@ -781,7 +781,7 @@ test('parseImageJRoiZipEntries imports supported ROI Manager entries and reports
 
   assert.equal(result.rois.length, 1);
   assert.equal(result.rois[0].name, 'spots');
-  assert.equal(result.rois[0].shape, 'point');
+  assert.equal(result.rois[0]['shape'], 'point');
   assert.deepEqual(result.skipped, [{ name: 'unsupported.roi', reason: 'Unsupported ImageJ ROI type.' }]);
 });
 
@@ -804,9 +804,9 @@ test('parseImageJRoiZipEntries imports two-vertex and open multi-vertex PolyLine
   ]));
 
   assert.equal(result.rois.length, 2);
-  assert.equal(result.rois[0].shape, 'line');
+  assert.equal(result.rois[0]['shape'], 'line');
   assert.deepEqual(result.rois[0].points, [[2, 4], [10, 10]]);
-  assert.equal(result.rois[1].shape, 'polyline');
+  assert.equal(result.rois[1]['shape'], 'polyline');
   assert.deepEqual(result.rois[1].points, [[2, 4], [6, 10], [10, 10]]);
   assert.deepEqual(result.skipped, []);
 });
@@ -829,7 +829,7 @@ test('parseImageJRoiZipEntries skips unsupported data-descriptor entries and con
 
   assert.equal(result.rois.length, 1);
   assert.equal(result.rois[0].name, 'axon');
-  assert.equal(result.rois[0].shape, 'line');
+  assert.equal(result.rois[0]['shape'], 'line');
   assert.deepEqual(result.rois[0].points, [[3, 4], [12, 4]]);
   assert.deepEqual(result.skipped, [{ name: 'unsupported-compressed.roi', reason: 'unsupported_compression' }]);
 });

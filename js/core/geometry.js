@@ -2,7 +2,9 @@
 // MPR, 3D scaling, measurements, compare, and SR export.
 
 export function numberList(value, minLength = 0) {
-  const source = Array.isArray(value) ? value : (typeof value === 'string' ? value.split('\\') : null);
+  const source = Array.isArray(value)
+    ? value
+    : (value != null && String(value) === value ? value.split('\\') : null);
   if (!source) return [];
   const out = [];
   for (const item of source) {

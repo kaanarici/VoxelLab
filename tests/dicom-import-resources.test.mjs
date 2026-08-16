@@ -51,18 +51,17 @@ test('DICOM metadata limits reject unsafe dimensions and overlarge enhanced inst
   );
   assert.throws(
     () => assertDICOMDatasetMetadata([{
-      meta: monochromeMeta({ Rows: 4096, Columns: 4096, NumberOfFrames: 3 }),
+      meta: monochromeMeta({ Rows: 4096, Columns: 4096, NumberOfFrames: 7 }),
     }]),
     /instance voxel count .* exceeds the .* voxel limit/,
   );
 });
 
-test('DICOM modeled working set accounts for retained source, raw output, canvases, and per-plane transients', () => {
-  const sharedSource = { id: 'enhanced-instance' };
-  const datasets = [0, 1].map(index => ({
+test('DICOM modeled working set accounts for worker clone, raw output, display bytes, and per-plane transients', () => {
+  const datasets = Array.from({ length: 5 }, (_, index) => ({
     meta: monochromeMeta({ Rows: 4096, Columns: 4096, InstanceNumber: index + 1 }),
-    pixels: { byteLength: 32 * 1024 * 1024 },
-    file: sharedSource,
+    pixels: { byteLength: 36 * 1024 * 1024 },
+    file: { id: `instance-${index}` },
   }));
 
   assert.throws(
@@ -71,34 +70,35 @@ test('DICOM modeled working set accounts for retained source, raw output, canvas
   );
 });
 
-test('DICOM stack resource rejection happens before a canvas or Float32 output allocation', async () => {
-  const previousDocument = globalThis.document;
-  let canvasCreates = 0;
-  globalThis.document = {
-    createElement() {
-      canvasCreates += 1;
-      throw new Error('resource guard must run before canvas allocation');
-    },
-  };
+test('DICOM working-set budget accepts the real 192-slice 792 by 512 archive shape', () => {
+  const datasets = Array.from({ length: 192 }, (_, index) => ({
+    meta: monochromeMeta({ Rows: 792, Columns: 512, InstanceNumber: index + 1 }),
+    sourceByteLength: 832 * 1024,
+    sourceId: index,
+  }));
 
-  try {
-    const datasets = [0, 1].map(index => ({
-      meta: monochromeMeta({
-        Rows: 4096,
-        Columns: 4096,
-        PixelSpacing: [1, 1],
-        ImageOrientationPatient: [1, 0, 0, 0, 1, 0],
-        ImagePositionPatient: [0, 0, index],
-        InstanceNumber: index + 1,
-      }),
-      pixels: { byteLength: 32 * 1024 * 1024 },
-    }));
-    await assert.rejects(
-      () => buildDICOMSeriesResult(datasets, () => {}, 'too-large'),
-      /modeled working set .* exceeds the .* byte limit/,
-    );
-    assert.equal(canvasCreates, 0);
-  } finally {
-    globalThis.document = previousDocument;
-  }
+  const budget = assertDICOMSeriesWorkingSet(datasets);
+
+  assert.equal(budget.totalVoxels, 77_856_768);
+  assert.ok(budget.workingSetBytes < DICOM_IMPORT_LIMITS.maxWorkingSetBytes);
+});
+
+test('DICOM stack resource rejection happens before decoding full-volume output', async () => {
+  const datasets = Array.from({ length: 5 }, (_, index) => ({
+    meta: monochromeMeta({
+      Rows: 4096,
+      Columns: 4096,
+      PixelSpacing: [1, 1],
+      ImageOrientationPatient: [1, 0, 0, 0, 1, 0],
+      ImagePositionPatient: [0, 0, index],
+      InstanceNumber: index + 1,
+    }),
+    pixels: { byteLength: 36 * 1024 * 1024 },
+    file: { id: `instance-${index}` },
+  }));
+
+  await assert.rejects(
+    () => buildDICOMSeriesResult(datasets, () => {}, 'too-large'),
+    /modeled working set .* exceeds the .* byte limit/,
+  );
 });

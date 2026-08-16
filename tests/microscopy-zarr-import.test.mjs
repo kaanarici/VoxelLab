@@ -94,7 +94,7 @@ test('parseOmeZarrFiles loads local uncompressed zarr v2 single whole-array chun
       height: 2,
       tileWidth: 2,
       tileHeight: 2,
-      chunkShape: { t: 1, c: 2, z: 1, y: 2, x: 2 },
+      'chunkShape': { t: 1, c: 2, z: 1, y: 2, x: 2 },
       downsample: 1,
     }]);
     assert.deepEqual(result.entry.microscopyDataset.planes.map(plane => [plane.c, plane.z, plane.t]), [[0, 0, 0], [1, 0, 0]]);
@@ -245,7 +245,7 @@ test('parseOmeZarrFiles rejects aggregate plane allocations before reading local
     }),
     fileLike('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [20, 1024, 1024],
+      'shape': [20, 1024, 1024],
       chunks: [1, 1024, 1024],
       dtype: '<u2',
       compressor: null,
@@ -287,7 +287,7 @@ test('parseOmeZarrFiles rejects a large custom axis before reading local chunks'
     }),
     fileLike('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [100_000_000, 1, 1],
+      'shape': [100_000_000, 1, 1],
       chunks: [100_000_000, 1, 1],
       dtype: '|u1',
       compressor: null,
@@ -329,7 +329,7 @@ test('parseOmeZarrFiles rejects an oversized local chunk from File.size before r
     }),
     fileLike('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [1, 1, 1],
+      'shape': [1, 1, 1],
       chunks: [1, 1, 1],
       dtype: '|u1',
       compressor: null,
@@ -372,7 +372,7 @@ test('parseOmeZarrFiles rejects a local chunk without bounded streaming before a
     }),
     fileLike('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [1, 1, 1],
+      'shape': [1, 1, 1],
       chunks: [1, 1, 1],
       dtype: '|u1',
       compressor: null,
@@ -416,7 +416,7 @@ test('parseOmeZarrFiles caps a streamed local chunk whose declared size is under
     }),
     fileLike('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [1, 1, 1],
+      'shape': [1, 1, 1],
       chunks: [1, 1, 1],
       dtype: '|u1',
       compressor: null,
@@ -506,7 +506,7 @@ for (const [dtype, values, ArrayType] of [
     try {
       const parsed = await parseOmeZarrFiles(tinyOmeZarrFiles({
         dtype,
-        arrayOverrides: { shape: [1, 2, 2], chunks: [1, 2, 2] },
+        arrayOverrides: { 'shape': [1, 2, 2], chunks: [1, 2, 2] },
         chunkBytes: chunkForDtype(dtype, values),
       }));
       assert.equal(parsed.results.length, 1, parsed.status);
@@ -578,9 +578,9 @@ test('parseOmeZarrFiles loads a bounded unsharded OME-NGFF 0.5 Zarr v3 array', a
     const array = {
       zarr_format: 3,
       node_type: 'array',
-      shape: [1, 2, 2],
+      'shape': [1, 2, 2],
       data_type: 'float32',
-      chunk_grid: { name: 'regular', configuration: { chunk_shape: [1, 1, 1] } },
+      chunk_grid: { name: 'regular', configuration: { 'chunk_shape': [1, 1, 1] } },
       chunk_key_encoding: { name: 'default', configuration: { separator: '/' } },
       fill_value: 0,
       codecs: [{ name: 'bytes', configuration: { endian: 'little' } }],
@@ -595,7 +595,7 @@ test('parseOmeZarrFiles loads a bounded unsharded OME-NGFF 0.5 Zarr v3 array', a
     ]);
     assert.equal(parsed.results.length, 1, parsed.status);
     assert.deepEqual(Array.from(parsed.results[0].rawPlanes['0|0'][0].pixels), [1.5, 2.5, 3.5, 4.5]);
-    assert.deepEqual(parsed.results[0].entry.microscopyDataset.levels[0].chunkShape, { t: 1, c: 1, z: 1, y: 1, x: 1 });
+    assert.deepEqual(parsed.results[0].entry.microscopyDataset.levels[0]['chunkShape'], { t: 1, c: 1, z: 1, y: 1, x: 1 });
     assert.equal(parsed.results[0].entry.microscopyDataset.levels[0].tileWidth, 1);
     assert.equal(parsed.results[0].entry.microscopyDataset.levels[0].tileHeight, 1);
     assert.match(parsed.results[0].entry.microscopy.storageProvenance, /Local Zarr v3/);
@@ -612,8 +612,8 @@ test('parseOmeZarrFiles rejects Zarr v3 sharding and non-default chunk keys', as
     attrs.ome.version = '0.5';
     files[0] = fileLike('cells.zarr/zarr.json', { zarr_format: 3, node_type: 'group', attributes: { ome: attrs.ome } });
     files[1] = fileLike('cells.zarr/0/zarr.json', {
-      zarr_format: 3, node_type: 'array', shape: [2, 2, 2], data_type: 'uint16',
-      chunk_grid: { name: 'regular', configuration: { chunk_shape: [2, 2, 2] } },
+      zarr_format: 3, node_type: 'array', 'shape': [2, 2, 2], data_type: 'uint16',
+      chunk_grid: { name: 'regular', configuration: { 'chunk_shape': [2, 2, 2] } },
       chunk_key_encoding: { name: 'v2', configuration: { separator: '.' } },
       codecs: [{ name: 'sharding_indexed', configuration: {} }], fill_value: 0,
     });
@@ -653,7 +653,7 @@ test('parseOmeZarrFiles decodes the committed Blosc LZ4 byte-shuffle golden thro
       ],
       scale: [1, 1, 0.5, 0.5],
       arrayOverrides: {
-        shape: [1, 1, 275, 271],
+        'shape': [1, 1, 275, 271],
         chunks: [1, 1, 275, 271],
         compressor: { id: 'blosc', cname: 'lz4', shuffle: 1, clevel: 5, blocksize: 0 },
       },

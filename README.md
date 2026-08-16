@@ -17,20 +17,28 @@ account or uploading local files.
 ## Download
 
 Download the current builds from [GitHub Releases](https://github.com/kaanarici/VoxelLab/releases/latest).
+VoxelLab uses manual updates: open **Help → Check for Updates**, download the
+new installer, and install it over the existing version. The app does not run an
+automatic updater.
 
 | Platform | File | Notes |
 |---|---|---|
-| macOS on Apple Silicon | `VoxelLab.dmg` | The app is not notarized. On first launch, right-click VoxelLab in Applications, choose **Open**, and confirm. |
-| Windows | Installer (`.exe`) | The installer is unsigned, so Windows may show a SmartScreen warning. |
+| macOS on Apple Silicon | `VoxelLab.dmg` | The current v1.1.2 app is unsigned and not notarized. On first launch, right-click VoxelLab in Applications, choose **Open**, and confirm. |
+| Windows | `VoxelLab-1.1.2-Setup.exe` | The current installer is unsigned, so Windows may show a SmartScreen warning. |
 
-The release also contains updater metadata and package files used by the
-desktop build. Most users only need the DMG or EXE.
+The retained v1.1.2 release predates the curated asset policy and includes
+legacy packaging files; users need only the DMG or Setup EXE above. Starting
+with the next release, the public download set will contain exactly
+`VoxelLab-<version>-macOS-arm64.dmg`, `VoxelLab-<version>-Windows-x64.exe`, and
+`SHA256SUMS`. Validation reports and packaging intermediates stay in GitHub
+Actions.
 
 ## Open Your First Study
 
 1. Launch VoxelLab and choose **Open study**.
-2. Select DICOM files, a NIfTI volume, or a supported microscopy stack. You can
-   also drag files or a folder into the window.
+2. Drop a study folder onto the dialog, or click the drop zone to pick a
+   folder. Individual files are a secondary control. You can also drag a
+   folder onto the empty viewer.
 3. Use the viewer toolbar to inspect slices, switch views, measure, and export.
 
 Want to start with public data? Run the source version, install the 44 MB lite
@@ -97,6 +105,10 @@ synthetic reference checks.
 
 Opening local files does not require a VoxelLab account or a hosted backend.
 The default browser and desktop import paths process those files locally.
+The desktop app remembers successful local imports and restores them on a later
+launch when the original files are still available. Removing every series that
+came from one import also removes that saved-import record; opening a file or
+folder explicitly at launch takes precedence over restoration.
 
 Cloud processing is optional. Files leave your machine only after you
 configure Modal and Cloudflare R2 and explicitly start a cloud workflow. Never
@@ -108,7 +120,7 @@ request, screenshot, or committed configuration file.
 Requirements:
 
 - Node.js 22.12.0
-- Python 3.11 or newer
+- Python 3.13 (setup accepts 3.11 or newer; local lock files and CI use 3.13)
 
 ```bash
 git clone https://github.com/kaanarici/VoxelLab.git
@@ -126,6 +138,7 @@ npm run desktop:start
 Useful checks:
 
 ```bash
+npm run check:fast
 npm run check
 npm run check:geometry
 npm run test:node
@@ -133,15 +146,26 @@ npm run test:python
 npm run test:browser
 ```
 
-Optional processing dependencies can be installed separately:
+`check:fast` is the everyday gate. `check` adds Electron contract, runtime, and
+packaging-configuration checks; it does not build a release installer.
+
+Optional processing dependencies can be installed separately. `--ai` installs
+the lightweight local-model lock (`requirements/ai.lock`). `--pipeline` and
+`--cloud` install `requirements/ci.lock`. `--rtk` is standalone, installs
+`requirements/rtk.lock`, and does **not** include the Modal SDK.
+These flags do not install TotalSegmentator, SynthSeg, or HD-BET locally.
 
 ```bash
+npm run setup -- --help
 npm run setup -- --pipeline
-npm run setup -- --pipeline --cloud
-npm run setup -- --pipeline --rtk
+npm run setup -- --ai --provider claude
+npm run setup -- --rtk
 ```
 
-Cloud setup is documented in [R2_SETUP.md](R2_SETUP.md).
+Cloud GPU setup is documented in [R2_SETUP.md](R2_SETUP.md). After Modal and
+R2 are configured, set `VIEWER_CLOUD_PROCESSING=true` in `.env` or enable it
+in **Cloud settings**. Segmentation runs on the deployed Modal image, not
+from the local `--pipeline` install.
 
 ## Project Status
 

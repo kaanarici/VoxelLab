@@ -51,10 +51,10 @@ function computeSlice(series, labels, z) {
   return regions;
 }
 
-const idle = typeof requestIdleCallback === 'function'
-  ? requestIdleCallback
+const idle = globalThis.requestIdleCallback instanceof Function
+  ? globalThis.requestIdleCallback
   : (cb) => setTimeout(() => cb({ timeRemaining: () => 8 }), 32);
-const cancelIdle = typeof cancelIdleCallback === 'function' ? cancelIdleCallback : clearTimeout;
+const cancelIdle = globalThis.cancelIdleCallback instanceof Function ? globalThis.cancelIdleCallback : clearTimeout;
 
 // Warm the remaining slices when the main thread is idle so the first scrub-
 // through is already cached. Chunked + cooperative; bails if the cache rotated.

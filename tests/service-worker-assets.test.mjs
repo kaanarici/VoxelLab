@@ -1,6 +1,6 @@
 /* global Request, Response */
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
@@ -61,6 +61,16 @@ test('service worker precaches local CSS and HTML templates', () => {
   const missing = files.filter((filePath) => !PRECACHED.has(filePath));
 
   assert.deepEqual(missing, []);
+});
+
+test('bundled demo data does not ship cached AI interpretations', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'data/manifest.json'), 'utf8'));
+  assert.equal(manifest.series.some((series) => series.hasAnalysis), false);
+  assert.deepEqual(
+    readdirSync(join(root, 'data')).filter((name) => name.endsWith('_analysis.json')),
+    [],
+  );
+  assert.equal(existsSync(join(root, 'data/consult.json')), false);
 });
 
 test('service worker install caps base data and only preloads declared sidecars', async () => {
@@ -209,7 +219,7 @@ test('service worker bounds runtime data cache entries and preserves the respons
   const dataCache = {
     async match() { return null; },
     async put(request) {
-      const url = typeof request === 'string' ? request : request.url;
+      const url = request?.constructor === String ? request : request.url;
       const existing = entries.findIndex(entry => entry.url === url);
       if (existing >= 0) entries.splice(existing, 1);
       entries.push(new Request(url));

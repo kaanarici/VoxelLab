@@ -48,7 +48,7 @@ test('normalizeOmeZarrMetadata normalizes valid multiscales metadata with discov
     arrayMetadataByPath: {
       0: {
         data_type: 'uint16',
-        shape: [3, 2, 4, 64, 128],
+        'shape': [3, 2, 4, 64, 128],
         dimension_names: ['t', 'c', 'z', 'y', 'x'],
       },
     },
@@ -99,7 +99,7 @@ test('normalizeOmeZarrMetadata accepts NGFF 0.4 version on the multiscales entry
     }],
   }, {
     arrayMetadataByPath: {
-      0: { dtype: '<u2', shape: [2, 3, 4, 5] },
+      0: { dtype: '<u2', 'shape': [2, 3, 4, 5] },
     },
   });
 

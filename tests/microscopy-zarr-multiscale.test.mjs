@@ -61,7 +61,7 @@ function multiscaleFiles({ coarseChannels = 1, includeChunk = true } = {}) {
   };
   const base = {
     zarr_format: 2,
-    shape: [1, 1, 4, 3000, 3000],
+    'shape': [1, 1, 4, 3000, 3000],
     chunks: [1, 1, 1, 2, 2],
     dtype: '|u1',
     compressor: null,
@@ -71,7 +71,7 @@ function multiscaleFiles({ coarseChannels = 1, includeChunk = true } = {}) {
   };
   const coarse = {
     zarr_format: 2,
-    shape: [1, coarseChannels, 2, 2, 2],
+    'shape': [1, coarseChannels, 2, 2, 2],
     chunks: [1, coarseChannels, 2, 2, 2],
     dtype: '|u1',
     compressor: null,

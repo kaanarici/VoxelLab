@@ -3,7 +3,7 @@ import { getStateSnapshot } from './core/state.js';
 const overlayRegistry = new Map();
 
 export function addOverlay({ id, render }) {
-  if (!id || typeof render !== 'function' || overlayRegistry.has(id)) return () => {};
+  if (!id || !(render instanceof Function) || overlayRegistry.has(id)) return () => {};
   overlayRegistry.set(id, { id, render });
   return () => overlayRegistry.delete(id);
 }

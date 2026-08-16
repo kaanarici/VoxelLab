@@ -103,7 +103,7 @@ function maxPointError(affine, goldenPoints) {
 }
 
 function compareExpectedValue(actual, expected, path, mismatches) {
-  if (typeof expected === 'number') {
+  if (expected?.constructor === Number) {
     const actualNumber = Number(actual);
     if (!Number.isFinite(actualNumber)) {
       mismatches.push(`${path}: expected finite number, got ${String(actual)}`);
@@ -123,8 +123,8 @@ function compareExpectedValue(actual, expected, path, mismatches) {
       compareExpectedValue(actual[index], value, `${path}[${index}]`, mismatches),
     ), 0);
   }
-  if (expected && typeof expected === 'object') {
-    if (!actual || typeof actual !== 'object') {
+  if (expected && !Array.isArray(expected) && Object.getPrototypeOf(expected) === Object.prototype) {
+    if (!actual || Array.isArray(actual) || Object.getPrototypeOf(actual) !== Object.prototype) {
       mismatches.push(`${path}: object shape mismatch`);
       return MISMATCH_ERROR;
     }

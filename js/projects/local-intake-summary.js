@@ -32,7 +32,7 @@ function isDicomSrFile(file) {
 }
 
 async function readJsonSidecarInfo(file) {
-  if (!isJsonFile(file) || typeof file.text !== 'function') return classifyJsonSidecarText('{}');
+  if (!isJsonFile(file) || !(file.text instanceof Function)) return classifyJsonSidecarText('{}');
   return classifyJsonSidecarText(await file.text());
 }
 
@@ -73,11 +73,11 @@ async function localIntakeKind(file = {}) {
 }
 
 function localIntakeResultKind(result) {
-  return typeof result === 'string' ? result : String(result?.kind || '');
+  return result?.constructor === String ? result : String(result?.kind || '');
 }
 
 function localIntakeFormatItem(file, result) {
-  const formatLabel = typeof result === 'string' ? '' : String(result?.formatLabel || '');
+  const formatLabel = result?.constructor === String ? '' : String(result?.formatLabel || '');
   if (!formatLabel) return file;
   return {
     name: file?.name,
@@ -89,7 +89,7 @@ function localIntakeFormatItem(file, result) {
 }
 
 function localIntakeSkippedItem(file, result) {
-  const skipReason = typeof result === 'string' ? '' : String(result?.skipReason || '');
+  const skipReason = result?.constructor === String ? '' : String(result?.skipReason || '');
   if (!skipReason) return file;
   return {
     name: file?.name,
@@ -97,7 +97,7 @@ function localIntakeSkippedItem(file, result) {
     relativePath: file?.relativePath,
     webkitRelativePath: file?.webkitRelativePath,
     failureKind: file?.failureKind,
-    schema: typeof result === 'string' ? '' : String(result?.schema || ''),
+    schema: result?.constructor === String ? '' : String(result?.schema || ''),
     skipReason,
   };
 }

@@ -11,7 +11,6 @@ import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js'
 import { beginViewerRuntimeSession, syncViewerRuntimeSession } from '../runtime/viewer-session.js';
 import { drawSparkline } from '../sparkline.js';
 import { renderAnnotationList } from '../overlay/annotation.js';
-import { renderCloudResultsPanel } from '../cloud-results.js';
 import { updateOrientationMarkers } from '../shell/viewport.js';
 import { markViewAwaitingSliceFade } from '../slice-view.js';
 import { renderQuantificationPanel, renderVolumeTable } from '../metadata.js';
@@ -89,7 +88,6 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
     renderAnnotationList();
     renderVolumeTable();
     renderStructuresPanel();
-    renderCloudResultsPanel();
     v.syncModalityPresets();
     v.syncOverlayOpacityUI();
     v.syncToolbarReadyState();
@@ -305,19 +303,17 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
       concurrency: BASE_PREFETCH_CONCURRENCY,
       limit: Infinity,
     }) || Promise.resolve([]);
+    const liveOverlays = activeOverlayStateForSeries(series);
+    const prefetchInactiveOverlay = (imgs, enabled) => enabled
+      ? Promise.resolve([])
+      : imgs.prefetchRemaining?.(state.sliceIdx, windowRadius, {
+        concurrency: OVERLAY_PREFETCH_CONCURRENCY,
+        limit: DEFAULT_PREFETCH_LIMIT,
+      }) || Promise.resolve([]);
     const fullOverlayLoad = Promise.all([
-      state.segImgs.prefetchRemaining?.(state.sliceIdx, windowRadius, {
-        concurrency: OVERLAY_PREFETCH_CONCURRENCY,
-        limit: DEFAULT_PREFETCH_LIMIT,
-      }) || Promise.resolve([]),
-      state.symImgs.prefetchRemaining?.(state.sliceIdx, windowRadius, {
-        concurrency: OVERLAY_PREFETCH_CONCURRENCY,
-        limit: DEFAULT_PREFETCH_LIMIT,
-      }) || Promise.resolve([]),
-      state.regionImgs.prefetchRemaining?.(state.sliceIdx, windowRadius, {
-        concurrency: OVERLAY_PREFETCH_CONCURRENCY,
-        limit: DEFAULT_PREFETCH_LIMIT,
-      }) || Promise.resolve([]),
+      prefetchInactiveOverlay(state.segImgs, liveOverlays.tissue.enabled),
+      prefetchInactiveOverlay(state.symImgs, liveOverlays.heatmap.enabled),
+      prefetchInactiveOverlay(state.regionImgs, liveOverlays.labels.enabled),
     ]);
     Promise.resolve(fullBaseLoad).then(() => triggerRebuildAfterBaseReady('full'));
     void fullOverlayLoad;

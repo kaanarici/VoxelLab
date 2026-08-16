@@ -8,6 +8,8 @@ import traceback
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from ai_runtime import list_cli_models
+from ask_envelopes import normalize_consult_document
 from ask_event_protocol import version_ask_event
 
 
@@ -568,6 +570,12 @@ def handle_ai_get(handler, parsed, data_dir: Path, has_local_api_token, status_p
             return True
         handler._json(200, status_payload(analysis_key) if analysis_key else status_payload())
         return True
+    if parsed.path == "/api/ai/models":
+        if not has_local_api_token():
+            handler._json(403, {"error": "missing or invalid local api token"})
+            return True
+        handler._json(200, list_cli_models())
+        return True
     if parsed.path == "/api/consult":
         if not has_local_api_token():
             handler._json(403, {"error": "missing or invalid local api token"})
@@ -578,7 +586,7 @@ def handle_ai_get(handler, parsed, data_dir: Path, has_local_api_token, status_p
                 cached = json.loads(p.read_text())
                 if not isinstance(cached, dict):
                     raise ValueError("consult cache is not a JSON object")
-                handler._json(200, {"cached": True, **cached})
+                handler._json(200, {"cached": True, **normalize_consult_document(cached)})
                 return True
             except Exception as exc:
                 handler._json(409, {

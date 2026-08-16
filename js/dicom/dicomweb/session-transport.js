@@ -66,7 +66,7 @@ function buildHeaders(baseHeaders = {}, requestHeaders = {}, accept = '') {
 
 function fetchOrThrow(fetchImpl) {
   const fn = fetchImpl || globalThis.fetch;
-  if (typeof fn !== 'function') throw new Error('DICOMweb fetch requires a fetch implementation');
+  if (!(fn instanceof Function)) throw new Error('DICOMweb fetch requires a fetch implementation');
   return fn;
 }
 

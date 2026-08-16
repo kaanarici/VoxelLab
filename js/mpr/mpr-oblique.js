@@ -11,7 +11,7 @@
 //     "v" axes in the output image)
 //
 // We parameterize the plane by two angles:
-//   · yaw   — rotation around the superior-inferior axis
+//   · yaw   — rotation around acquisition-grid z
 //   · pitch — tilt relative to the axial plane
 //
 // Starting from the identity orientation (u=+x, v=+y, normal=+z) we
@@ -20,15 +20,14 @@
 //   p = center + u * du + v * dv
 // where du and dv are the unit u/v vectors scaled to voxel size.
 //
-// The sampling kernel is the same Lanczos-3 we use for orthogonal MPR —
-// ensures the oblique view has the same sharpness profile as the others.
+// Orthogonal, oblique, CPU, and GPU paths share trilinear intensity sampling.
 
-import { sampleLanczosZ } from '../lanczos.js';
 import { getFusedWLLut, getFusedWLU32 } from '../colormap.js';
 import { drawCompositeSlice } from '../slice-compositor.js';
 import { dot3 } from '../core/geometry.js';
 import { projectDiscreteSlabLabel, projectVolumeSample } from './mpr-projection.js';
 import { obliqueBasis } from './mpr-oblique-geometry.js';
+import { sampleTrilinear } from './mpr-sampling.js';
 
 export { obliqueBasis } from './mpr-oblique-geometry.js';
 
@@ -36,13 +35,19 @@ function sampleByte(value) {
   return Math.min(255, Math.max(0, Math.round(value)));
 }
 
-function extentShape(extent) {
-  if (typeof extent === 'number') return { widthMm: extent, heightMm: extent };
+function normalizedPlaneExtent(extent) {
+  if (Number.isFinite(extent)) {
+    return { widthMm: extent, heightMm: extent, centerOffsetUMm: 0, centerOffsetVMm: 0 };
+  }
   const widthMm = Number(extent?.widthMm);
   const heightMm = Number(extent?.heightMm);
+  const centerOffsetUMm = Number(extent?.centerOffsetUMm);
+  const centerOffsetVMm = Number(extent?.centerOffsetVMm);
   return {
     widthMm: Number.isFinite(widthMm) && widthMm > 0 ? widthMm : 1,
     heightMm: Number.isFinite(heightMm) && heightMm > 0 ? heightMm : 1,
+    centerOffsetUMm: Number.isFinite(centerOffsetUMm) ? centerOffsetUMm : 0,
+    centerOffsetVMm: Number.isFinite(centerOffsetVMm) ? centerOffsetVMm : 0,
   };
 }
 
@@ -71,18 +76,36 @@ export function obliquePlaneExtentMm(dims, spacing, center, yaw, pitch) {
       }
     }
   }
-  const pad = 1.04;
+  const pad = 0.02;
+  const spanU = maxU - minU;
+  const spanV = maxV - minV;
+  const paddedMinU = minU - spanU * pad;
+  const paddedMaxU = maxU + spanU * pad;
+  const paddedMinV = minV - spanV * pad;
+  const paddedMaxV = maxV + spanV * pad;
   return {
-    widthMm: Math.max(spacing.col, (maxU - minU) * pad),
-    heightMm: Math.max(spacing.row, (maxV - minV) * pad),
+    widthMm: Math.max(spacing.col, paddedMaxU - paddedMinU),
+    heightMm: Math.max(spacing.row, paddedMaxV - paddedMinV),
+    centerOffsetUMm: (paddedMinU + paddedMaxU) / 2,
+    centerOffsetVMm: (paddedMinV + paddedMaxV) / 2,
   };
+}
+
+export function obliqueSamplingCenterVoxel(center, spacing, yaw, pitch, extentMm) {
+  const extent = normalizedPlaneExtent(extentMm);
+  const basis = obliqueBasis(yaw, pitch);
+  return [
+    center[0] + (basis.u[0] * extent.centerOffsetUMm + basis.v[0] * extent.centerOffsetVMm) / spacing.col,
+    center[1] + (basis.u[1] * extent.centerOffsetUMm + basis.v[1] * extent.centerOffsetVMm) / spacing.row,
+    center[2] + (basis.u[2] * extent.centerOffsetUMm + basis.v[2] * extent.centerOffsetVMm) / spacing.slice,
+  ];
 }
 
 // Shape: { width: 820, height: 608 } chosen to fill the visible oblique stage.
 export function fitObliqueCanvas(availableWidth, availableHeight, extent) {
   const width = Math.max(1, Math.round(availableWidth || 1));
   const height = Math.max(1, Math.round(availableHeight || 1));
-  const safe = extentShape(extent);
+  const safe = normalizedPlaneExtent(extent);
   const aspect = safe.widthMm / safe.heightMm;
   if (!(aspect > 0)) return { width, height };
   const targetHeight = Math.min(height, Math.round(width / aspect));
@@ -128,13 +151,14 @@ function ensureObliqueBuffers(target, width, height, overlays) {
 }
 
 // Shape: { width: 512, height: 512, baseBytes: Uint8Array(...), segBytes: null, regionBytes: null, symBytes: null, fusionBytes: null }.
-export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, spacing, center, yaw, pitch, extentMm, overlays = null, target = null, sampleVolume = sampleLanczosZ, projection = null) {
+export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, spacing, center, yaw, pitch, extentMm, overlays = null, target = null, sampleVolume = sampleTrilinear, projection = null) {
   const { W, H, D } = dims;
   const overlayState = overlays || {};
   const sampled = ensureObliqueBuffers(target, width, height, overlayState);
   const { baseBytes, segBytes, regionBytes, symBytes, fusionBytes } = sampled;
-  const extent = extentShape(extentMm);
+  const extent = normalizedPlaneExtent(extentMm);
   const basis = obliqueBasis(yaw, pitch);
+  const samplingCenter = obliqueSamplingCenterVoxel(center, spacing, yaw, pitch, extent);
   const stepUMm = extent.widthMm / Math.max(1, width - 1);
   const stepVMm = extent.heightMm / Math.max(1, height - 1);
   const du = [basis.u[0] * stepUMm / spacing.col, basis.u[1] * stepUMm / spacing.row, basis.u[2] * stepUMm / spacing.slice];
@@ -148,9 +172,9 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
 
   let sampleIndex = 0;
   for (let oy = 0; oy < height; oy++) {
-    const rowX = center[0] + (oy - halfH) * dv[0] - halfW * du[0];
-    const rowY = center[1] + (oy - halfH) * dv[1] - halfW * du[1];
-    const rowZ = center[2] + (oy - halfH) * dv[2] - halfW * du[2];
+    const rowX = samplingCenter[0] + (oy - halfH) * dv[0] - halfW * du[0];
+    const rowY = samplingCenter[1] + (oy - halfH) * dv[1] - halfW * du[1];
+    const rowZ = samplingCenter[2] + (oy - halfH) * dv[2] - halfW * du[2];
 
     for (let ox = 0; ox < width; ox++, sampleIndex++) {
       const vx = rowX + ox * du[0];
@@ -207,7 +231,7 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
 //
 // Output matches 2D / orthogonal MPR: same window/level and colormap as
 // drawSlice (getFusedWLU32 / getFusedWLLut).
-export function drawObliqueMPR(canvas, vox, voxScale, dims, spacing, center, yaw, pitch, extentMm, _lo, _hi, overlays = null, sampleVolume = sampleLanczosZ, projection = null) {
+export function drawObliqueMPR(canvas, vox, voxScale, dims, spacing, center, yaw, pitch, extentMm, _lo, _hi, overlays = null, sampleVolume = sampleTrilinear, projection = null) {
   const outW = canvas.width;
   const outH = canvas.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });

@@ -22,7 +22,7 @@ export function particleObjectToEntry(object, index, id, ctx) {
   const area = object.area;
   return {
     id,
-    shape: 'polygon',
+    'shape': 'polygon',
     label: `Particle ${index + 1}`,
     pts: object.polygon.map(([x, y]) => [x, y]),
     microscopy: { channelIndex, channelName: channelName || '', timeIndex },

@@ -21,7 +21,7 @@ export async function hardFail(promise, label) {
   } catch (error) {
     const err = normalizeError(error);
     console.error(`[${label}]`, err);
-    notify(`${label} failed`, { duration: 6000 });
+    notify(`${label} failed: ${err.message}`, { kind: 'error' });
     return null;
   }
 }

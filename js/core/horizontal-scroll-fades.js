@@ -17,9 +17,26 @@ export function initHorizontalScrollFades(wrap, rail) {
     frame = requestAnimationFrame(update);
   };
 
+  const revealFocusedControl = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !rail.contains(target)) return;
+    const railRect = rail.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    let nextLeft = rail.scrollLeft;
+    if (targetRect.left < railRect.left) {
+      nextLeft -= railRect.left - targetRect.left;
+    } else if (targetRect.right > railRect.right) {
+      nextLeft += targetRect.right - railRect.right;
+    }
+    if (nextLeft !== rail.scrollLeft) rail.scrollTo({ left: nextLeft, behavior: 'instant' });
+    schedule();
+  };
+
   rail.addEventListener('scroll', schedule, { passive: true });
+  rail.addEventListener('focusin', revealFocusedControl);
   window.addEventListener('resize', schedule);
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(schedule).observe(rail);
+  const Observer = globalThis.ResizeObserver;
+  if (Observer) new Observer(schedule).observe(rail);
   requestAnimationFrame(() => requestAnimationFrame(update));
   setTimeout(update, 120);
 }

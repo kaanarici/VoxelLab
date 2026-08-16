@@ -95,3 +95,34 @@ test('MPR pixel mapping preserves axial voxels when row spacing stretches the pa
   assert.deepEqual(mprVoxelForPixel('ax', 6, 0, 7, 17, series, crosshair), [6, 0, 2]);
   assert.deepEqual(mprVoxelForPixel('ax', 0, 16, 7, 17, series, crosshair), [0, 8, 2]);
 });
+
+test('MPR raster caps preserve physical aspect by scaling both dimensions', () => {
+  const sizes = mprPlaneSizes({
+    width: 2048,
+    height: 2048,
+    slices: 2,
+    pixelSpacing: [2, 1],
+    sliceSpacing: 1,
+  });
+
+  assert.equal(sizes.axH, 2048);
+  assert.ok(sizes.axW >= 1024 && sizes.axW <= 1025);
+  assert.ok(Math.abs((sizes.axW / sizes.axH) - 0.5) < 0.001);
+});
+
+test('a raster axis collapsed to one pixel samples the source midpoint', () => {
+  const series = {
+    width: 8192,
+    height: 2,
+    slices: 2,
+    pixelSpacing: [1, 1],
+    sliceSpacing: 1,
+  };
+  const sizes = mprPlaneSizes(series);
+  const crosshair = { x: 4095.5, y: 0.5, z: 0.5 };
+
+  assert.equal(sizes.axH, 1);
+  assert.equal(sizes.coH, 1);
+  assert.deepEqual(mprVoxelForPixel('ax', 0, 0, sizes.axW, sizes.axH, series, crosshair), [0, 0.5, 0.5]);
+  assert.deepEqual(mprVoxelForPixel('co', 0, 0, sizes.coW, sizes.coH, series, crosshair), [0, 0.5, 0.5]);
+});

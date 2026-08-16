@@ -1,10 +1,13 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WINDOWS_ABSOLUTE_RE = /^[A-Za-z]:[\\/]/;
+const WINDOWS_DRIVE_ABSOLUTE_RE = /^[A-Za-z]:[\\/]/;
+const WINDOWS_UNC_OR_DEVICE_RE = /^(?:\\\\|\/\/)/;
 
 function isWindowsAbsolute(value) {
-  return WINDOWS_ABSOLUTE_RE.test(String(value || ''));
+  const input = String(value || '');
+  return WINDOWS_DRIVE_ABSOLUTE_RE.test(input)
+    || (WINDOWS_UNC_OR_DEVICE_RE.test(input) && path.win32.isAbsolute(input));
 }
 
 function resolveNativePath(value, cwd) {
@@ -33,7 +36,11 @@ function normalizedSkipSet(opts, cwd) {
     opts.rootDir,
     opts.mainPath,
     ...(opts.skipPaths || []),
-  ].map(item => normalizedAbsolute(item, cwd)).filter(Boolean));
+  ].map(item => normalizedAbsolute(item, cwd)).filter(Boolean).map(pathComparisonKey));
+}
+
+function pathComparisonKey(value) {
+  return isWindowsAbsolute(value) ? value.toLowerCase() : value;
 }
 
 export function launchPathsFromArgv(argv = [], opts = {}) {
@@ -51,9 +58,10 @@ export function launchPathsFromArgv(argv = [], opts = {}) {
     if (!positional && raw.startsWith('-')) continue;
 
     const absolute = normalizedAbsolute(raw, cwd);
-    if (!absolute || skip.has(absolute)) continue;
-    if (seen.has(absolute)) continue;
-    seen.add(absolute);
+    const comparisonKey = pathComparisonKey(absolute);
+    if (!absolute || skip.has(comparisonKey)) continue;
+    if (seen.has(comparisonKey)) continue;
+    seen.add(comparisonKey);
     out.push(absolute);
   }
   return out;

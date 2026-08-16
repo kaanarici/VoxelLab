@@ -57,7 +57,7 @@ function projectionSourceManifest(seriesUID) {
     projection: {
       geometryModel: 'parallel-beam-stack',
       anglesDeg: [0],
-      outputShape: [4, 4, 2],
+      "outputShape": [4, 4, 2],
       outputSpacingMm: [1, 1, 1],
       firstIPP: [0, 0, 0],
       orientation: [1, 0, 0, 0, 1, 0],
@@ -76,7 +76,7 @@ function ultrasoundSourceManifest(seriesUID, ultrasound = {}) {
       probeGeometry: 'sector',
       thetaRangeDeg: [-30, 30],
       radiusRangeMm: [0, 50],
-      outputShape: [4, 4, 2],
+      "outputShape": [4, 4, 2],
       outputSpacingMm: [1, 1, 1],
       firstIPP: [0, 0, 0],
       orientation: [1, 0, 0, 0, 1, 0],

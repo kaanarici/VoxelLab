@@ -356,7 +356,47 @@ test('loadImageStack retries a previously failed slice entry', async (t) => {
   ]);
 });
 
-test('loadImageStack prefetch skips already loaded slices but retries failed ones', async (t) => {
+test('loadImageStack does not refetch a failed slice unless retry is requested', async (t) => {
+  const previousImage = globalThis.Image;
+  const loaded = [];
+
+  t.after(() => {
+    globalThis.Image = previousImage;
+  });
+
+  globalThis.Image = class {
+    set src(value) {
+      this._src = value;
+      loaded.push(value);
+      this.complete = true;
+      this.naturalWidth = 0;
+      queueMicrotask(() => this.onerror?.());
+    }
+
+    get src() {
+      return this._src;
+    }
+  };
+
+  const result = loadImageStack(
+    'cloud_job123',
+    1,
+    [],
+    { slug: 'cloud_job123', sliceUrlBase: './data/cloud_job123/' },
+    { label: 'cloud_job123 base stack', errorMode: 'hard', windowRadius: 0, initialIndex: 0 },
+  );
+  await Promise.all(result.loaders);
+  assert.equal(loaded.length, 1);
+
+  await result.imgs.ensureIndex(0);
+  await result.imgs.ensureIndex(0);
+  assert.equal(loaded.length, 1);
+
+  await result.imgs.ensureIndex(0, { retry: true });
+  assert.equal(loaded.length, 2);
+});
+
+test('loadImageStack prefetch skips already loaded slices and failed ones', async (t) => {
   const previousImage = globalThis.Image;
   const loaded = [];
 
@@ -395,7 +435,6 @@ test('loadImageStack prefetch skips already loaded slices but retries failed one
 
   assert.equal(result.imgs, existing);
   assert.deepEqual(loaded, [
-    './data/cloud_job123/0001.png',
     './data/cloud_job123/0004.png',
   ]);
 });

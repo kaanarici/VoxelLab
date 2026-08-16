@@ -11,9 +11,10 @@ import {
 } from '../series/series-contract.js';
 import { seriesPersistenceKey } from '../series/series-identity.js';
 import { cacheLocalRawVolume, clearLocalRawVolume } from '../local-raw-volume-cache.js';
+import { createLocalByteSlice } from '../series/local-byte-slice.js';
 import { retryPendingDerivedObjects } from './dicom-derived-import.js';
 
-export { parseDICOMFiles, parseDICOMFileGroups, parseNIfTI, parseNIfTISeries } from './dicom-import-parse.js';
+export { iterateDICOMFileGroups, parseDICOMFiles, parseDICOMFileGroups, parseNIfTI, parseNIfTISeries } from './dicom-import-parse.js';
 export { buildDICOMSeriesResult } from './dicom-import-parse.js';
 
 export function injectManifestSeries(manifest, entry) {
@@ -21,42 +22,43 @@ export function injectManifestSeries(manifest, entry) {
   const retried = retryPendingDerivedObjects(manifest);
   const attached = retried.filter(result => !result.skipped);
   const rejected = retried.filter(result => result.skipped);
-  if (attached.length && typeof document === 'object' && document?.body) {
+  if (attached.length && globalThis.document?.body) {
     notify(`Attached ${attached.length} waiting derived object${attached.length === 1 ? '' : 's'} to the newly loaded source series.`);
   }
-  if (rejected.length && typeof document === 'object' && document?.body) {
+  if (rejected.length && globalThis.document?.body) {
     const firstReason = String(rejected[0].reason || 'source compatibility validation failed');
     notify(
       `Could not attach ${rejected.length} waiting derived object${rejected.length === 1 ? '' : 's'}: ${firstReason}`,
-      { duration: 9000 },
+      { kind: 'error' },
     );
   }
   notifyProjectsChanged(idx);
   return idx;
 }
 
-function canvasesToImages(sliceCanvases = []) {
-  return sliceCanvases.map(c => {
+function localSliceSourcesToImages(sliceSources = [], width = 0, height = 0) {
+  return sliceSources.map(source => {
+    if (source instanceof Uint8Array) return createLocalByteSlice(source, width, height);
     const img = new Image();
     img.alt = '';
-    img.src = c.toDataURL('image/png');
-    if (Array.isArray(c._microscopyDisplayByteRange)) {
-      img._microscopyDisplayByteRange = c._microscopyDisplayByteRange.slice();
+    img.src = source.toDataURL('image/png');
+    if (Array.isArray(source._microscopyDisplayByteRange)) {
+      img._microscopyDisplayByteRange = source._microscopyDisplayByteRange.slice();
     }
-    if (Array.isArray(c._microscopyRawRange)) {
-      img._microscopyRawRange = c._microscopyRawRange.slice();
+    if (Array.isArray(source._microscopyRawRange)) {
+      img._microscopyRawRange = source._microscopyRawRange.slice();
     }
-    if (c._microscopyInvertDisplayRange) {
+    if (source._microscopyInvertDisplayRange) {
       img._microscopyInvertDisplayRange = true;
     }
     return img;
   });
 }
 
-export function injectLocalSeries(manifest, entry, sliceCanvases, rawVolume, localStacks = null, rawPlanes = null) {
+export function injectLocalSeries(manifest, entry, sliceSources, rawVolume, localStacks = null, rawPlanes = null) {
   const projectionSetRecord = registerProjectionSet(manifest, entry);
   const displayEntry = localDisplayEntryForImport(entry, projectionSetRecord);
-  const imgs = canvasesToImages(sliceCanvases);
+  const imgs = localSliceSourcesToImages(sliceSources, displayEntry.width, displayEntry.height);
   const slug = displayEntry.slug;
   const previousEntry = (manifest?.series || []).find(series => series?.slug === slug);
   const analysisKeys = new Set([
@@ -75,7 +77,7 @@ export function injectLocalSeries(manifest, entry, sliceCanvases, rawVolume, loc
   if (localStacks && displayEntry.microscopy) {
     const stacks = {};
     for (const [key, canvases] of Object.entries(localStacks)) {
-      stacks[key] = canvasesToImages(canvases);
+      stacks[key] = localSliceSourcesToImages(canvases, displayEntry.width, displayEntry.height);
     }
     state._localMicroscopyStacks[slug] = stacks;
     const activeKey = `${displayEntry.microscopy.channelIndex || 0}|${displayEntry.microscopy.timeIndex || 0}`;

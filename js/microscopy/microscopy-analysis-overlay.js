@@ -65,7 +65,7 @@ let unregister = null;
 // Registers the overlay with the plugin overlay hook. `addOverlay` is injected (from
 // js/plugin.js) so this module stays DOM-free and unit-testable.
 export function initAnalysisOverlay(addOverlay) {
-  if (unregister || typeof addOverlay !== 'function') return unregister || (() => {});
+  if (unregister || !(addOverlay instanceof Function)) return unregister || (() => {});
   unregister = addOverlay({ id: 'microscopy-analysis', render: (ctx) => renderAnalysisOverlay(ctx) });
   return unregister;
 }

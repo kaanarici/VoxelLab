@@ -1,333 +1,111 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-
 import { checkDesktopMakeOutputs } from '../scripts/check_desktop_make_outputs.mjs';
 import { checkReleaseAssets } from '../scripts/check_release_assets.mjs';
+import { preparePublicReleaseAssets } from '../scripts/prepare_public_release_assets.mjs';
+import { writeReleaseChecksums } from '../scripts/write_release_checksums.mjs';
 
-const CURRENT_COMMIT = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-const PUBLIC_SAMPLE_EVIDENCE = Object.freeze([
-  {
-    label: 'ome-tiff',
-    format: 'OME-TIFF',
-    coverage: 'public OME artificial 5D samples prove axes and warnings',
-    boundary: 'uncompressed fixture parsing only',
-  },
-  {
-    label: 'imagej-tiff',
-    format: 'ImageJ TIFF',
-    coverage: 'public ImageJ Confocal Series sample proves calibration',
-    boundary: 'one calibrated ImageJ hyperstack',
-  },
-  {
-    label: 'ome-zarr-metadata',
-    format: 'OME-Zarr metadata',
-    coverage: 'public OME-NGFF metadata proves axes, units, and coarsest-level local provenance',
-    boundary: 'bounded coarsest-level local proof',
-  },
-]);
-const FULL_PROOF_STEPS = Object.freeze([
-  'node-contracts',
-  'validation-matrix-contract',
-  'demo-pack-contract',
-  'converter-contracts',
-  'desktop-package-contract',
-  'release-download-contract',
-  'public-export-contract',
-  'public-sample-fixtures',
-  'browser-user-flows',
-  'electron-desktop-intake',
-].map(id => ({
-  id,
-  status: 'passed',
-  durationMs: 1,
-  ...(id === 'public-sample-fixtures' ? { evidence: PUBLIC_SAMPLE_EVIDENCE } : {}),
-})));
-const FULL_PROOF_LANE_COUNT = FULL_PROOF_STEPS.length;
-const PUBLIC_RELEASE_OMITTED_IDS = Object.freeze([
-  'validation-matrix-contract',
-  'public-export-contract',
-]);
-const PUBLIC_RELEASE_STEPS = Object.freeze(FULL_PROOF_STEPS.filter(
-  step => !PUBLIC_RELEASE_OMITTED_IDS.includes(step.id),
-));
-const CLEAN_REPO = Object.freeze({ commit: CURRENT_COMMIT, dirty: false, statusShort: '' });
-const FULL_PROOF_COVERAGE = Object.freeze({
-  scope: 'full',
-  totalLanes: FULL_PROOF_LANE_COUNT,
-  includedLanes: FULL_PROOF_LANE_COUNT,
-  omittedLanes: 0,
-  omittedIds: [],
-});
+const PACKAGE_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-function writeReadinessReport(root, overrides = {}) {
-  const report = {
-    gate: 'VoxelLab lab readiness',
-    status: 'passed',
-    durationMs: FULL_PROOF_LANE_COUNT,
-    repo: CLEAN_REPO,
-    proofCoverage: FULL_PROOF_COVERAGE,
-    steps: FULL_PROOF_STEPS,
-    ...overrides,
-  };
-  writeFileSync(
-    path.join(root, 'voxellab-lab-readiness', 'lab-readiness-report.json'),
-    JSON.stringify(report),
-  );
-}
-
-async function makeReleaseRoot() {
-  const root = await mkdtemp(path.join(tmpdir(), 'voxellab-release-assets-'));
-  mkdirSync(path.join(root, 'voxellab-lab-readiness'), { recursive: true });
-  mkdirSync(path.join(root, 'voxellab-macos', 'make'), { recursive: true });
-  mkdirSync(path.join(root, 'voxellab-windows', 'make'), { recursive: true });
-  writeReadinessReport(root);
-  writeFileSync(path.join(root, 'voxellab-macos', 'make', 'VoxelLab.dmg'), 'dmg');
-  writeFileSync(path.join(root, 'voxellab-macos', 'make', 'VoxelLab.zip'), 'zip');
-  writeFileSync(path.join(root, 'voxellab-windows', 'make', 'VoxelLabSetup.exe'), 'exe');
-  writeFileSync(path.join(root, 'voxellab-windows', 'make', 'VoxelLab.nupkg'), 'nupkg');
-  writeFileSync(path.join(root, 'voxellab-windows', 'make', 'RELEASES'), 'releases');
+function tempRoot(t) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'voxellab-release-assets-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   return root;
 }
 
-test('release assets check accepts lab evidence plus desktop downloads', async () => {
-  const root = await makeReleaseRoot();
-  const result = checkReleaseAssets(root);
-  assert.equal(result.fileCount, 6);
-  assert.ok(result.files.includes('voxellab-lab-readiness/lab-readiness-report.json'));
-  assert.ok(result.files.includes('voxellab-macos/make/VoxelLab.dmg'));
-  assert.ok(result.files.includes('voxellab-windows/make/VoxelLabSetup.exe'));
-});
-
-test('release assets check accepts the exact sanitized public proof profile', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    durationMs: PUBLIC_RELEASE_STEPS.length,
-    proofCoverage: {
-      scope: 'partial',
-      totalLanes: FULL_PROOF_LANE_COUNT,
-      includedLanes: PUBLIC_RELEASE_STEPS.length,
-      omittedLanes: PUBLIC_RELEASE_OMITTED_IDS.length,
-      omittedIds: PUBLIC_RELEASE_OMITTED_IDS,
-    },
-    steps: PUBLIC_RELEASE_STEPS,
-  });
-  assert.equal(checkReleaseAssets(root).fileCount, 6);
-});
-
-test('release assets check rejects empty platform artifacts', async () => {
-  const root = await makeReleaseRoot();
-  writeFileSync(path.join(root, 'voxellab-windows', 'make', 'VoxelLabSetup.exe'), '');
-  assert.throws(() => checkReleaseAssets(root), /must not be empty/);
-});
-
-test('release assets check rejects non-passing readiness reports', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    status: 'failed',
-    steps: FULL_PROOF_STEPS.map(step => step.id === 'node-contracts' ? { ...step, status: 'failed' } : step),
-  });
-  assert.throws(() => checkReleaseAssets(root), /lab readiness report must have passed status/);
-});
-
-test('release assets check rejects partial readiness reports', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    proofCoverage: {
-      scope: 'partial',
-      totalLanes: FULL_PROOF_LANE_COUNT,
-      includedLanes: FULL_PROOF_LANE_COUNT - 1,
-      omittedLanes: 1,
-      omittedIds: ['electron-desktop-intake'],
-    },
-    steps: [{ id: 'node-contracts', status: 'passed' }],
-  });
-  assert.throws(() => checkReleaseAssets(root), /must match the public release proof profile/);
-});
-
-test('release assets check rejects mismatched readiness step counts', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    steps: [{ id: 'node-contracts', status: 'passed' }],
-  });
-  assert.throws(() => checkReleaseAssets(root), /step count must match included proof lanes/);
-});
-
-test('release assets check rejects mismatched readiness lane counts', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    proofCoverage: {
-      ...FULL_PROOF_COVERAGE,
-      totalLanes: 99,
-    },
-  });
-  assert.throws(() => checkReleaseAssets(root), /total lane count must match/);
-});
-
-test('release assets check rejects failed readiness proof steps', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    steps: FULL_PROOF_STEPS.map(step => step.id === 'browser-user-flows' ? { ...step, status: 'failed' } : step),
-  });
-  assert.throws(() => checkReleaseAssets(root), /every proof step passed/);
-});
-
-test('release assets check rejects unknown readiness proof steps', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    steps: FULL_PROOF_STEPS.map(step => step.id === 'electron-desktop-intake' ? { id: 'placeholder-proof', status: 'passed' } : step),
-  });
-  assert.throws(() => checkReleaseAssets(root), /must include every required release proof step/);
-});
-
-test('release assets check rejects readiness reports without proof durations', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    durationMs: undefined,
-    steps: FULL_PROOF_STEPS.map(step => ({ id: step.id, status: step.status })),
-  });
-  assert.throws(() => checkReleaseAssets(root), /total proof duration/);
-});
-
-test('release assets check rejects readiness reports without public sample evidence', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    steps: FULL_PROOF_STEPS.map(step => (
-      step.id === 'public-sample-fixtures' ? { id: step.id, status: step.status, durationMs: step.durationMs } : step
-    )),
-  });
-  assert.throws(() => checkReleaseAssets(root), /public microscopy sample evidence/);
-});
-
-test('release assets check rejects stale readiness report commits', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    repo: { commit: '0'.repeat(40), dirty: false, statusShort: '' },
-  });
-  assert.throws(() => checkReleaseAssets(root), /commit must match the release checkout/);
-});
-
-test('release assets check rejects dirty readiness reports', async () => {
-  const root = await makeReleaseRoot();
-  writeReadinessReport(root, {
-    repo: {
-      commit: CURRENT_COMMIT,
-      dirty: true,
-      statusShort: 'M scripts/check_lab_readiness.mjs',
-    },
-  });
-  assert.throws(() => checkReleaseAssets(root), /clean checkout/);
-});
-
-test('release assets check rejects local and internal files', async () => {
-  for (const rel of [
-    'voxellab-macos/AGENTS.md',
-    'voxellab-macos/config.local.json',
-    'voxellab-macos/.env.local',
-    'voxellab-macos/.codex/session.json',
-    'voxellab-macos/.github/workflows/check.yml',
-    'voxellab-macos/.playwright-mcp/state.json',
-    'voxellab-macos/__pycache__/module.pyc',
-    'voxellab-macos/test-results/report.json',
-    'voxellab-macos/docs/plan.md',
-    'voxellab-macos/data_compressed/example.raw.zst',
-  ]) {
-    const root = await makeReleaseRoot();
-    const file = path.join(root, rel);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, 'internal');
-    assert.throws(() => checkReleaseAssets(root), /must not ship in release assets/, rel);
-  }
-});
-
-test('release assets check rejects loose research imaging data', async () => {
-  for (const rel of [
-    'voxellab-macos/make/patient.dcm',
-    'voxellab-macos/make/brain.nii.gz',
-    'voxellab-macos/make/cells.ome.tiff',
-    'voxellab-windows/make/cells.czi',
-    'voxellab-windows/make/cells.roi',
-  ]) {
-    const root = await makeReleaseRoot();
-    const file = path.join(root, rel);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, 'research data');
-    assert.throws(() => checkReleaseAssets(root), /must not ship loose research imaging data/, rel);
-  }
-});
-
-test('release assets check rejects unexpected files in artifact groups', async () => {
-  for (const rel of [
-    'voxellab-macos/make/README.txt',
-    'voxellab-windows/make/SHA256SUMS.txt',
-    'voxellab-lab-readiness/notes.json',
-  ]) {
-    const root = await makeReleaseRoot();
-    const file = path.join(root, rel);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, 'extra');
-    assert.throws(() => checkReleaseAssets(root), /is not an expected .* release artifact/, rel);
-  }
-});
-
-test('release assets check rejects files outside expected artifact groups', async () => {
-  const root = await makeReleaseRoot();
-  const file = path.join(root, 'misc', 'build.txt');
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, 'extra');
-  assert.throws(() => checkReleaseAssets(root), /is not part of an expected release artifact group/);
-});
-
-async function makeDesktopMakeRoot(platform) {
-  const root = await mkdtemp(path.join(tmpdir(), `voxellab-desktop-make-${platform}-`));
-  if (platform === 'darwin') {
-    writeFileSync(path.join(root, 'VoxelLab.dmg'), 'dmg');
-    writeFileSync(path.join(root, 'VoxelLab.zip'), 'zip');
-  } else {
-    writeFileSync(path.join(root, 'VoxelLabSetup.exe'), 'exe');
-    writeFileSync(path.join(root, 'VoxelLab.nupkg'), 'nupkg');
-    writeFileSync(path.join(root, 'RELEASES'), 'releases');
-  }
-  return root;
+function write(root, relative, contents = relative) {
+  const target = path.join(root, relative);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, contents);
+  return target;
 }
 
-test('desktop make output check accepts macOS downloadable artifacts', async () => {
-  const root = await makeDesktopMakeRoot('darwin');
-  const result = checkDesktopMakeOutputs(root, 'darwin');
-  assert.equal(result.platform, 'darwin');
-  assert.deepEqual(result.files.sort(), ['VoxelLab.dmg', 'VoxelLab.zip']);
+async function validPublicAssets(t, tag = 'v1.2.0') {
+  const root = tempRoot(t);
+  const inputs = path.join(root, 'inputs');
+  const output = path.join(root, 'public');
+  write(inputs, 'mac/VoxelLab.dmg', 'dmg');
+  write(inputs, 'win/VoxelLab-1.2.0-Setup.exe', 'exe');
+  const prepared = await preparePublicReleaseAssets(inputs, output, tag);
+  await writeReleaseChecksums(output, path.join(output, 'SHA256SUMS'));
+  return { root, inputs, output, prepared };
+}
+
+test('public release preparation emits two versioned installers and exact checksums', async (t) => {
+  const { output, prepared } = await validPublicAssets(t);
+  assert.deepEqual(prepared.map(file => path.basename(file)).sort(), [
+    'VoxelLab-1.2.0-Windows-x64.exe',
+    'VoxelLab-1.2.0-macOS-arm64.dmg',
+  ]);
+  const result = checkReleaseAssets(output, 'v1.2.0');
+  assert.deepEqual(result.names.sort(), [
+    'SHA256SUMS',
+    'VoxelLab-1.2.0-Windows-x64.exe',
+    'VoxelLab-1.2.0-macOS-arm64.dmg',
+  ]);
+  assert.match(readFileSync(path.join(output, 'SHA256SUMS'), 'utf8'), /VoxelLab-1\.2\.0-macOS-arm64\.dmg/);
 });
 
-test('desktop make output check accepts Windows downloadable artifacts', async () => {
-  const root = await makeDesktopMakeRoot('win32');
-  const result = checkDesktopMakeOutputs(root, 'win32');
-  assert.equal(result.platform, 'win32');
-  assert.deepEqual(result.files.sort(), ['RELEASES', 'VoxelLab.nupkg', 'VoxelLabSetup.exe']);
+test('public release rejects internal evidence, updater files, extras, and mismatched versions', async (t) => {
+  const { output } = await validPublicAssets(t);
+  write(output, 'lab-readiness-report.json', '{}');
+  assert.throws(() => checkReleaseAssets(output, 'v1.2.0'), /must not ship in release assets/);
+  rmSync(path.join(output, 'lab-readiness-report.json'));
+  write(output, 'VoxelLab-1.2.0-full.nupkg', 'updater');
+  assert.throws(() => checkReleaseAssets(output, 'v1.2.0'), /must not ship updater packages/);
+  rmSync(path.join(output, 'VoxelLab-1.2.0-full.nupkg'));
+  write(output, 'notes.txt', 'extra');
+  assert.throws(() => checkReleaseAssets(output, 'v1.2.0'), /exactly the two installers/);
+  rmSync(path.join(output, 'notes.txt'));
+  assert.throws(() => checkReleaseAssets(output, 'v1.2.1'), /exactly the two installers/);
 });
 
-test('desktop make output check rejects empty required artifacts', async () => {
-  const root = await makeDesktopMakeRoot('darwin');
-  writeFileSync(path.join(root, 'VoxelLab.dmg'), '');
-  assert.throws(() => checkDesktopMakeOutputs(root, 'darwin'), /must not be empty/);
+test('public release rejects stale or incomplete checksums', async (t) => {
+  const { output } = await validPublicAssets(t);
+  writeFileSync(path.join(output, 'VoxelLab-1.2.0-macOS-arm64.dmg'), 'changed');
+  assert.throws(() => checkReleaseAssets(output, 'v1.2.0'), /checksum must match/);
+  writeFileSync(path.join(output, 'SHA256SUMS'), 'bad\n');
+  assert.throws(() => checkReleaseAssets(output, 'v1.2.0'), /must cover only the two installers|invalid SHA256SUMS/);
 });
 
-test('desktop make output check rejects unexpected build outputs before upload', async () => {
-  const root = await makeDesktopMakeRoot('win32');
-  writeFileSync(path.join(root, 'README.txt'), 'notes');
-  assert.throws(() => checkDesktopMakeOutputs(root, 'win32'), /is not an expected Windows desktop artifact/);
+test('public release preparation requires one DMG, one Setup EXE, and an empty destination', async (t) => {
+  const root = tempRoot(t);
+  const inputs = path.join(root, 'inputs');
+  const output = path.join(root, 'public');
+  write(inputs, 'VoxelLab.dmg', 'dmg');
+  await assert.rejects(preparePublicReleaseAssets(inputs, output, 'v1.2.0'), /one Windows installer/);
+  write(inputs, 'VoxelLab-Setup.exe', 'exe');
+  write(output, 'keep.txt', 'keep');
+  await assert.rejects(preparePublicReleaseAssets(inputs, output, 'v1.2.0'), /must start empty/);
+  await assert.rejects(preparePublicReleaseAssets(inputs, path.join(root, 'other'), 'latest'), /semantic version tag/);
 });
 
-test('desktop make output check reuses release hygiene for internal and research files', async () => {
-  const root = await makeDesktopMakeRoot('darwin');
-  mkdirSync(path.join(root, '.codex'), { recursive: true });
-  writeFileSync(path.join(root, '.codex', 'session.json'), '{}');
+test('desktop make outputs match configured package formats before curation', (t) => {
+  const root = tempRoot(t);
+  const mac = path.join(root, 'mac');
+  write(mac, 'VoxelLab.dmg', 'dmg');
+  assert.equal(checkDesktopMakeOutputs(mac, 'darwin').fileCount, 1);
+  write(mac, 'VoxelLab.zip', 'zip');
+  assert.throws(() => checkDesktopMakeOutputs(mac, 'darwin'), /not an expected macOS desktop artifact/);
+
+  const win = path.join(root, 'win');
+  write(win, `VoxelLab-${PACKAGE_VERSION}-Setup.exe`, 'exe');
+  write(win, `VoxelLab-${PACKAGE_VERSION}-full.nupkg`, 'nupkg');
+  write(win, 'RELEASES', 'releases');
+  assert.equal(checkDesktopMakeOutputs(win, 'win32').fileCount, 3);
+  write(win, 'unexpected.exe', 'exe');
+  assert.throws(() => checkDesktopMakeOutputs(win, 'win32'), /must contain exactly 3 files/);
+});
+
+test('desktop make output hygiene rejects internal files and research data', (t) => {
+  const root = tempRoot(t);
+  write(root, 'VoxelLab.dmg', 'dmg');
+  write(root, 'AGENTS.md', 'internal');
   assert.throws(() => checkDesktopMakeOutputs(root, 'darwin'), /must not ship in release assets/);
-
-  const imagingRoot = await makeDesktopMakeRoot('darwin');
-  writeFileSync(path.join(imagingRoot, 'patient.dcm'), 'dicom');
-  assert.throws(() => checkDesktopMakeOutputs(imagingRoot, 'darwin'), /must not ship loose research imaging data/);
+  rmSync(path.join(root, 'AGENTS.md'));
+  write(root, 'patient.dcm', 'data');
+  assert.throws(() => checkDesktopMakeOutputs(root, 'darwin'), /must not ship loose research imaging data/);
 });

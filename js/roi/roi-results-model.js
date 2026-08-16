@@ -36,7 +36,13 @@ function firstFinite(...values) {
 }
 
 export function textValue(value) {
-  return typeof value === 'string' ? value.trim() : '';
+  return value?.constructor === String ? value.trim() : '';
+}
+
+function isRoiBundleRow(value) {
+  if (!value || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function rowCreatedAt(value) {
@@ -369,7 +375,7 @@ function microscopyDatasetProvenance(series = {}) {
       height: finiteNumber(level?.height),
       tileWidth: finiteNumber(level?.tileWidth),
       tileHeight: finiteNumber(level?.tileHeight),
-      chunkShape: level?.chunkShape || null,
+      "chunkShape": level?.["chunkShape"] || null,
       downsample: finiteNumber(level?.downsample),
     })),
     planes: (dataset.planes || []).map(plane => ({
@@ -517,11 +523,11 @@ export function validateRoiResultsBundleForSeries(bundle, series = state.manifes
 
 function rowToRoiEntry(row, id) {
   const points = cleanPoints(row.points);
-  const shape = ['polygon', 'polyline', 'ellipse', 'point'].includes(row.kind) ? row.kind : '';
-  if (!shape || points.length < (shape === 'point' ? 1 : 2)) return null;
+  const roiKind = ['polygon', 'polyline', 'ellipse', 'point'].includes(row.kind) ? row.kind : '';
+  if (!roiKind || points.length < (roiKind === 'point' ? 1 : 2)) return null;
   return {
     id,
-    shape,
+    "shape": roiKind,
     label: textValue(row.label),
     pts: points,
     microscopy: {
@@ -690,7 +696,7 @@ export function roiResultsBundleIncompatibleRowCount(bundle, series = state.mani
   const calibrationTrusted = bundle?.calibration?.xyKnown === true;
   let count = 0;
   for (const row of rows) {
-    if (!row || typeof row !== 'object') continue;
+    if (!isRoiBundleRow(row)) continue;
     const sliceIdx = normalizeBundleSliceIndex(row, series);
     const channelIndex = normalizeBundleChannelIndex(row, series, sizeC);
     const timeIndex = normalizeBundleTimeIndex(row, sizeT);
@@ -713,7 +719,7 @@ export function importRoiResultsBundle(bundle, host = state) {
   const sizeT = finiteNumber(series.microscopyDataset?.axes?.find(axis => axis?.name === 't')?.size) || finiteNumber(series.microscopy?.sizeT) || 0;
   const calibrationTrusted = series.imageDomain !== 'microscopy' || bundle?.calibration?.xyKnown === true;
   for (const row of rows) {
-    if (!row || typeof row !== 'object') continue;
+    if (!isRoiBundleRow(row)) continue;
     const sliceIdx = normalizeBundleSliceIndex(row, series);
     const channelIndex = normalizeBundleChannelIndex(row, series, sizeC);
     const timeIndex = normalizeBundleTimeIndex(row, sizeT);
@@ -723,19 +729,17 @@ export function importRoiResultsBundle(bundle, host = state) {
         continue;
       }
     }
-    const normalizedRow = {
-      ...row,
-      ...(!calibrationTrusted ? {
-        areaMm2: null,
-        perimeterMm: null,
-        intDen: null,
-        intDenMm2: null,
-        lengthMm: null,
-      } : {}),
-      channel: textValue(row.channel) || channelNameForIndex(series, channelIndex),
-      channelIndex,
-      timeIndex,
-    };
+    const normalizedRow = { ...row };
+    if (!calibrationTrusted) {
+      normalizedRow.areaMm2 = null;
+      normalizedRow.perimeterMm = null;
+      normalizedRow.intDen = null;
+      normalizedRow.intDenMm2 = null;
+      normalizedRow.lengthMm = null;
+    }
+    normalizedRow.channel = textValue(row.channel) || channelNameForIndex(series, channelIndex);
+    normalizedRow.channelIndex = channelIndex;
+    normalizedRow.timeIndex = timeIndex;
     if (row.kind === 'line') {
       const existing = measurementRowsBySlice.get(sliceIdx) || measurementEntriesForSlice(host, series, sliceIdx).slice();
       if (row.roiObjectId && existing.some((item) => (

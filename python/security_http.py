@@ -26,6 +26,7 @@ PRIVATE_LOCAL_API_PATHS = {
     "/api/proxy-asset",
     "/api/analyze/result",
     "/api/analyze/status",
+    "/api/ai/models",
     "/api/consult",
     "/api/microscopy/convert",
 }
@@ -33,6 +34,7 @@ PRIVATE_LOCAL_API_TOKEN_PATHS = {
     "/api/proxy-asset",
     "/api/cloud-settings",
     "/api/analyze/status",
+    "/api/ai/models",
     "/api/consult",
     "/api/microscopy/convert",
 }

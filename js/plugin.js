@@ -48,7 +48,7 @@ function createPluginAPI() {
       section.innerHTML = `<div class="sec-title"><span class="sec-title-text"><span>${title}</span></span><span class="rp-collapse-ico" aria-hidden="true"><svg class="rp-collapse-svg"><use href="icons.svg#i-plus"/></svg></span></div><div class="rp-body"><div class="rp-body-inner" id="${id}"></div></div>`;
       panelScroll.appendChild(section);
       wireCollapsiblePanels();
-      if (typeof render === 'function') {
+      if (render instanceof Function) {
         render($(id));
       }
     },
@@ -60,14 +60,14 @@ function createPluginAPI() {
 
     // Register a callback for slice changes
     onSliceChange(fn) {
-      if (typeof fn !== 'function') return () => {};
+      if (!(fn instanceof Function)) return () => {};
       const emit = () => fn(state.sliceIdx, state.seriesIdx);
       return subscribe('sliceIdx', emit);
     },
 
     // Register a callback for series changes
     onSeriesChange(fn) {
-      if (typeof fn !== 'function') return () => {};
+      if (!(fn instanceof Function)) return () => {};
       let seenSeriesIdx = state.loaded ? state.seriesIdx : null;
       const emit = () => fn(state.seriesIdx);
       const maybeEmit = () => {
@@ -151,7 +151,7 @@ function addContextMenuItem({ id, label, condition = () => true, action = () => 
 }
 
 function addExportFormat({ id, label, export: runExport }) {
-  if (!id || !label || typeof runExport !== 'function' || exportRegistry.has(id)) return () => {};
+  if (!id || !label || !(runExport instanceof Function) || exportRegistry.has(id)) return () => {};
   const host = ensurePluginExportHost();
   if (!host) return () => {};
 

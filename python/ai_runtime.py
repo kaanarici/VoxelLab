@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -61,27 +64,338 @@ def resolve_model(model: str | None = None, provider: str | None = None, env: di
     return (model or env_map.get("VOXELLAB_AI_MODEL") or DEFAULT_MODELS[chosen_provider] or "").strip()
 
 
+_CLI_MODELS_TTL_S = 60.0
+_CLI_MODEL_DISCOVERY_TIMEOUT_S = 8.0
+_CODEX_MODEL_CATALOG_MAX_PAGES = 5
+_cli_models_cache: tuple[float, dict[str, Any]] | None = None
+_cli_models_condition = threading.Condition()
+_cli_models_inflight = False
+_CLAUDE_MODEL_OPTION_RE = re.compile(
+    r"--model <model>(.*?)(?:\n  -n,|\n  --[a-z]|\Z)",
+    re.S,
+)
+_CLAUDE_ALIAS_GROUP_RE = re.compile(
+    r"alias for the latest model\s*\((.*?)\)",
+    re.I | re.S,
+)
+_CLAUDE_ALIAS_TOKEN_RE = re.compile(r"'([a-z][a-z0-9._-]{0,31})'")
+
+
+def clear_cli_models_cache() -> None:
+    global _cli_models_cache
+    with _cli_models_condition:
+        _cli_models_cache = None
+
+
+def parse_claude_help_model_aliases(help_text: str) -> list[str]:
+    block_match = _CLAUDE_MODEL_OPTION_RE.search(help_text or "")
+    block = block_match.group(1) if block_match else (help_text or "")
+    alias_match = _CLAUDE_ALIAS_GROUP_RE.search(block)
+    source = alias_match.group(1) if alias_match else block
+    aliases: list[str] = []
+    for token in _CLAUDE_ALIAS_TOKEN_RE.findall(source):
+        if token.startswith("claude-") or token in aliases:
+            continue
+        aliases.append(token)
+    return aliases
+
+
+def parse_codex_model_catalog(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    return _parse_codex_app_model_list(payload)
+
+
+def _claude_alias_label(alias: str) -> str:
+    return alias[:1].upper() + alias[1:] if alias else "Claude"
+
+
+def _is_internal_codex_model(model_id: str) -> bool:
+    return "auto-review" in model_id.lower()
+
+
+def _codex_supports_image_input(item: dict[str, Any]) -> bool:
+    raw = item.get("inputModalities")
+    if raw is None:
+        return True
+    if not isinstance(raw, list):
+        return False
+    return any(str(value).strip().lower() == "image" for value in raw)
+
+
+def _parse_codex_app_model_list(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    listed: list[dict[str, Any]] = []
+    for item in payload.get("data") or []:
+        if not isinstance(item, dict):
+            continue
+        model = str(item.get("model") or item.get("id") or "").strip()
+        if not model or _is_internal_codex_model(model) or not _codex_supports_image_input(item):
+            continue
+        listed.append({
+            "model": model,
+            "label": str(item.get("displayName") or model).strip() or model,
+            "default": bool(item.get("isDefault")),
+        })
+    return listed
+
+
+def _claude_picker_rows(help_text: str) -> list[dict[str, str]]:
+    return [
+        {"model": alias, "label": _claude_alias_label(alias)}
+        for alias in parse_claude_help_model_aliases(help_text)
+    ]
+
+
+def _catalog_provider_status(
+    status: dict[str, Any],
+    *,
+    catalog_status: str,
+    source: str,
+    issues: list[str] | None = None,
+    model_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "provider": str(status.get("provider") or ""),
+        "ready": bool(status.get("ready")),
+        "issues": list(status.get("issues") or []),
+        "catalog": {
+            "status": catalog_status,
+            "source": source,
+            "issues": list(issues or []),
+            "model_count": model_count,
+            "timeout_seconds": _CLI_MODEL_DISCOVERY_TIMEOUT_S,
+        },
+    }
+
+
+def _default_cli_model(provider: str) -> dict[str, Any]:
+    return {
+        "key": f"{provider}:default",
+        "provider": provider,
+        "model": "",
+        "label": "Claude" if provider == "claude" else "Codex",
+        "group": "Claude Code" if provider == "claude" else "Codex",
+    }
+
+
+def _claude_model_rows(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    return [{
+        "key": f"claude:{item['model']}",
+        "provider": "claude",
+        "model": item["model"],
+        "label": item["label"],
+        "group": "Claude Code",
+    } for item in rows]
+
+
+def _codex_model_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{
+        "key": f"codex:{item['model']}",
+        "provider": "codex",
+        "model": item["model"],
+        "label": item["label"],
+        "group": "Codex",
+    } for item in rows]
+
+
+def _discover_claude_models(env: dict[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    deadline = time.monotonic() + _CLI_MODEL_DISCOVERY_TIMEOUT_S
+    status = claude_status(env, timeout=_CLI_MODEL_DISCOVERY_TIMEOUT_S)
+    if not status.get("ready"):
+        return _catalog_provider_status(status, catalog_status="skipped", source="claude_help"), []
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        issue = f"Claude model catalog exceeded {_CLI_MODEL_DISCOVERY_TIMEOUT_S:g}s"
+        return _catalog_provider_status(
+            status, catalog_status="timeout", source="claude_help", issues=[issue]
+        ), [_default_cli_model("claude")]
+    try:
+        result = _run_status(
+            ["claude", "--help"],
+            timeout=remaining,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        issue = f"Claude model catalog exceeded {_CLI_MODEL_DISCOVERY_TIMEOUT_S:g}s"
+        return _catalog_provider_status(
+            status, catalog_status="timeout", source="claude_help", issues=[issue]
+        ), [_default_cli_model("claude")]
+    except Exception as exc:
+        issue = f"could not read Claude model catalog: {_compact_error_text(str(exc))}"
+        return _catalog_provider_status(
+            status, catalog_status="error", source="claude_help", issues=[issue]
+        ), [_default_cli_model("claude")]
+    if result.returncode != 0:
+        detail = _compact_error_text(result.stderr or result.stdout or str(result.returncode))
+        issue = f"`claude --help` failed: {detail}"
+        return _catalog_provider_status(
+            status, catalog_status="error", source="claude_help", issues=[issue]
+        ), [_default_cli_model("claude")]
+    help_text = f"{result.stdout or ''}\n{result.stderr or ''}"
+    rows = _claude_model_rows(_claude_picker_rows(help_text))
+    catalog_status = "ready" if rows else "empty"
+    issues = [] if rows else ["Claude help did not list model aliases; using the CLI default"]
+    return _catalog_provider_status(
+        status,
+        catalog_status=catalog_status,
+        source="claude_help",
+        issues=issues,
+        model_count=len(rows),
+    ), rows or [_default_cli_model("claude")]
+
+
+def _codex_model_catalog(app: "_CodexAppServer") -> tuple[list[dict[str, Any]], bool]:
+    items: list[Any] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    for _ in range(_CODEX_MODEL_CATALOG_MAX_PAGES):
+        params: dict[str, Any] = {"includeHidden": True, "limit": 100}
+        if cursor:
+            params["cursor"] = cursor
+        page = app.request("model/list", params)
+        chunk = page.get("data")
+        if isinstance(chunk, list):
+            items.extend(chunk)
+        cursor_value = page.get("nextCursor")
+        if not isinstance(cursor_value, str) or not cursor_value:
+            return _parse_codex_app_model_list({"data": items}), False
+        if cursor_value in seen_cursors:
+            return _parse_codex_app_model_list({"data": items}), True
+        seen_cursors.add(cursor_value)
+        cursor = cursor_value
+    return _parse_codex_app_model_list({"data": items}), True
+
+
+def _discover_codex_models(env: dict[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    if shutil.which("codex", path=env.get("PATH")) is None:
+        status = _missing_provider_status("codex")
+        return _catalog_provider_status(status, catalog_status="skipped", source="codex_app_server"), []
+    deadline = time.monotonic() + _CLI_MODEL_DISCOVERY_TIMEOUT_S
+    status: dict[str, Any] | None = None
+    try:
+        with _CodexAppServer(_CLI_MODEL_DISCOVERY_TIMEOUT_S, env) as app:
+            status = _codex_status_from_account(app.request("account/read", {"refreshToken": False}))
+            if not status.get("ready"):
+                return _catalog_provider_status(
+                    status, catalog_status="skipped", source="codex_app_server"
+                ), []
+            parsed, truncated = _codex_model_catalog(app)
+    except Exception as exc:
+        timed_out = time.monotonic() >= deadline
+        detail = f"{_CLI_MODEL_DISCOVERY_TIMEOUT_S:g}s" if timed_out else _compact_error_text(str(exc))
+        if status is None:
+            prefix = "Codex provider status exceeded" if timed_out else "could not read Codex app-server account state:"
+            issue = f"{prefix} {detail}"
+            status = {
+                "provider": "codex",
+                "ready": False,
+                "issues": [issue],
+                "auth_mode": None,
+                "status_source": "app_server_account",
+            }
+            return _catalog_provider_status(
+                status,
+                catalog_status="skipped",
+                source="codex_app_server",
+                issues=["Codex model catalog skipped because provider status was unavailable"],
+            ), []
+        catalog_status = "timeout" if timed_out else "error"
+        prefix = "Codex model catalog exceeded" if timed_out else "could not read Codex model catalog:"
+        issue = f"{prefix} {detail}"
+        return _catalog_provider_status(
+            status, catalog_status=catalog_status, source="codex_app_server", issues=[issue]
+        ), [_default_cli_model("codex")]
+    rows = _codex_model_rows(parsed)
+    if truncated:
+        issue = f"Codex model catalog exceeded {_CODEX_MODEL_CATALOG_MAX_PAGES} pages"
+        return _catalog_provider_status(
+            status,
+            catalog_status="truncated",
+            source="codex_app_server",
+            issues=[issue],
+            model_count=len(rows),
+        ), rows or [_default_cli_model("codex")]
+    catalog_status = "ready" if rows else "empty"
+    issues = [] if rows else ["Codex app-server returned no usable image-input models; using its default"]
+    return _catalog_provider_status(
+        status,
+        catalog_status=catalog_status,
+        source="codex_app_server",
+        issues=issues,
+        model_count=len(rows),
+    ), rows or [_default_cli_model("codex")]
+
+
+def list_cli_models(env: dict[str, str] | None = None) -> dict[str, Any]:
+    global _cli_models_cache, _cli_models_inflight
+    with _cli_models_condition:
+        while True:
+            now = time.monotonic()
+            if _cli_models_cache is not None and now < _cli_models_cache[0]:
+                return _cli_models_cache[1]
+            if not _cli_models_inflight:
+                _cli_models_inflight = True
+                break
+            _ = _cli_models_condition.wait()
+    payload: dict[str, Any] = {"models": [], "providers": []}
+    try:
+        env_map = overlay_env(env)
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="voxellab-models") as pool:
+            claude_future = pool.submit(_discover_claude_models, env_map)
+            codex_future = pool.submit(_discover_codex_models, env_map)
+            claude_status_payload, claude_models = claude_future.result()
+            codex_status_payload, codex_models = codex_future.result()
+        payload = {
+            "models": [*claude_models, *codex_models],
+            "providers": [claude_status_payload, codex_status_payload],
+        }
+    except Exception as exc:
+        issue = f"model discovery failed: {_compact_error_text(str(exc))}"
+        payload = {
+            "models": [],
+            "providers": [
+                _catalog_provider_status(
+                    {"provider": provider, "ready": False, "issues": [issue]},
+                    catalog_status="error",
+                    source="claude_help" if provider == "claude" else "codex_app_server",
+                    issues=[issue],
+                )
+                for provider in ("claude", "codex")
+            ],
+        }
+    finally:
+        with _cli_models_condition:
+            _cli_models_cache = (time.monotonic() + _CLI_MODELS_TTL_S, payload)
+            _cli_models_inflight = False
+            _cli_models_condition.notify_all()
+    return payload
+
+
 def _compact_error_text(text: str, limit: int = 240) -> str:
     one_line = " ".join(text.split())
     return one_line[:limit] + ("..." if len(one_line) > limit else "")
 
 
-def _run_status(cmd: list[str], timeout: int = 30, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run_status(cmd: list[str], timeout: float = 30, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=overlay_env(env))
 
 
-def claude_status(env: dict[str, str] | None = None) -> dict[str, Any]:
+def _missing_provider_status(provider: str) -> dict[str, Any]:
+    return {
+        "provider": provider,
+        "ready": False,
+        "issues": [f"`{provider}` CLI not found on PATH"],
+        "auth_mode": None,
+        "status_source": "missing_cli",
+    }
+
+
+def claude_status(env: dict[str, str] | None = None, timeout: float = 30) -> dict[str, Any]:
     env_map = overlay_env(env)
     if shutil.which("claude", path=env_map.get("PATH")) is None:
-        return {
-            "provider": "claude",
-            "ready": False,
-            "issues": ["`claude` CLI not found on PATH"],
-            "auth_mode": None,
-            "status_source": "missing_cli",
-        }
+        return _missing_provider_status("claude")
     try:
-        result = _run_status(["claude", "auth", "status"], env=env_map)
+        result = _run_status(["claude", "auth", "status"], timeout=timeout, env=env_map)
     except Exception as exc:
         return {
             "provider": "claude",
@@ -127,33 +441,7 @@ def claude_status(env: dict[str, str] | None = None) -> dict[str, Any]:
     }
 
 
-def codex_status(env: dict[str, str] | None = None) -> dict[str, Any]:
-    env_map = overlay_env(env)
-    if shutil.which("codex", path=env_map.get("PATH")) is None:
-        return {
-            "provider": "codex",
-            "ready": False,
-            "issues": ["`codex` CLI not found on PATH"],
-            "auth_mode": None,
-            "status_source": "missing_cli",
-        }
-    try:
-        account = _codex_account_read(env=env_map, timeout=30)
-    except Exception as exc:
-        detail = _compact_error_text(str(exc))
-        if "Error loading configuration:" in detail:
-            source = "config_error"
-            issues = [detail]
-        else:
-            source = "app_server_account"
-            issues = [f"could not read Codex app-server account state: {detail}"]
-        return {
-            "provider": "codex",
-            "ready": False,
-            "issues": issues,
-            "auth_mode": None,
-            "status_source": source,
-        }
+def _codex_status_from_account(account: dict[str, Any]) -> dict[str, Any]:
     active = account.get("account")
     if not active and account.get("requiresOpenaiAuth", True):
         return {
@@ -171,6 +459,30 @@ def codex_status(env: dict[str, str] | None = None) -> dict[str, Any]:
         "auth_mode": auth_mode if isinstance(auth_mode, str) else None,
         "status_source": "app_server_account",
     }
+
+
+def codex_status(env: dict[str, str] | None = None) -> dict[str, Any]:
+    env_map = overlay_env(env)
+    if shutil.which("codex", path=env_map.get("PATH")) is None:
+        return _missing_provider_status("codex")
+    try:
+        account = _codex_account_read(env=env_map, timeout=30)
+    except Exception as exc:
+        detail = _compact_error_text(str(exc))
+        if "Error loading configuration:" in detail:
+            source = "config_error"
+            issues = [detail]
+        else:
+            source = "app_server_account"
+            issues = [f"could not read Codex app-server account state: {detail}"]
+        return {
+            "provider": "codex",
+            "ready": False,
+            "issues": issues,
+            "auth_mode": None,
+            "status_source": source,
+        }
+    return _codex_status_from_account(account)
 
 
 def provider_status(provider: str | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:

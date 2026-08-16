@@ -139,7 +139,7 @@ function failedFileSamples(payload = {}) {
     .filter(Boolean);
 }
 
-export function desktopIntakeNotice(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
+function desktopIntakeParts(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
   const summary = payload?.folderSummary || null;
   const parts = [];
   const scannedFiles = Number(summary?.scannedFiles || 0);
@@ -157,7 +157,15 @@ export function desktopIntakeNotice(payload = {}, openable = [], sidecars = [], 
   if (failedFiles) parts.push(`${plural(failedFiles, 'file read')} failed`);
   if (failedFolderReads) parts.push(`${plural(failedFolderReads, 'folder read')} failed`);
   if (warningCount) parts.push(`${plural(warningCount, 'folder warning')}`);
-  if (parts.length <= 1 && !sidecars.length && !unsupportedCount && !failedFiles && !failedFolderReads && !warningCount) return '';
+  const silent = parts.length <= 1 && !sidecars.length && !unsupportedCount && !failedFiles && !failedFolderReads && !warningCount;
+  return { parts, silent, unsupportedCount, failedFiles, failedFolderReads, warningCount };
+}
+
+export function desktopIntakeNotice(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
+  const { parts, silent, unsupportedCount, failedFiles, failedFolderReads, warningCount } = desktopIntakeParts(
+    payload, openable, sidecars, convertible, unsupported,
+  );
+  if (silent) return '';
   const samples = [
     ...unsupportedSamples(payload, unsupported),
     ...failedFileSamples(payload),
@@ -169,6 +177,11 @@ export function desktopIntakeNotice(payload = {}, openable = [], sidecars = [], 
     ? ` (${samples.join(', ')}${hiddenSampleText(Math.max(0, totalSamples - samples.length))})`
     : '';
   return `Desktop intake: ${parts.join(', ')}${sampleText}.`;
+}
+
+export function desktopIntakeToastText(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
+  const { parts, silent } = desktopIntakeParts(payload, openable, sidecars, convertible, unsupported);
+  return silent ? '' : `Desktop intake: ${parts.join(', ')}.`;
 }
 
 export function unsupportedDesktopSelectionText(payload = {}, unsupported = []) {

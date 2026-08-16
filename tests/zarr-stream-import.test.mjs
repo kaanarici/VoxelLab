@@ -30,10 +30,10 @@ const CZYX_AXES = [
 
 // Three pyramid levels; the coarsest (level 2) is the committed fixture plane and is the only
 // array whose chunk is ever fetched, so the test stays hermetic on one real decoded chunk.
-function arrayMeta({ width, height, shape = [1, 1, height, width], compressor = BLOSC_COMPRESSOR, dtype = '<u2' } = {}) {
+function arrayMeta({ width, height, 'shape': dimensions = [1, 1, height, width], compressor = BLOSC_COMPRESSOR, dtype = '<u2' } = {}) {
   return {
     zarr_format: 2,
-    shape,
+    'shape': dimensions,
     chunks: [1, 1, height, width],
     dtype,
     compressor,
@@ -116,13 +116,13 @@ function routeFetch(routes) {
 // Mock fetchImpl: serves synthetic multiscale metadata + the one committed fixture chunk.
 // Level 0/1 .zarray are large (won't be selected); level 2 is the fixture plane. Only the
 // chosen level's chunk (2/0/0/0/0) is ever fetched.
-function mockFetch({ scaleLevel2 = [1, 1, 2, 2], coarsestShape, coarsestCompressor = BLOSC_COMPRESSOR, calls = [], version = '0.4' } = {}) {
+function mockFetch({ scaleLevel2 = [1, 1, 2, 2], coarsestDimensions, coarsestCompressor = BLOSC_COMPRESSOR, calls = [], version = '0.4' } = {}) {
   const routes = new Map([
     [`${BASE_URL}/.zattrs`, () => jsonResponse(rootAttrs(scaleLevel2, version))],
     [`${BASE_URL}/.zgroup`, () => jsonResponse({ zarr_format: 2 })],
     [`${BASE_URL}/0/.zarray`, () => jsonResponse(arrayMeta({ width: PLANE_WIDTH * 4, height: PLANE_HEIGHT * 4 }))],
     [`${BASE_URL}/1/.zarray`, () => jsonResponse(arrayMeta({ width: PLANE_WIDTH * 2, height: PLANE_HEIGHT * 2 }))],
-    [`${BASE_URL}/2/.zarray`, () => jsonResponse(arrayMeta({ width: PLANE_WIDTH, height: PLANE_HEIGHT, shape: coarsestShape, compressor: coarsestCompressor }))],
+    [`${BASE_URL}/2/.zarray`, () => jsonResponse(arrayMeta({ width: PLANE_WIDTH, height: PLANE_HEIGHT, 'shape': coarsestDimensions, compressor: coarsestCompressor }))],
     [`${BASE_URL}/2/0/0/0/0`, () => bytesResponse(FIXTURE_BYTES)],
   ]);
   return async (url) => {
@@ -246,7 +246,7 @@ test('streams full-shape Zarr v2 edge chunks and clips only their logical overha
   };
   const meta = {
     zarr_format: 2,
-    shape: [1, 3, 4],
+    'shape': [1, 3, 4],
     chunks: [1, 2, 3],
     dtype: '|u1',
     compressor: null,
@@ -297,7 +297,7 @@ for (const [dtype, values, ArrayType] of [
     };
     const meta = {
       zarr_format: 2,
-      shape: [1, 1, 2],
+      'shape': [1, 1, 2],
       chunks: [1, 1, 2],
       dtype,
       compressor: null,
@@ -345,9 +345,9 @@ test('streams a Zarr v3 array with artifact chunk metadata from regular chunk_gr
   const array = {
     zarr_format: 3,
     node_type: 'array',
-    shape: [1, 2, 2],
+    'shape': [1, 2, 2],
     data_type: 'float32',
-    chunk_grid: { name: 'regular', configuration: { chunk_shape: [1, 1, 1] } },
+    chunk_grid: { name: 'regular', configuration: { 'chunk_shape': [1, 1, 1] } },
     chunk_key_encoding: { name: 'default', configuration: { separator: '/' } },
     codecs: [{ name: 'bytes', configuration: { endian: 'little' } }],
     fill_value: 0,
@@ -370,7 +370,7 @@ test('streams a Zarr v3 array with artifact chunk metadata from regular chunk_gr
     });
     const result = streamed.results[0];
     assert.deepEqual(Array.from(result.rawPlanes['0|0'][0].pixels), [1.5, 2.5, 3.5, 4.5]);
-    assert.deepEqual(result.entry.microscopyDataset.levels[0].chunkShape, { t: 1, c: 1, z: 1, y: 1, x: 1 });
+    assert.deepEqual(result.entry.microscopyDataset.levels[0]['chunkShape'], { t: 1, c: 1, z: 1, y: 1, x: 1 });
     assert.equal(result.entry.microscopyDataset.levels[0].tileWidth, 1);
     assert.equal(result.entry.microscopyDataset.levels[0].tileHeight, 1);
     assert.equal(result.entry.microscopy.streaming.zarrVersion, 3);
@@ -439,7 +439,7 @@ test('fails closed before chunk fetches when selected planes exceed the aggregat
   const calls = [];
   await assert.rejects(
     streamOmeZarrFromUrl(BASE_URL, {
-      fetchImpl: mockFetch({ calls, coarsestShape: [1, 300, PLANE_HEIGHT, PLANE_WIDTH] }),
+      fetchImpl: mockFetch({ calls, coarsestDimensions: [1, 300, PLANE_HEIGHT, PLANE_WIDTH] }),
       onProgress: () => {},
     }),
     (error) => {
@@ -460,7 +460,7 @@ test('fails closed before chunk fetches when a selected custom axis is non-singl
   ];
   const array = {
     zarr_format: 2,
-    shape: [100_000_000, 1, 1],
+    'shape': [100_000_000, 1, 1],
     chunks: [100_000_000, 1, 1],
     dtype: '|u1',
     compressor: null,

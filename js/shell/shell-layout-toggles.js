@@ -1,28 +1,86 @@
 import { SHELL_TIP } from './shell-constants.js';
 
 const SHELL_LAYOUT_KEY = 'mri-viewer/shellLayout/v1';
+const DESKTOP_MQ = '(min-width: 1101px)';
+const RAIL_LEFT_MIN_FALLBACK = 208;
+const RAIL_RIGHT_FALLBACK = 312;
 
-function loadShellLayout() {
+function isShellLayoutRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
+export function parseShellLayout(raw) {
+  if (raw == null || raw === '') return null;
   try {
-    const raw = localStorage.getItem(SHELL_LAYOUT_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw);
-    if (typeof o.leftCollapsed !== 'boolean' || typeof o.rightCollapsed !== 'boolean') return null;
-    return o;
+    const o = String(raw) === raw ? JSON.parse(raw) : raw;
+    if (!isShellLayoutRecord(o)
+      || (o.leftCollapsed !== true && o.leftCollapsed !== false)
+      || (o.rightCollapsed !== true && o.rightCollapsed !== false)) {
+      return null;
+    }
+    const layout = {
+      leftCollapsed: o.leftCollapsed,
+      rightCollapsed: o.rightCollapsed,
+    };
+    if (Number.isFinite(o.leftWidth)) {
+      layout.leftWidth = o.leftWidth;
+    }
+    return layout;
   } catch {
     return null;
   }
 }
 
-function saveShellLayout(leftCollapsed, rightCollapsed) {
+export function clampLeftRailWidthPx(widthPx, minPx, maxPx) {
+  const min = Number.isFinite(minPx) ? minPx : RAIL_LEFT_MIN_FALLBACK;
+  const max = Number.isFinite(maxPx) ? Math.max(min, maxPx) : min;
+  if (!Number.isFinite(widthPx)) return Math.round(min);
+  return Math.round(Math.min(max, Math.max(min, widthPx)));
+}
+
+function loadShellLayout() {
   try {
-    localStorage.setItem(
-      SHELL_LAYOUT_KEY,
-      JSON.stringify({ leftCollapsed, rightCollapsed }),
-    );
+    return parseShellLayout(localStorage.getItem(SHELL_LAYOUT_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function saveShellLayout(leftCollapsed, rightCollapsed, leftWidth) {
+  try {
+    const payload = { leftCollapsed, rightCollapsed };
+    if (Number.isFinite(leftWidth)) {
+      payload.leftWidth = leftWidth;
+    }
+    localStorage.setItem(SHELL_LAYOUT_KEY, JSON.stringify(payload));
   } catch {
     /* quota / private mode */
   }
+}
+
+function readCssPx(name, fallback) {
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function leftRailBounds() {
+  return {
+    min: readCssPx('--rail-left-min', RAIL_LEFT_MIN_FALLBACK),
+    max: readCssPx('--rail-right-w', RAIL_RIGHT_FALLBACK),
+  };
+}
+
+function applyLeftRailWidth(widthPx) {
+  const { min, max } = leftRailBounds();
+  const width = clampLeftRailWidthPx(widthPx, min, max);
+  document.documentElement.style.setProperty('--rail-left-w', `${width}px`);
+  const handle = document.getElementById('sidebar-resize-handle');
+  if (handle) {
+    handle.setAttribute('aria-valuemin', String(Math.round(min)));
+    handle.setAttribute('aria-valuemax', String(Math.round(max)));
+    handle.setAttribute('aria-valuenow', String(width));
+  }
+  return width;
 }
 
 export function initDesktopSidebarToggles() {
@@ -40,6 +98,7 @@ export function initDesktopSidebarToggles() {
   if (saved) {
     app.classList.toggle('left-collapsed', saved.leftCollapsed);
     app.classList.toggle('right-collapsed', saved.rightCollapsed);
+    if (Number.isFinite(saved.leftWidth)) applyLeftRailWidth(saved.leftWidth);
   }
   const root = document.documentElement;
   root.removeAttribute('data-shell-left-collapsed');
@@ -49,18 +108,24 @@ export function initDesktopSidebarToggles() {
   // shell-mobile.js), so its in-panel header is hidden. The theme button must then
   // live in the always-visible viewer header instead of being trapped in the overlay.
   const isMobileShell = () => window.matchMedia('(max-width: 1100px)').matches;
+  const isDesktopShell = () => window.matchMedia(DESKTOP_MQ).matches;
 
   const persistLayout = () => {
     saveShellLayout(
       app.classList.contains('left-collapsed'),
       app.classList.contains('right-collapsed'),
+      applyLeftRailWidth(readCssPx('--rail-left-w', RAIL_LEFT_MIN_FALLBACK)),
     );
   };
 
   // Sidebar toggles are app-local layout changes. A synthetic window resize
   // also wakes unrelated render listeners and can blank the 3D canvas mid-toggle.
+  let relayoutPending = false;
   const scheduleViewerRefit = () => {
+    if (relayoutPending) return;
+    relayoutPending = true;
     requestAnimationFrame(() => {
+      relayoutPending = false;
       window.dispatchEvent(new CustomEvent('voxellab:relayout'));
     });
   };
@@ -148,4 +213,54 @@ export function initDesktopSidebarToggles() {
   // Crossing the overlay breakpoint changes where the theme button belongs.
   window.addEventListener('resize', syncShowButtons);
   syncShowButtons();
+
+  const handle = document.getElementById('sidebar-resize-handle');
+  const left = document.querySelector('aside.left');
+  if (!handle || !left) return;
+
+  applyLeftRailWidth(readCssPx('--rail-left-w', RAIL_LEFT_MIN_FALLBACK));
+
+  handle.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    if (!isDesktopShell() || app.classList.contains('left-collapsed')) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startW = left.getBoundingClientRect().width;
+    document.documentElement.classList.add('is-left-resizing');
+
+    const onMove = (moveEvent) => {
+      applyLeftRailWidth(startW + (moveEvent.clientX - startX));
+      scheduleViewerRefit();
+    };
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      document.documentElement.classList.remove('is-left-resizing');
+      persistLayout();
+      scheduleViewerRefit();
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  });
+
+  handle.addEventListener('keydown', (event) => {
+    if (!isDesktopShell() || app.classList.contains('left-collapsed')) return;
+    const { min, max } = leftRailBounds();
+    const current = readCssPx('--rail-left-w', min);
+    const step = event.shiftKey ? 32 : 8;
+    const next = {
+      ArrowLeft: current - step,
+      ArrowRight: current + step,
+      Home: min,
+      End: max,
+    }[event.key];
+    if (next == null) return;
+    event.preventDefault();
+    applyLeftRailWidth(next);
+    persistLayout();
+    scheduleViewerRefit();
+  });
 }

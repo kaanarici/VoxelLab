@@ -1,8 +1,15 @@
-import { $ } from './dom.js';
 import { state } from './core/state.js';
-import { signalPanelReady } from './collapsible-sidebar.js';
+import { notify } from './notify.js';
+import {
+  markSeriesUnavailable,
+  probeSeriesAvailable,
+  seriesCanOpenInViewer,
+  seriesHasSessionPixels,
+} from './series/series-availability.js';
 
 let _selectSeries = null;
+let _openingIndex = -1;
+let _openRequestId = 0;
 
 export function cloudResultOutputs(series = {}, { style = 'short' } = {}) {
   const short = style !== 'verbose';
@@ -20,8 +27,15 @@ function compactCloudResultValue(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function cloudActionFor(series) {
+  const action = series?.cloudAction;
+  if (!action || Array.isArray(action)) return null;
+  const prototype = Object.getPrototypeOf(action);
+  return prototype === Object.prototype || prototype === null ? action : null;
+}
+
 export function cloudResultDetailText(series = {}) {
-  const action = series?.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : {};
+  const action = cloudActionFor(series) || {};
   const parts = [
     action.provider ? `provider ${compactCloudResultValue(action.provider)}` : '',
     action.resultStatus && action.resultStatus !== 'complete' ? `status ${compactCloudResultValue(action.resultStatus)}` : '',
@@ -37,7 +51,7 @@ export function cloudResultDetailText(series = {}) {
 export function cloudResultRecords(seriesList = [], { limit = Infinity, newestFirst = false, outputStyle = 'short' } = {}) {
   const records = (Array.isArray(seriesList) ? seriesList : [])
     .map((series, index) => {
-      const action = series?.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : null;
+      const action = cloudActionFor(series);
       const jobId = String(action?.jobId || series?.sourceJobId || '').trim();
       if (!action && !jobId) return null;
       return {
@@ -55,74 +69,71 @@ export function cloudResultRecords(seriesList = [], { limit = Infinity, newestFi
   return newestFirst ? [...bounded].reverse() : bounded;
 }
 
-export function initCloudResultsPanel({ selectSeries } = {}) {
-  _selectSeries = typeof selectSeries === 'function' ? selectSeries : null;
-  renderCloudResultsPanel();
+function recordForIndex(index) {
+  const series = state.manifest?.series?.[index];
+  if (!series) return null;
+  return cloudResultRecords(state.manifest?.series || []).find(record => record.index === index) || {
+    index,
+    slug: String(series.slug || '').trim(),
+    name: String(series.name || series.slug || 'Cloud result').trim(),
+  };
 }
 
-export function openCloudResultEvidence() {
+function notifyCloudResultUnavailable(series) {
+  const name = String(series?.name || series?.slug || 'Cloud result').trim();
+  if (!globalThis.document) return;
+  notify(`Can't open ${name} — its image stack isn't available`, {
+    id: `cloud-result-unavailable:${series?.slug || name}`,
+    kind: 'error',
+  });
+}
+
+export function initCloudResults({ selectSeries } = {}) {
+  _selectSeries = selectSeries instanceof Function ? selectSeries : null;
+}
+
+export async function openCloudResultAtIndex(index, { probe = probeSeriesAvailable } = {}) {
+  const series = state.manifest?.series?.[index];
+  const record = recordForIndex(index);
+  if (!series || !record) return { opened: false, reason: 'unavailable' };
+  if (_openingIndex === index) return { opened: false, reason: 'pending', record };
+  const requestId = ++_openRequestId;
+  _openingIndex = -1;
+  if (index === state.seriesIdx) {
+    return { opened: true, alreadyActive: true, record };
+  }
+  if (!_selectSeries) return { opened: false, reason: 'unavailable', record };
+  const localStacks = state._localStacks || {};
+  if (seriesHasSessionPixels(series, { localStacks })) {
+    void _selectSeries(index);
+    return { opened: true, record };
+  }
+  if (!seriesCanOpenInViewer(series, { localStacks })) {
+    markSeriesUnavailable(series.slug);
+    notifyCloudResultUnavailable(series);
+    return { opened: false, reason: 'unavailable', record };
+  }
+  _openingIndex = index;
+  try {
+    const ok = await probe(series);
+    if (requestId !== _openRequestId) {
+      return { opened: false, reason: 'superseded', record };
+    }
+    if (!ok) {
+      markSeriesUnavailable(series.slug);
+      notifyCloudResultUnavailable(series);
+      return { opened: false, reason: 'unavailable', record };
+    }
+  } finally {
+    if (requestId === _openRequestId) _openingIndex = -1;
+  }
+  void _selectSeries(index);
+  return { opened: true, record };
+}
+
+export async function openCloudResultEvidence() {
   const records = cloudResultRecords(state.manifest?.series || [], { newestFirst: true });
   if (!records.length) return { opened: false, reason: 'none' };
   const target = records.find(record => record.index !== state.seriesIdx) || records[0];
-  if (target.index === state.seriesIdx) {
-    signalPanelReady('cloud-results');
-    return { opened: true, alreadyActive: true, record: target };
-  }
-  if (!_selectSeries) return { opened: false, reason: 'unavailable' };
-  void _selectSeries(target.index);
-  return { opened: true, record: target };
-}
-
-export function renderCloudResultsPanel() {
-  const panel = $('cloud-results-panel');
-  const host = $('cloud-results');
-  const count = $('cloud-results-count');
-  if (!panel || !host) return;
-  const records = cloudResultRecords(state.manifest?.series || [], { newestFirst: true });
-  if (count) {
-    count.hidden = !records.length;
-    count.textContent = records.length ? String(records.length) : '';
-  }
-  panel.hidden = !records.length;
-  panel.classList.toggle('panel-init-hidden', !records.length);
-  if (!records.length) {
-    host.replaceChildren();
-    return;
-  }
-  const list = document.createElement('div');
-  list.className = 'cloud-results-list';
-  for (const record of records) {
-    const active = record.index === state.seriesIdx;
-    const meta = [
-      record.action,
-      record.jobId ? `job ${record.jobId}` : '',
-      `outputs ${record.outputs}`,
-    ].filter(Boolean).join(' · ');
-    const button = document.createElement('button');
-    button.className = `cloud-result-row${active ? ' is-active' : ''}`;
-    button.type = 'button';
-    button.dataset.cloudResultIndex = String(record.index);
-    if (active) button.setAttribute('aria-current', 'true');
-    const name = document.createElement('span');
-    name.className = 'cloud-result-name';
-    name.textContent = record.name;
-    const metaEl = document.createElement('span');
-    metaEl.className = 'cloud-result-meta';
-    metaEl.textContent = meta;
-    button.append(name, metaEl);
-    if (record.detail) {
-      const detail = document.createElement('span');
-      detail.className = 'cloud-result-detail';
-      detail.textContent = record.detail;
-      button.append(detail);
-    }
-    button.addEventListener('click', () => {
-      const index = Number(button.dataset.cloudResultIndex);
-      if (!Number.isInteger(index) || index === state.seriesIdx || !_selectSeries) return;
-      void _selectSeries(index);
-    });
-    list.append(button);
-  }
-  host.replaceChildren(list);
-  signalPanelReady('cloud-results');
+  return openCloudResultAtIndex(target.index);
 }

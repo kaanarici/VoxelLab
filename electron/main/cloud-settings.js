@@ -183,7 +183,7 @@ export async function handleDesktopCloudRequest(request, userDataPath, net) {
   } catch {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (Object.prototype.toString.call(payload) !== '[object Object]') {
     return Response.json({ error: 'expected JSON object body' }, { status: 400 });
   }
   let target;
@@ -195,6 +195,6 @@ export async function handleDesktopCloudRequest(request, userDataPath, net) {
   return net.fetch(target, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...(payload && typeof payload === 'object' ? payload : {}), token }),
+    body: JSON.stringify({ ...payload, token }),
   });
 }

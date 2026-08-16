@@ -24,6 +24,10 @@ function readRaw() {
   }
 }
 
+function isSessionRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
 function pruneViews(views) {
   const keys = Object.keys(views);
   if (keys.length <= MAX_ENTRIES) return views;
@@ -36,10 +40,11 @@ function pruneViews(views) {
 // series selection so remembered views are available to viewStateForSeries.
 export function hydrateSeriesViewMemory() {
   const store = readRaw();
-  if (store && store.views && typeof store.views === 'object') {
+  if (isSessionRecord(store?.views)) {
     state.seriesViewMemory = { ...store.views };
   }
-  lastActiveKey = (store && typeof store.lastActiveKey === 'string') ? store.lastActiveKey : '';
+  const persistedKey = store?.lastActiveKey;
+  lastActiveKey = persistedKey != null && String(persistedKey) === persistedKey ? persistedKey : '';
 }
 
 export function setLastActiveSeries(series) {

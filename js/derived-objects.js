@@ -51,7 +51,7 @@ function affineMatchesCurrentSource(stored, current, toleranceMm = 0.1) {
 export function validateDerivedObjectBinding(binding) {
   const errors = [];
 
-  if (!binding || typeof binding !== 'object') return ['binding: expected object'];
+  if (Object.prototype.toString.call(binding) !== '[object Object]') return ['binding: expected object'];
 
   if (!DERIVED_KINDS.has(binding.derivedKind)) {
     errors.push(`derivedKind: expected one of ${[...DERIVED_KINDS].sort().join(', ')}`);
@@ -59,15 +59,15 @@ export function validateDerivedObjectBinding(binding) {
   // Empty is valid: a slug-bound local overlay (e.g. a SEG on a non-DICOM source
   // series with no FrameOfReferenceUID) carries '' here. A non-empty value is
   // compared against the source's FoR during hydration revalidation.
-  if (typeof binding.frameOfReferenceUID !== 'string') {
+  if (Object.prototype.toString.call(binding.frameOfReferenceUID) !== '[object String]') {
     errors.push('frameOfReferenceUID: expected string');
   }
-  const hasSourceUid = typeof binding.sourceSeriesUID === 'string' && !!binding.sourceSeriesUID;
-  const hasSourceSlug = typeof binding.sourceSeriesSlug === 'string' && !!binding.sourceSeriesSlug;
+  const hasSourceUid = Object.prototype.toString.call(binding.sourceSeriesUID) === '[object String]' && !!binding.sourceSeriesUID;
+  const hasSourceSlug = Object.prototype.toString.call(binding.sourceSeriesSlug) === '[object String]' && !!binding.sourceSeriesSlug;
   if (!hasSourceUid && !hasSourceSlug) {
     errors.push('sourceSeriesUID or sourceSeriesSlug: expected non-empty string');
   }
-  if (typeof binding.requiresRegistration !== 'boolean') {
+  if (binding.requiresRegistration !== true && binding.requiresRegistration !== false) {
     errors.push('requiresRegistration: expected boolean');
   }
   if (!AFFINE_COMPATIBILITY.has(binding.affineCompatibility)) {
@@ -78,10 +78,10 @@ export function validateDerivedObjectBinding(binding) {
     errors.push('requiresRegistration must be true when affineCompatibility requires registration');
   }
   if (binding.sourceGeometry != null) {
-    if (typeof binding.sourceGeometry !== 'object') {
+    if (Object.prototype.toString.call(binding.sourceGeometry) !== '[object Object]') {
       errors.push('sourceGeometry: expected object');
     } else {
-      if (typeof binding.sourceGeometry.frameOfReferenceUID !== 'string') {
+      if (Object.prototype.toString.call(binding.sourceGeometry.frameOfReferenceUID) !== '[object String]') {
         errors.push('sourceGeometry.frameOfReferenceUID: expected string');
       }
       if (!finiteMatrix4(binding.sourceGeometry.affineLps)) {
@@ -94,18 +94,18 @@ export function validateDerivedObjectBinding(binding) {
 }
 
 function readStorage(key) {
-  if (typeof localStorage === 'undefined') return String(MEMORY_STORAGE.get(key) || '');
-  try { return String(localStorage.getItem(key) || ''); }
+  if (!('localStorage' in globalThis)) return String(MEMORY_STORAGE.get(key) || '');
+  try { return String(globalThis.localStorage.getItem(key) || ''); }
   catch { return ''; }
 }
 
 function writeStorage(key, json) {
-  if (typeof localStorage === 'undefined') {
+  if (!('localStorage' in globalThis)) {
     MEMORY_STORAGE.set(key, json);
     return true;
   }
   try {
-    localStorage.setItem(key, json);
+    globalThis.localStorage.setItem(key, json);
     return true;
   } catch {
     return false;
@@ -117,7 +117,7 @@ export function storageJsonGet(key, fallback = {}) {
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : fallback;
+    return Object.prototype.toString.call(parsed) === '[object Object]' ? parsed : fallback;
   } catch {
     return fallback;
   }
@@ -128,10 +128,10 @@ export function storageJsonSet(key, value) {
 }
 
 export function derivedSourceRefFromSeries(series) {
-  const sourceSeriesUID = typeof series?.sourceSeriesUID === 'string' && series.sourceSeriesUID
+  const sourceSeriesUID = Object.prototype.toString.call(series?.sourceSeriesUID) === '[object String]' && series.sourceSeriesUID
     ? series.sourceSeriesUID
     : '';
-  const sourceSeriesSlug = typeof series?.slug === 'string' && series.slug
+  const sourceSeriesSlug = Object.prototype.toString.call(series?.slug) === '[object String]' && series.slug
     ? series.slug
     : '';
   const sourceKey = sourceSeriesUID ? `uid:${sourceSeriesUID}` : sourceSeriesSlug ? `slug:${sourceSeriesSlug}` : '';
@@ -157,8 +157,8 @@ export function loadDerivedRegistry() {
   if (!raw) return emptyRegistry();
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return emptyRegistry();
-    const entries = parsed.entries && typeof parsed.entries === 'object' ? parsed.entries : {};
+    if (Object.prototype.toString.call(parsed) !== '[object Object]') return emptyRegistry();
+    const entries = Object.prototype.toString.call(parsed.entries) === '[object Object]' ? parsed.entries : {};
     return {
       version: DERIVED_REGISTRY_VERSION,
       entries,
@@ -171,7 +171,7 @@ export function loadDerivedRegistry() {
 export function saveDerivedRegistry(registry) {
   const normalized = {
     version: DERIVED_REGISTRY_VERSION,
-    entries: registry?.entries && typeof registry.entries === 'object' ? registry.entries : {},
+    entries: Object.prototype.toString.call(registry?.entries) === '[object Object]' ? registry.entries : {},
   };
   const persisted = writeStorage(DERIVED_REGISTRY_KEY, JSON.stringify(normalized));
   return { registry: normalized, persisted };
@@ -183,11 +183,11 @@ export function clearDerivedRegistry() {
 
 export function validateDerivedRegistryEntry(entry) {
   const errors = [];
-  if (!entry || typeof entry !== 'object') return ['entry: expected object'];
-  if (typeof entry.id !== 'string' || !entry.id) errors.push('id: expected non-empty string');
-  if (typeof entry.objectUID !== 'string' || !entry.objectUID) errors.push('objectUID: expected non-empty string');
-  if (typeof entry.name !== 'string' || !entry.name) errors.push('name: expected non-empty string');
-  if (typeof entry.modality !== 'string' || !entry.modality) errors.push('modality: expected non-empty string');
+  if (Object.prototype.toString.call(entry) !== '[object Object]') return ['entry: expected object'];
+  if (Object.prototype.toString.call(entry.id) !== '[object String]' || !entry.id) errors.push('id: expected non-empty string');
+  if (Object.prototype.toString.call(entry.objectUID) !== '[object String]' || !entry.objectUID) errors.push('objectUID: expected non-empty string');
+  if (Object.prototype.toString.call(entry.name) !== '[object String]' || !entry.name) errors.push('name: expected non-empty string');
+  if (Object.prototype.toString.call(entry.modality) !== '[object String]' || !entry.modality) errors.push('modality: expected non-empty string');
   if (!Number.isFinite(Number(entry.importedAt || 0))) errors.push('importedAt: expected finite number');
   const bindingErrors = validateDerivedObjectBinding(entry.binding);
   for (const bindingError of bindingErrors) errors.push(`binding.${bindingError}`);

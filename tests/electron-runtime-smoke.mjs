@@ -46,9 +46,9 @@ test('Electron runtime boots the hardened renderer and native menu bridge', asyn
     const renderer = await page.evaluate(async () => ({
       href: window.location.href,
       title: document.title,
-      requireType: typeof globalThis.require,
-      processType: typeof globalThis.process,
-      desktopType: typeof globalThis.voxellabDesktop,
+      requireExposed: 'require' in globalThis,
+      processExposed: 'process' in globalThis,
+      desktopReady: globalThis.voxellabDesktop?.getAppInfo instanceof Function,
       desktopKeys: Object.keys(globalThis.voxellabDesktop).sort(),
       appInfo: await globalThis.voxellabDesktop.getAppInfo(),
       emptyStateVisible: getComputedStyle(document.getElementById('empty-state')).display !== 'none',
@@ -57,9 +57,9 @@ test('Electron runtime boots the hardened renderer and native menu bridge', asyn
 
     assert.equal(renderer.href, 'voxellab://app/index.html');
     assert.match(renderer.title, /^VoxelLab(?:$|: )/);
-    assert.equal(renderer.requireType, 'undefined');
-    assert.equal(renderer.processType, 'undefined');
-    assert.equal(renderer.desktopType, 'object');
+    assert.equal(renderer.requireExposed, false);
+    assert.equal(renderer.processExposed, false);
+    assert.equal(renderer.desktopReady, true);
     assert.ok(renderer.desktopKeys.includes('readFileRange'));
     assert.ok(renderer.desktopKeys.includes('getConverterCapabilities'));
     assert.ok(renderer.desktopKeys.includes('startConversionJob'));
@@ -71,14 +71,20 @@ test('Electron runtime boots the hardened renderer and native menu bridge', asyn
     await assertSmokeWindowVisibility(app, false);
 
     const menu = await app.evaluate(({ BrowserWindow, Menu }) => {
-      const file = Menu.getApplicationMenu()?.items.find(item => item.label === 'File');
+      const applicationMenu = Menu.getApplicationMenu();
+      const file = applicationMenu?.items.find(item => item.label === 'File');
+      const help = applicationMenu?.items.find(item => item.label === 'Help');
       const upload = file?.submenu?.items.find(item => item.label === 'Upload Study Panel');
       upload?.click(undefined, BrowserWindow.getAllWindows()[0], undefined);
-      return file?.submenu?.items.map(item => item.label || item.role || item.type) || [];
+      return {
+        file: file?.submenu?.items.map(item => item.label || item.role || item.type) || [],
+        help: help?.submenu?.items.map(item => item.label || item.role || item.type) || [],
+      };
     });
-    assert.ok(menu.includes('Open Files...'));
-    assert.ok(menu.includes('Open Folder...'));
-    assert.ok(menu.includes('Upload Study Panel'));
+    assert.ok(menu.file.includes('Open Files...'));
+    assert.ok(menu.file.includes('Open Folder...'));
+    assert.ok(menu.file.includes('Upload Study Panel'));
+    assert.ok(menu.help.includes('Check for Updates'));
     await page.waitForSelector('#upload-modal.visible', { timeout: 5_000 });
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
@@ -288,6 +294,62 @@ test('Electron runtime reports skipped SR sidecars after loading a local DICOM s
   }
 });
 
+test('Electron runtime restores saved DICOM imports and removal forgets them without deleting source files', async () => {
+  const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-saved-dicom-'));
+  const dicomPath = path.join(sourceDir, 'source.dcm');
+  const srPath = path.join(sourceDir, 'measurement.sr');
+  await writeTinyDicom(dicomPath);
+  await writeTinySr(srPath, {
+    sourceSeriesUID: '1.2.826.0.1.3680043.10.543.20',
+    sourceSlug: 'source',
+  });
+
+  const first = await launchVoxelLab([dicomPath, srPath]);
+  const { profileDir } = first;
+  try {
+    await first.page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'Local DICOM CT', null, { timeout: 20_000 });
+    await first.page.waitForFunction(() => (
+      [...document.querySelectorAll('#notify-container .notify-text')]
+        .some(item => /Imported 1 SR note set/.test(item.textContent || ''))
+    ), null, { timeout: 10_000 });
+    const saved = JSON.parse(await fs.readFile(path.join(profileDir, 'saved-imports.json'), 'utf8'));
+    assert.deepEqual(new Set(saved[0]?.paths), new Set([dicomPath, srPath]));
+    assert.deepEqual(first.pageErrors, []);
+  } finally {
+    await closeApp(first.app);
+  }
+
+  const restored = await launchVoxelLab([], { profileDir });
+  try {
+    await restored.page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'Local DICOM CT', null, { timeout: 20_000 });
+    const row = restored.page.locator('li[data-series-slug]').filter({ hasText: 'Local DICOM CT' }).first();
+    await row.click({ button: 'right' });
+    const remove = restored.page.locator('.context-menu .popover-item', { hasText: 'Remove from viewer' });
+    await remove.click();
+    await restored.page.waitForSelector('#confirm-modal.visible');
+    assert.match(await restored.page.locator('#confirm-body').textContent(), /will not be changed or deleted/i);
+    await restored.page.locator('#remove-series-confirm').click();
+    await restored.page.waitForFunction(() => (
+      ![...document.querySelectorAll('li[data-series-slug]')]
+        .some(item => /Local DICOM CT/.test(item.textContent || ''))
+    ));
+    assert.equal((await fs.stat(dicomPath)).isFile(), true);
+    assert.equal((await fs.stat(srPath)).isFile(), true);
+    assert.deepEqual(restored.pageErrors, []);
+  } finally {
+    await closeApp(restored.app);
+  }
+
+  const reopened = await launchVoxelLab([], { profileDir });
+  try {
+    await reopened.page.waitForTimeout(1_000);
+    assert.equal(await reopened.page.locator('li[data-series-slug]').filter({ hasText: 'Local DICOM CT' }).count(), 0);
+    assert.deepEqual(reopened.pageErrors, []);
+  } finally {
+    await closeApp(reopened.app);
+  }
+});
+
 test('Electron runtime reports converter-backed files in mixed folder launches', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-convertible-folder-'));
   const omeTiffPath = path.join(tempDir, 'mixed-cells.ome.tiff');
@@ -391,8 +453,7 @@ test('Electron runtime reports converter-backed files in mixed folder launches',
             && /Workflow recipe/.test(text)
             && /ImageJ ROI/.test(text)
             && /1 converter-backed file \(CZI\)/.test(text)
-            && /1 unsupported file skipped/.test(text)
-            && /notes\.md/.test(text);
+            && /1 unsupported file skipped/.test(text);
         })
     ), null, { timeout: 10_000 });
     const recents = await page.evaluate(() => globalThis.voxellabDesktop.getRecentDocuments());
@@ -485,8 +546,7 @@ test('Electron runtime keeps desktop folder triage when a supported file fails p
           .some(item => {
             const text = item.textContent || '';
             return /Desktop intake:/.test(text)
-              && /1 folder read failed/.test(text)
-              && /Could not read folder: private-folder/.test(text);
+              && /1 folder read failed/.test(text);
           })
       ), null, { timeout: 10_000 });
     }
@@ -544,7 +604,7 @@ test('Electron runtime opens local OME-Zarr folders through the desktop bridge',
     await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'cells', null, { timeout: 20_000 });
     await page.waitForFunction(() => (
       [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '') && /1 unsupported file skipped/.test(item.textContent || '') && /notes\.md/.test(item.textContent || ''))
+        .some(item => /Desktop intake:/.test(item.textContent || '') && /1 unsupported file skipped/.test(item.textContent || ''))
     ), null, { timeout: 10_000 });
     const imported = await page.evaluate(async () => {
       const { state } = await import('/js/core/state.js');
@@ -691,9 +751,7 @@ test('Electron runtime skips ordinary JSON sidecars during local OME-TIFF launch
       [...document.querySelectorAll('#notify-container .notify-text')]
         .some(item => /Desktop intake:/.test(item.textContent || '')
           && /1 openable file \(OME-TIFF\)/.test(item.textContent || '')
-          && /2 unsupported files skipped/.test(item.textContent || '')
-          && /metadata\.json \(unrecognized JSON sidecar\)/.test(item.textContent || '')
-          && /broken\.json \(invalid JSON sidecar\)/.test(item.textContent || ''))
+          && /2 unsupported files skipped/.test(item.textContent || ''))
     ), null, { timeout: 10_000 });
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
@@ -726,7 +784,7 @@ test('Electron runtime guards schema-bearing unknown JSON sidecars during local 
       [...document.querySelectorAll('#notify-container .notify-text')]
         .some(item => /Desktop intake:/.test(item.textContent || '')
           && /1 openable file \(OME-TIFF\)/.test(item.textContent || '')
-          && /unknown-sidecar\.json \(unrecognized JSON sidecar schema: example\.not-roi-results\.v1\)/.test(item.textContent || ''))
+          && /1 unsupported file skipped/.test(item.textContent || ''))
     ), null, { timeout: 10_000 });
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);

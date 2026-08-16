@@ -44,8 +44,7 @@ export const SLICE_COMPOSITOR_VERTEX_SHADER = `#version 300 es
   `;
 
 function canUseWebGL2() {
-  return typeof document !== 'undefined'
-    && typeof WebGL2RenderingContext !== 'undefined';
+  return Boolean(globalThis.document && globalThis.WebGL2RenderingContext);
 }
 
 function ensureCanvas(width, height) {

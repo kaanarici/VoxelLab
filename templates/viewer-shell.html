@@ -82,7 +82,7 @@
       <svg aria-hidden="true"><use href="icons.svg#i-upload"/></svg>
       Open study
     </button>
-    <div class="empty-state-drop-hint">or drop files anywhere</div>
+    <div class="empty-state-drop-hint">or drop a study folder here</div>
     <div class="empty-state-badges">
       <span class="empty-state-badge">DICOM</span>
       <span class="empty-state-badge">NIfTI</span>
@@ -123,9 +123,9 @@
 
   <div class="mpr-grid" id="mpr-grid">
     <div class="mpr-cell" data-axis="ax">
-      <canvas id="mpr-ax" role="img" aria-label="Axial slice"></canvas>
+      <canvas id="mpr-ax" role="img" aria-label="Acquisition XY slice"></canvas>
       <div class="mpr-crosshair" id="mpr-ax-cross"><span class="mpr-cross-x"></span><span class="mpr-cross-y"></span></div>
-      <div class="mpr-lbl">Axial</div>
+      <div class="mpr-lbl" id="mpr-ax-label">Acquisition XY</div>
       <div class="mpr-idx" id="mpr-ax-idx">—</div>
       <span class="mpr-orient mpr-orient-l" id="mpr-ax-ol"></span>
       <span class="mpr-orient mpr-orient-r" id="mpr-ax-or"></span>
@@ -133,9 +133,9 @@
       <span class="mpr-orient mpr-orient-b" id="mpr-ax-ob"></span>
     </div>
     <div class="mpr-cell" data-axis="co">
-      <canvas id="mpr-co" role="img" aria-label="Coronal slice"></canvas>
+      <canvas id="mpr-co" role="img" aria-label="Acquisition XZ slice"></canvas>
       <div class="mpr-crosshair" id="mpr-co-cross"><span class="mpr-cross-x"></span><span class="mpr-cross-y"></span></div>
-      <div class="mpr-lbl">Coronal</div>
+      <div class="mpr-lbl" id="mpr-co-label">Acquisition XZ</div>
       <div class="mpr-idx" id="mpr-co-idx">—</div>
       <span class="mpr-orient mpr-orient-l" id="mpr-co-ol"></span>
       <span class="mpr-orient mpr-orient-r" id="mpr-co-or"></span>
@@ -143,9 +143,9 @@
       <span class="mpr-orient mpr-orient-b" id="mpr-co-ob"></span>
     </div>
     <div class="mpr-cell" data-axis="sa">
-      <canvas id="mpr-sa" role="img" aria-label="Sagittal slice"></canvas>
+      <canvas id="mpr-sa" role="img" aria-label="Acquisition YZ slice"></canvas>
       <div class="mpr-crosshair" id="mpr-sa-cross"><span class="mpr-cross-x"></span><span class="mpr-cross-y"></span></div>
-      <div class="mpr-lbl">Sagittal</div>
+      <div class="mpr-lbl" id="mpr-sa-label">Acquisition YZ</div>
       <div class="mpr-idx" id="mpr-sa-idx">—</div>
       <span class="mpr-orient mpr-orient-l" id="mpr-sa-ol"></span>
       <span class="mpr-orient mpr-orient-r" id="mpr-sa-or"></span>
@@ -154,8 +154,12 @@
     </div>
     <div class="mpr-cell" data-axis="ob">
       <canvas id="mpr-ob" role="img" aria-label="Oblique slice"></canvas>
-      <div class="mpr-lbl">Oblique · arbitrary plane</div>
+      <div class="mpr-lbl" id="mpr-ob-label">Oblique · acquisition grid</div>
       <div class="mpr-idx" id="mpr-ob-idx">—</div>
+      <span class="mpr-orient mpr-orient-l" id="mpr-ob-ol"></span>
+      <span class="mpr-orient mpr-orient-r" id="mpr-ob-or"></span>
+      <span class="mpr-orient mpr-orient-t" id="mpr-ob-ot"></span>
+      <span class="mpr-orient mpr-orient-b" id="mpr-ob-ob"></span>
     </div>
     <div class="mpr-toolbar-wrap" id="mpr-toolbar-wrap">
       <div class="mpr-toolbar" id="mpr-toolbar">
@@ -167,7 +171,7 @@
         </div>
         <div class="mpr-tb-group">
           <span class="mpr-tb-lbl">Slab</span>
-          <input type="range" class="mpr-tb-sl mpr-tb-sl--slab" id="mpr-slab" min="0" max="40" value="0" step="1" aria-label="Slab thickness" />
+          <input type="range" class="mpr-tb-sl" id="mpr-slab" min="0" max="40" value="0" step="1" aria-label="Slab thickness" />
           <span class="mpr-tb-val" id="mpr-slab-val">0 mm</span>
         </div>
         <div class="mpr-tb-sep"></div>

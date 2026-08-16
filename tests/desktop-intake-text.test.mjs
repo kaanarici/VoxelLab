@@ -5,9 +5,61 @@ const {
   desktopConversionDialogText,
   desktopDerivedSidecarOnlyText,
   desktopIntakeNotice,
+  desktopIntakeToastText,
   desktopMicroscopySidecarOnlyText,
   unsupportedDesktopSelectionText,
 } = await import('../js/desktop-intake-text.js');
+
+test('desktopIntakeToastText drops sample names and keeps the count summary', () => {
+  const payload = {
+    warnings: [{ path: '/study/private', reason: 'folder_read_failed' }],
+    folderSummary: {
+      scannedFiles: 9,
+      skippedUnsupportedFiles: 2,
+      skippedUnsupportedSamples: [{ relativePath: 'study/notes.md' }],
+      warningCount: 1,
+    },
+  };
+  assert.equal(
+    desktopIntakeToastText(payload, [{ name: 'scan.dcm' }], [], [], []),
+    'Desktop intake: scanned 9 files, 1 openable file (DICOM), 2 unsupported files skipped, 1 folder read failed.',
+  );
+});
+
+test('desktopIntakeToastText keeps format labels when samples use nested parentheses', () => {
+  assert.equal(
+    desktopIntakeToastText(
+      {
+        folderSummary: {
+          scannedFiles: 3,
+          skippedUnsupportedFiles: 2,
+          skippedUnsupportedSamples: [
+            { relativePath: 'study/metadata.json', reason: 'unrecognized_json_sidecar' },
+            { relativePath: 'study/notes.md', reason: 'unsupported_extension' },
+          ],
+        },
+      },
+      [{ name: 'cells.ome.tiff' }],
+      [],
+      [],
+      [],
+    ),
+    'Desktop intake: scanned 3 files, 1 openable file (OME-TIFF), 2 unsupported files skipped.',
+  );
+});
+
+test('desktopIntakeToastText keeps format labels on a clean folder scan', () => {
+  assert.equal(
+    desktopIntakeToastText(
+      { folderSummary: { scannedFiles: 9, skippedUnsupportedFiles: 0, warningCount: 0 } },
+      [{ name: 'scan.dcm' }],
+      [],
+      [],
+      [],
+    ),
+    'Desktop intake: scanned 9 files, 1 openable file (DICOM).',
+  );
+});
 
 test('desktopIntakeNotice names skipped files and folder warning reasons', () => {
   const payload = {

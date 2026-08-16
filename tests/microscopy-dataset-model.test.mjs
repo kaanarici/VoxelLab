@@ -173,8 +173,8 @@ test('buildMicroscopyDataset preserves OME-Zarr pyramid level and chunk metadata
         { level: 1, path: '1', scale: [1, 1, 0.5, 1] },
       ],
       levelArrayMetadataByPath: {
-        0: { shape: [2, 3, 6, 8], chunks: [1, 1, 3, 4] },
-        1: { shape: [2, 3, 3, 4], chunks: [1, 1, 3, 4] },
+        0: { 'shape': [2, 3, 6, 8], chunks: [1, 1, 3, 4] },
+        1: { 'shape': [2, 3, 3, 4], chunks: [1, 1, 3, 4] },
       },
     },
     pages: [
@@ -189,7 +189,7 @@ test('buildMicroscopyDataset preserves OME-Zarr pyramid level and chunk metadata
     height: 6,
     tileWidth: 4,
     tileHeight: 3,
-    chunkShape: { t: 1, c: 1, z: 1, y: 3, x: 4 },
+    'chunkShape': { t: 1, c: 1, z: 1, y: 3, x: 4 },
     downsample: 1,
   }, {
     level: 1,
@@ -198,7 +198,7 @@ test('buildMicroscopyDataset preserves OME-Zarr pyramid level and chunk metadata
     height: 3,
     tileWidth: 4,
     tileHeight: 3,
-    chunkShape: { t: 1, c: 1, z: 1, y: 3, x: 4 },
+    'chunkShape': { t: 1, c: 1, z: 1, y: 3, x: 4 },
     downsample: 2,
   }]);
 });

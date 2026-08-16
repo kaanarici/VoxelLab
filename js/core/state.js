@@ -35,10 +35,7 @@ function hostnameLooksLocal(hostname) {
   return false;
 }
 
-// Shape: { search: "?localBackend=1", hostname: "localhost" } in browser, blank in Node tests.
-const _location = typeof location === 'object' && location
-  ? location
-  : { search: '', hostname: '' };
+const _location = globalThis.location ?? { search: '', hostname: '' };
 const _query = new URLSearchParams(_location.search);
 const _forcedLocalBackend = parseBooleanQuery(_query.get('localBackend'));
 const _legacyHosted = parseBooleanQuery(_query.get('hosted'));
@@ -85,6 +82,10 @@ function rootSource(key) {
   return runtimeRootKeys.has(key) ? runtimeRaw : appRaw;
 }
 
+function isAliasKey(key) {
+  return String(key) === key && Object.hasOwn(ALIASES, key);
+}
+
 function createLinkedRaw() {
   const linked = {};
   const roots = new Set([
@@ -106,7 +107,7 @@ function createLinkedRaw() {
 const raw = createLinkedRaw();
 
 function isObject(value) {
-  return value != null && typeof value === 'object';
+  return value != null && Object(value) === value && !(value instanceof Function);
 }
 
 function isProxyable(value) {
@@ -117,7 +118,7 @@ function isProxyable(value) {
 function toPath(key) {
   if (Array.isArray(key)) return key.map(String);
   const parts = String(key).split('.');
-  const alias = ALIASES[parts[0]];
+  const alias = Object.hasOwn(ALIASES, parts[0]) ? ALIASES[parts[0]] : null;
   if (!alias) return parts;
   return [...alias.split('.'), ...parts.slice(1)];
 }
@@ -232,17 +233,17 @@ function createProxy(target, path = []) {
   if (proxyCache.has(target)) return proxyCache.get(target);
 
   const proxy = new Proxy(target, {
-    get(obj, key, receiver) {
-      if (typeof key === 'string' && path.length === 0 && ALIASES[key]) {
+    get(obj, key) {
+      if (isAliasKey(key) && path.length === 0) {
         return createProxy(getAtPath(raw, ALIASES[key].split('.')), toPath(key));
       }
-      if (typeof key === 'string' && path.length === 0 && (key.startsWith('_') || PASSTHROUGH_ROOT_KEYS.has(key))) {
-        return Reflect.get(obj, key, receiver);
+      if (String(key) === key && path.length === 0 && (key.startsWith('_') || PASSTHROUGH_ROOT_KEYS.has(key))) {
+        return obj[key];
       }
-      return createProxy(Reflect.get(obj, key, receiver), [...path, String(key)]);
+      return createProxy(obj[key], [...path, String(key)]);
     },
     set(obj, key, value) {
-      if (typeof key === 'string' && path.length === 0 && ALIASES[key]) {
+      if (isAliasKey(key) && path.length === 0) {
         return setAtPath(raw, ALIASES[key].split('.'), value);
       }
       const next = unwrap(value);
@@ -252,7 +253,7 @@ function createProxy(target, path = []) {
       return true;
     },
     deleteProperty(obj, key) {
-      if (typeof key === 'string' && path.length === 0 && ALIASES[key]) {
+      if (isAliasKey(key) && path.length === 0) {
         return deleteAtPath(raw, ALIASES[key].split('.'));
       }
       if (!(key in obj)) return true;
@@ -339,7 +340,7 @@ export function batch(fn) {
   };
   try {
     const result = fn();
-    if (result && typeof result.then === 'function') {
+    if (result?.then instanceof Function) {
       return result.finally(finish);
     }
     finish();
@@ -353,7 +354,7 @@ export function batch(fn) {
 /** Set one entry inside a passthrough root bucket and notify subscribers. */
 export function setPassthroughRootEntry(rootKey, entryKey, value) {
   const bucket = rootSource(rootKey)[rootKey];
-  if (!bucket || typeof bucket !== 'object') return false;
+  if (!isObject(bucket)) return false;
   const next = unwrap(value);
   if (Object.is(bucket[entryKey], next)) return true;
   bucket[entryKey] = next;
@@ -364,7 +365,7 @@ export function setPassthroughRootEntry(rootKey, entryKey, value) {
 /** Delete one entry inside a passthrough root bucket and notify subscribers. */
 export function deletePassthroughRootEntry(rootKey, entryKey) {
   const bucket = rootSource(rootKey)[rootKey];
-  if (!bucket || typeof bucket !== 'object' || !(entryKey in bucket)) return true;
+  if (!isObject(bucket) || !(entryKey in bucket)) return true;
   delete bucket[entryKey];
   markChanged([String(rootKey), String(entryKey)]);
   return true;

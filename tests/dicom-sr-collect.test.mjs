@@ -10,7 +10,11 @@ globalThis.localStorage = {
 };
 
 const { collectMeasurements } = await import('../js/dicom/dicom-sr-collect.js');
-const { setMeasurementEntriesForSlice, setRoiEntriesForSlice } = await import('../js/overlay/annotation-graph.js');
+const {
+  setMeasurementEntriesForSlice,
+  setNoteEntriesForSlice,
+  setRoiEntriesForSlice,
+} = await import('../js/overlay/annotation-graph.js');
 
 test('collectMeasurements keeps uncalibrated line lengths in pixel units', () => {
   store.clear();
@@ -38,7 +42,7 @@ test('collectMeasurements exports open PolyLine length and stable source identit
   };
   setRoiEntriesForSlice(host, host.manifest.series[0], 2, [{
     id: 4,
-    shape: 'polyline',
+    "shape": 'polyline',
     pts: [[0, 0], [4, 0], [4, 3]],
     stats: { length_px: 7, length_mm: 0.01 },
   }]);
@@ -52,4 +56,26 @@ test('collectMeasurements exports open PolyLine length and stable source identit
     handles: [[0, 0], [4, 0], [4, 3]],
     length_mm: 0.01,
   }]);
+});
+
+test('collectMeasurements reports measurement and annotation counts separately', () => {
+  store.clear();
+  const host = {
+    seriesIdx: 0,
+    manifest: { series: [{ slug: 'mixed', pixelSpacing: [1, 1] }] },
+    measurements: {},
+    notes: {},
+  };
+  setMeasurementEntriesForSlice(host, host.manifest.series[0], 0, [
+    { x1: 0, y1: 0, x2: 3, y2: 4, mm: 5, unit: 'mm' },
+  ]);
+  setNoteEntriesForSlice(host, host.manifest.series[0], 0, [
+    { x: 2, y: 3, text: 'review this region' },
+  ]);
+
+  const bundle = collectMeasurements(host);
+
+  assert.equal(bundle.measurementCount, 1);
+  assert.equal(bundle.annotationCount, 1);
+  assert.equal(bundle.measurements.length, 2);
 });

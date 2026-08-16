@@ -11,6 +11,8 @@ const IPC = Object.freeze({
   openRecentPath: 'desktop:open-recent-path',
   clearRecentDocuments: 'desktop:clear-recent-documents',
   recentDocumentsChanged: 'desktop:recent-documents-changed',
+  saveImportedSeries: 'desktop:save-imported-series',
+  removeImportedSeries: 'desktop:remove-imported-series',
   readFileRange: 'desktop:read-file-range',
   getConverterCapabilities: 'desktop:get-converter-capabilities',
   startConversionJob: 'desktop:start-conversion-job',
@@ -26,7 +28,7 @@ const IPC = Object.freeze({
 });
 
 function subscribe(channel, callback) {
-  if (typeof callback !== 'function') return () => {};
+  if (!(callback instanceof Function)) return () => {};
   const listener = (_event, payload) => callback(payload);
   ipcRenderer.on(channel, listener);
   return () => ipcRenderer.removeListener(channel, listener);
@@ -52,6 +54,14 @@ contextBridge.exposeInMainWorld('voxellabDesktop', {
   clearCloudSettings: () => ipcRenderer.invoke(IPC.clearCloudSettings),
   openRecentPath: (filePath) => ipcRenderer.invoke(IPC.openRecentPath, String(filePath || '')),
   clearRecentDocuments: () => ipcRenderer.invoke(IPC.clearRecentDocuments),
+  saveImportedSeries: (paths = []) => ipcRenderer.invoke(
+    IPC.saveImportedSeries,
+    Array.isArray(paths) ? paths.map(String) : [],
+  ),
+  removeImportedSeries: (ids) => ipcRenderer.invoke(
+    IPC.removeImportedSeries,
+    (Array.isArray(ids) ? ids : [ids]).map(id => String(id || '')).filter(Boolean),
+  ),
   readFileRange: (filePath, range = {}) => {
     const end = Number(range.end);
     const maxBytes = Number(range.maxBytes);

@@ -34,8 +34,17 @@ const cleanupOldVolumeCaches = () => cleanupStaleCaches(
   VOLUME_CACHE_NAME,
   ['mri-volumes-v1'],
 );
+
+function volumeCacheStorageAvailable() {
+  return globalThis.caches?.open instanceof Function;
+}
+
+function volumeWorkerAvailable() {
+  return globalThis.Worker instanceof Function;
+}
+
 // Fire-and-forget at module load: cleanup runs once, never blocks a fetch.
-if (typeof self !== 'undefined' && 'caches' in self) cleanupOldVolumeCaches();
+if (volumeCacheStorageAvailable()) cleanupOldVolumeCaches();
 
 async function proxyFetchInit(url, signal) {
   if (isLocalProxyAssetUrl(url)) {
@@ -99,7 +108,7 @@ async function readBoundedResponseBuffer(response, maxBytes, signal) {
     throw createRawVolumePayloadError(`Content-Length ${contentLength} exceeds the ${maxBytes} byte encoded limit`);
   }
   throwIfAborted(signal);
-  if (!response?.body || typeof response.body.getReader !== 'function') {
+  if (!response?.body || !(response.body.getReader instanceof Function)) {
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > maxBytes) {
       throw createRawVolumePayloadError(`encoded payload exceeds the ${maxBytes} byte limit`);
@@ -198,9 +207,8 @@ export async function ensureHRVoxels() {
 
       let buf;
       let cacheBuffer = null;
-      cache = useCompressed && !isLocalProxyAssetUrl(url)
-        && typeof self !== 'undefined' && 'caches' in self
-        ? await softFail(caches.open(VOLUME_CACHE_NAME), 'high-res volume cache')
+      cache = useCompressed && !isLocalProxyAssetUrl(url) && volumeCacheStorageAvailable()
+        ? await softFail(globalThis.caches.open(VOLUME_CACHE_NAME), 'high-res volume cache')
         : null;
       if (cache) {
         await trimCacheEntries(cache, MAX_VOLUME_CACHE_ENTRIES, url);
@@ -225,10 +233,10 @@ export async function ensureHRVoxels() {
       }
 
       let f32;
-      const fallbackBuffer = typeof Worker !== 'undefined'
+      const fallbackBuffer = volumeWorkerAvailable()
         ? (cacheBuffer || buf.slice(0))
         : buf;
-      if (typeof Worker !== 'undefined') {
+      if (volumeWorkerAvailable()) {
         f32 = await runVolumeWorker(buf, useCompressed, expected);
       }
       if (!f32) f32 = await normalizeRawVolumeBuffer(fallbackBuffer, useCompressed, expected);
@@ -253,7 +261,7 @@ export async function ensureHRVoxels() {
       if (callbacks.is3dActive()) await callbacks.rebuildVolume();
       return f32;
     } catch (e) {
-      if (cachedEntry && isRawVolumePayloadError(e) && cache && typeof cache.delete === 'function') {
+      if (cachedEntry && isRawVolumePayloadError(e) && cache?.delete instanceof Function) {
         await softFail(cache.delete(url), 'invalid high-res volume cache entry');
       }
       if (e?.name !== 'AbortError') {

@@ -49,12 +49,12 @@ function okResponse(response) {
   return response?.ok ?? (status >= 200 && status < 300);
 }
 
-function cOrderStrides(shape) {
-  const strides = new Array(shape.length);
+function cOrderStrides(dimensions) {
+  const strides = new Array(dimensions.length);
   let stride = 1;
-  for (let i = shape.length - 1; i >= 0; i -= 1) {
+  for (let i = dimensions.length - 1; i >= 0; i -= 1) {
     strides[i] = stride;
-    stride *= shape[i];
+    stride *= dimensions[i];
   }
   return strides;
 }
@@ -82,19 +82,20 @@ function parseArrayMeta(arrayMeta = {}, rawChunkCoords = []) {
   } catch (error) {
     throw new ZarrChunkStoreError('ZarrArrayMetadataError', error.message);
   }
-  const { shape, chunks, dtype } = parsed;
+  const dimensions = parsed['shape'];
+  const { chunks, dtype } = parsed;
 
   const chunkCoords = Array.isArray(rawChunkCoords)
     ? rawChunkCoords.map((item) => Number(item))
     : [];
-  if (chunkCoords.length !== shape.length || chunkCoords.some((item) => !Number.isInteger(item) || item < 0)) {
+  if (chunkCoords.length !== dimensions.length || chunkCoords.some((item) => !Number.isInteger(item) || item < 0)) {
     throw new ZarrChunkStoreError('ZarrChunkCoordinateError', 'Zarr chunk coordinates must match the array rank.');
   }
-  if (chunkCoords.some((coord, axis) => coord * chunks[axis] >= shape[axis])) {
+  if (chunkCoords.some((coord, axis) => coord * chunks[axis] >= dimensions[axis])) {
     throw new ZarrChunkStoreError('ZarrChunkCoordinateError', 'Zarr chunk coordinates are outside the array shape.');
   }
 
-  return { ...parsed, shape, chunks, chunkCoords, dtype };
+  return { ...parsed, 'shape': dimensions, chunks, chunkCoords, dtype };
 }
 
 function chunkRelPath(arrayPath, chunkCoords, parsed) {
@@ -123,7 +124,7 @@ function responseStatus(response) {
 }
 
 function headerValue(headers, name) {
-  if (typeof headers?.get === 'function') return headers.get(name);
+  if (headers?.get instanceof Function) return headers.get(name);
   return headers?.[name] ?? headers?.[name.toLowerCase()] ?? '';
 }
 
@@ -136,13 +137,13 @@ async function responseBytes(response, maxBytes) {
   if (Number.isSafeInteger(contentLength) && contentLength > maxBytes) {
     throw encodedChunkError(`Encoded Zarr chunk exceeds the ${maxBytes} byte budget (Content-Length: ${contentLength}).`);
   }
-  if (response?.body && typeof response.body.getReader === 'function') {
+  if (response?.body?.getReader instanceof Function) {
     return readBoundedOmeZarrByteStream(response.body, {
       maxBytes,
       createLimitError: encodedChunkError,
     });
   }
-  if (typeof response.arrayBuffer !== 'function') {
+  if (!(response?.arrayBuffer instanceof Function)) {
     throw new ZarrChunkStoreError('ZarrStoreFetchError', 'Zarr chunk response does not expose arrayBuffer().');
   }
   const bytes = bytesView(await response.arrayBuffer());
@@ -153,8 +154,8 @@ async function responseBytes(response, maxBytes) {
 }
 
 async function responseJson(response) {
-  if (typeof response.json === 'function') return response.json();
-  if (typeof response.text !== 'function') {
+  if (response?.json instanceof Function) return response.json();
+  if (!(response?.text instanceof Function)) {
     throw new ZarrChunkStoreError('ZarrStoreFetchError', 'Zarr metadata response does not expose json() or text().');
   }
   return JSON.parse(await response.text());
@@ -169,10 +170,10 @@ export function createRemoteZarrStore({
   maxDecodedChunkBytes = MAX_OME_ZARR_DECODED_CHUNK_BYTES,
   maxEncodedChunkBytes = MAX_OME_ZARR_ENCODED_CHUNK_BYTES,
 } = {}) {
-  if (typeof fetchImpl !== 'function') {
+  if (!(fetchImpl instanceof Function)) {
     throw new ZarrChunkStoreError('ZarrStoreConfigError', 'createRemoteZarrStore requires fetchImpl.');
   }
-  if (typeof decode !== 'function') {
+  if (!(decode instanceof Function)) {
     throw new ZarrChunkStoreError('ZarrStoreConfigError', 'createRemoteZarrStore requires decode.');
   }
 
@@ -244,7 +245,12 @@ export function createRemoteZarrStore({
   async function fetchResponse(url, signal) {
     const response = await fetchImpl(url, { signal });
     throwIfAborted();
-    if (!response || typeof response !== 'object') {
+    const hasResponseContract = response != null
+      && (Number.isFinite(Number(response.status))
+        || response.arrayBuffer instanceof Function
+        || response.json instanceof Function
+        || response.text instanceof Function);
+    if (!hasResponseContract) {
       throw new ZarrChunkStoreError('ZarrStoreFetchError', `Zarr fetch returned an invalid response for ${url}.`);
     }
     return response;
@@ -265,8 +271,8 @@ export function createRemoteZarrStore({
   async function readChunk(arrayPath, rawChunkCoords, arrayMeta = {}) {
     const parsed = parseArrayMeta(arrayMeta, rawChunkCoords);
     const { chunks, chunkCoords, dtype } = parsed;
-    const storedChunkShape = chunks;
-    const expectedBytes = product(storedChunkShape) * dtype.bytes;
+    const storedChunkDimensions = chunks;
+    const expectedBytes = product(storedChunkDimensions) * dtype.bytes;
     if (!Number.isSafeInteger(expectedBytes) || expectedBytes <= 0 || expectedBytes > maxDecodedBytes) {
       return Promise.reject(new ZarrChunkStoreError(
         'ZarrChunkLengthError',
@@ -286,7 +292,7 @@ export function createRemoteZarrStore({
         if (!parsed.hasFillValue) {
           throw new ZarrChunkStoreError('ZarrChunkNotFoundError', `Zarr chunk is missing and the array has no concrete fill_value: ${url}`);
         }
-        const entry = { shape: storedChunkShape, strides: cOrderStrides(storedChunkShape), view: null, fillValue: parsed.fillValue };
+        const entry = { 'shape': storedChunkDimensions, strides: cOrderStrides(storedChunkDimensions), view: null, fillValue: parsed.fillValue };
         setCached(cache, key, entry, maxCache);
         return entry;
       }
@@ -312,8 +318,8 @@ export function createRemoteZarrStore({
       }
 
       const entry = {
-        shape: storedChunkShape,
-        strides: cOrderStrides(storedChunkShape),
+        'shape': storedChunkDimensions,
+        strides: cOrderStrides(storedChunkDimensions),
         view: new DataView(decoded.buffer, decoded.byteOffset, decoded.byteLength),
       };
       setCached(cache, key, entry, maxCache);

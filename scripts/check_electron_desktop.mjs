@@ -44,6 +44,8 @@ for (const required of [
   'recentDocumentsChanged',
   'Open Recent',
   'Clear Recent Items',
+  'Check for Updates',
+  'LATEST_RELEASE_URL',
   'https://github.com/kaanarici/VoxelLab',
   'handleWindowsSquirrelEvent',
 ]) {
@@ -70,7 +72,7 @@ assert.ok(
   'Electron smoke runs must keep windows hidden and avoid focusing unless fullscreen smoke opts in',
 );
 assert.ok(
-  mainSource.includes("if (SMOKE_NON_ACTIVATING && typeof window.showInactive === 'function') window.showInactive();"),
+  mainSource.includes('if (SMOKE_NON_ACTIVATING && window.showInactive instanceof Function) window.showInactive();'),
   'Electron fullscreen smoke should use non-activating show when available',
 );
 

@@ -32,8 +32,8 @@ function beginDicomwebOperation(dicomwebState, isModalActive) {
 
   const uploadModal = $('upload-modal');
   const observationRoot = uploadModal?.parentElement || uploadModal;
-  const observer = (typeof MutationObserver !== 'undefined' && observationRoot)
-    ? new MutationObserver(() => {
+  const observer = (globalThis.MutationObserver && observationRoot)
+    ? new globalThis.MutationObserver(() => {
       if (!isModalActive()) controller.abort();
     })
     : null;
@@ -258,7 +258,7 @@ export async function handleDicomwebImport(statusEl, selectSeries, setBusy = () 
     updateStatus('Loading DICOMweb series into viewer...', 'active');
     const { injectLocalSeries } = await import('../dicom/dicom-import.js');
     if (!operation.isActive()) return;
-    const idx = injectLocalSeries(state.manifest, result.entry, result.sliceCanvases, result.rawVolume);
+    const idx = injectLocalSeries(state.manifest, result.entry, result.sliceBytes, result.rawVolume);
     closeModal('upload-modal');
     await selectSeries(idx);
   } catch (e) {

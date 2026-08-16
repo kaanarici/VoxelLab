@@ -49,9 +49,7 @@ const MAX_TIFF_EAGER_PAGE_BYTES = 192 * 1024 * 1024;
 const MAX_TIFF_DOCUMENT_RETAINED_BYTES = 512 * 1024 * 1024;
 const SOURCE_FINGERPRINT_WINDOW_BYTES = 4 * 1024;
 const SOURCE_FINGERPRINT_WINDOWS = 16;
-const IN_NODE = typeof globalThis.process !== 'undefined'
-  && Boolean(globalThis.process.versions?.node)
-  && typeof globalThis.window === 'undefined';
+const IN_NODE = Boolean(globalThis.process?.versions?.node) && !('window' in globalThis);
 let pako = null;
 
 // Sample evenly across the input so persistence identity does not require a
@@ -105,7 +103,7 @@ function readAscii(view, offset, count) {
   let length = count;
   while (length > 0 && view.getUint8(offset + length - 1) === 0) length--;
   const bytes = new Uint8Array(view.buffer, view.byteOffset + offset, length);
-  if (typeof TextDecoder !== 'undefined') return new TextDecoder('utf-8').decode(bytes);
+  if (globalThis.TextDecoder instanceof Function) return new globalThis.TextDecoder('utf-8').decode(bytes);
   return Array.from(bytes, byte => String.fromCharCode(byte)).join('');
 }
 
@@ -202,7 +200,7 @@ function collectInflatedPart(parts, state, part, expectedBytes, stripIndex) {
 }
 
 async function inflateWithPlatform(source, expectedBytes, stripIndex) {
-  const stream = new Blob([source]).stream().pipeThrough(new DecompressionStream('deflate'));
+  const stream = new Blob([source]).stream().pipeThrough(new globalThis.DecompressionStream('deflate'));
   const reader = stream.getReader();
   const parts = [];
   const state = { length: 0 };
@@ -221,7 +219,7 @@ async function inflateWithPlatform(source, expectedBytes, stripIndex) {
 async function inflateWithPako(source, expectedBytes, stripIndex) {
   const pk = await ensurePako();
   const Inflate = pk.Inflate || pk.default?.Inflate;
-  if (typeof Inflate !== 'function') throw new Error('TIFF Deflate decoder pako.Inflate is unavailable.');
+  if (!(Inflate instanceof Function)) throw new Error('TIFF Deflate decoder pako.Inflate is unavailable.');
   const inflator = new Inflate();
   const parts = [];
   const state = { length: 0 };
@@ -245,7 +243,7 @@ async function inflateTiffDeflateStrip(source, expectedBytes, stripIndex) {
   if (source.byteLength > MAX_TIFF_COMPRESSED_STRIP_BYTES) {
     throw tiffResourceLimit(`strip ${stripIndex + 1} encoded size ${source.byteLength} exceeds the ${MAX_TIFF_COMPRESSED_STRIP_BYTES} byte budget.`);
   }
-  if (typeof DecompressionStream === 'function') {
+  if (globalThis.DecompressionStream instanceof Function) {
     try {
       return await inflateWithPlatform(source, expectedBytes, stripIndex);
     } catch (error) {

@@ -32,9 +32,7 @@ export const MAX_IMAGEJ_ROI_ZIP_INPUT_BYTES = 80 * 1024 * 1024;
 export const MAX_IMAGEJ_ROI_FILE_INPUT_BYTES = 8 * 1024 * 1024;
 const textEncoder = new TextEncoder();
 let pako = null;
-const IN_NODE = typeof globalThis.process !== 'undefined'
-  && Boolean(globalThis.process.versions?.node)
-  && typeof globalThis.window === 'undefined';
+const IN_NODE = Boolean(globalThis.process?.versions?.node) && !('window' in globalThis);
 
 async function ensurePako() {
   if (pako) return pako;
@@ -124,9 +122,9 @@ function inflateRawWithPako(pk, bytes, maxOutputBytes) {
 }
 
 async function inflateRawBytes(bytes, maxOutputBytes = MAX_IMAGEJ_ROI_ZIP_ENTRY_DECODED_BYTES) {
-  if (typeof DecompressionStream === 'function') {
+  if (globalThis.DecompressionStream instanceof Function) {
     try {
-      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      const stream = new Blob([bytes]).stream().pipeThrough(new globalThis.DecompressionStream('deflate-raw'));
       return await readBoundedInflatedStream(stream, maxOutputBytes);
     } catch (error) {
       if (error?.imageJRoiZipResourceLimit) throw error;
@@ -139,7 +137,7 @@ async function inflateRawBytes(bytes, maxOutputBytes = MAX_IMAGEJ_ROI_ZIP_ENTRY_
 
 async function boundedInflatedResult(result, maxOutputBytes) {
   const value = await result;
-  if (value && typeof value.getReader === 'function') {
+  if (value?.getReader instanceof Function) {
     return readBoundedInflatedStream(value, maxOutputBytes);
   }
   const bytes = byteView(value);
@@ -266,23 +264,23 @@ export function parseImageJRoi(buffer, { name = '' } = {}) {
   const fileName = String(name || '').split(/[\\/]/).pop().replace(/\.roi$/i, '');
   const label = internalRoiName(view, header2Offset, bytes.byteLength) || fileName;
   const preserveSubPixelCoordinates = type === TYPES.polyline && Boolean(options & IMAGEJ_ROI_SUB_PIXEL_RESOLUTION);
-  let shape = '';
+  let roiGeometryKind = '';
   let points = [];
   if (type === TYPES.rect) {
-    shape = 'polygon';
+    roiGeometryKind = 'polygon';
     points = [[left, top], [right, top], [right, bottom], [left, bottom]];
   } else if (type === TYPES.oval) {
-    shape = 'ellipse';
+    roiGeometryKind = 'ellipse';
     points = [[left, top], [right, bottom]];
   } else if (type === TYPES.line) {
-    shape = 'line';
+    roiGeometryKind = 'line';
     points = [
       [view.getFloat32(18, false), view.getFloat32(22, false)],
       [view.getFloat32(26, false), view.getFloat32(30, false)],
     ];
   } else if (type === TYPES.polyline) {
     if (count < 2) throw new Error('ImageJ ROI PolyLine requires at least two points.');
-    shape = count === 2 ? 'line' : 'polyline';
+    roiGeometryKind = count === 2 ? 'line' : 'polyline';
     if (options & IMAGEJ_ROI_SUB_PIXEL_RESOLUTION) {
       points = subPixelPolygonPoints(view, count, bytes.byteLength);
     } else {
@@ -291,15 +289,15 @@ export function parseImageJRoi(buffer, { name = '' } = {}) {
     }
   } else if ([TYPES.polygon, TYPES.freehand, TYPES.traced].includes(type)) {
     if (!(count >= 3) || 64 + 4 * count > bytes.byteLength) throw new Error('ImageJ ROI polygon coordinates are incomplete.');
-    shape = 'polygon';
+    roiGeometryKind = 'polygon';
     points = polygonPoints(view, left, top, count);
   } else if (type === TYPES.angle) {
     if (count !== 3 || 64 + 4 * count > bytes.byteLength) throw new Error('ImageJ ROI angle coordinates are incomplete.');
-    shape = 'angle';
+    roiGeometryKind = 'angle';
     points = polygonPoints(view, left, top, count);
   } else if (type === TYPES.point) {
     if (!(count >= 1) || 64 + 4 * count > bytes.byteLength) throw new Error('ImageJ ROI point coordinates are incomplete.');
-    shape = 'point';
+    roiGeometryKind = 'point';
     points = polygonPoints(view, left, top, count);
   } else {
     throw new Error('Unsupported ImageJ ROI type.');
@@ -309,17 +307,17 @@ export function parseImageJRoi(buffer, { name = '' } = {}) {
     throw new Error(`ImageJ ROI${kind} has non-finite coordinates.`);
   }
   points = points.map(([x, y]) => preserveSubPixelCoordinates ? [x, y] : [Math.round(x), Math.round(y)]);
-  if (shape === 'line' && points.length !== 2) throw new Error('ImageJ ROI line requires exactly two points.');
-  if (shape === 'polyline' && points.length < 3) throw new Error('ImageJ ROI PolyLine requires at least three points.');
-  if (shape === 'angle' && points.length !== 3) throw new Error('ImageJ ROI angle requires exactly three points.');
-  if (shape === 'polygon' && points.length < 3) throw new Error('ImageJ ROI polygon requires at least three points.');
+  if (roiGeometryKind === 'line' && points.length !== 2) throw new Error('ImageJ ROI line requires exactly two points.');
+  if (roiGeometryKind === 'polyline' && points.length < 3) throw new Error('ImageJ ROI PolyLine requires at least three points.');
+  if (roiGeometryKind === 'angle' && points.length !== 3) throw new Error('ImageJ ROI angle requires exactly three points.');
+  if (roiGeometryKind === 'polygon' && points.length < 3) throw new Error('ImageJ ROI polygon requires at least three points.');
   if (!points.length) throw new Error('ImageJ ROI has no usable coordinates.');
   return {
     schema: IMAGEJ_ROI_SCHEMA,
     name: fileName || label,
     label,
     version,
-    shape,
+    'shape': roiGeometryKind,
     points,
     position,
     channelPosition: c,
@@ -690,7 +688,7 @@ export function imageJRoiToAnnotation(roi = {}, series = {}, fallbackSliceIdx = 
   const roiZ = explicitImageJIndex(roi.zPosition);
   if (roiZ != null && roiZ >= zSize) return null;
   const sliceIdx = roiZ ?? Math.max(0, Math.min(zSize - 1, Math.floor(Number(fallbackSliceIdx) || 0)));
-  if (!['ellipse', 'polygon', 'polyline', 'point', 'line', 'angle'].includes(roi.shape) || !pointsInBounds(roi.points, series)) return null;
+  if (!['ellipse', 'polygon', 'polyline', 'point', 'line', 'angle'].includes(roi['shape']) || !pointsInBounds(roi.points, series)) return null;
   const roiC = explicitImageJIndex(roi.channelPosition);
   const roiT = explicitImageJIndex(roi.timePosition);
   const sizeC = microscopyAxisSize(series, 'c', series.microscopy?.sizeC || 1);
@@ -705,7 +703,7 @@ export function imageJRoiToAnnotation(roi = {}, series = {}, fallbackSliceIdx = 
     channelName: channel?.name || series.microscopy?.channelName || '',
     timeIndex,
   } : null;
-  if (roi.shape === 'line') {
+  if (roi['shape'] === 'line') {
     const [[x1, y1], [x2, y2]] = roi.points;
     const spacing = inPlanePixelSpacing(series);
     const dx = x2 - x1;
@@ -728,7 +726,7 @@ export function imageJRoiToAnnotation(roi = {}, series = {}, fallbackSliceIdx = 
       },
     };
   }
-  if (roi.shape === 'angle') {
+  if (roi['shape'] === 'angle') {
     const [p1, vertex, p3] = roi.points.map(([x, y]) => ({ x, y }));
     return {
       kind: 'angle',
@@ -745,7 +743,7 @@ export function imageJRoiToAnnotation(roi = {}, series = {}, fallbackSliceIdx = 
       },
     };
   }
-  if (roi.shape === 'polyline') {
+  if (roi['shape'] === 'polyline') {
     const spacing = inPlanePixelSpacing(series);
     let lengthPx = 0;
     let lengthMm = 0;
@@ -761,7 +759,7 @@ export function imageJRoiToAnnotation(roi = {}, series = {}, fallbackSliceIdx = 
       kind: 'roi',
       sliceIdx,
       entry: {
-        shape: 'polyline',
+        'shape': 'polyline',
         pts: roi.points.map(point => point.slice()),
         label: label || 'ImageJ PolyLine',
         microscopy,
@@ -774,17 +772,20 @@ export function imageJRoiToAnnotation(roi = {}, series = {}, fallbackSliceIdx = 
       },
     };
   }
+  const entry = {
+    'shape': roi['shape'],
+    pts: roi.points.map(point => point.slice()),
+    label: label || 'ImageJ ROI',
+    microscopy,
+    source: 'ImageJ ROI',
+    createdAt: Date.now(),
+  };
+  if (roi['shape'] === 'point') {
+    entry.stats = { count: roi.points.length, pixels: roi.points.length };
+  }
   return {
     kind: 'roi',
     sliceIdx,
-    entry: {
-      shape: roi.shape,
-      pts: roi.points.map(point => point.slice()),
-      label: label || 'ImageJ ROI',
-      microscopy,
-      ...(roi.shape === 'point' ? { stats: { count: roi.points.length, pixels: roi.points.length } } : {}),
-      source: 'ImageJ ROI',
-      createdAt: Date.now(),
-    },
+    entry,
   };
 }

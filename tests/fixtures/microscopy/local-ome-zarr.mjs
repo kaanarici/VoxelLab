@@ -139,15 +139,15 @@ export function tinyOmeZarrFiles({
   scale = [1, 0.25, 0.5],
   versionAtRoot = true,
 } = {}) {
-  const shape = arrayOverrides.shape || [2, 2, 2];
-  const values = Array.from({ length: shape.reduce((product, value) => product * value, 1) }, (_, index) => index * 10);
+  const dimensions = arrayOverrides['shape'] || [2, 2, 2];
+  const values = Array.from({ length: dimensions.reduce((product, value) => product * value, 1) }, (_, index) => index * 10);
   const chunk = chunkBytes || (/^(?:[<>|][ui][124]|[<>|]f4)$/.test(dtype)
     ? chunkForDtype(dtype, values)
     : chunkForDtype('<u2', values));
   const arrayMeta = {
     zarr_format: 2,
-    shape,
-    chunks: arrayOverrides.chunks || shape,
+    'shape': dimensions,
+    chunks: arrayOverrides.chunks || dimensions,
     dtype,
     compressor: null,
     order: 'C',
@@ -155,34 +155,35 @@ export function tinyOmeZarrFiles({
     fill_value: 0,
     ...arrayOverrides,
   };
-  const chunkPath = chunkRelativePath || `cells.zarr/0/${Array.from({ length: shape.length }, () => '0').join(arrayMeta.dimension_separator === '/' ? '/' : '.')}`;
+  const chunkPath = chunkRelativePath || `cells.zarr/0/${Array.from({ length: dimensions.length }, () => '0').join(arrayMeta.dimension_separator === '/' ? '/' : '.')}`;
+  const ome = {
+    multiscales: [{
+      name: 'cells',
+      axes,
+      datasets: [{
+        path: '0',
+        coordinateTransformations: [{ type: 'scale', scale }],
+      }],
+    }],
+    omero: {
+      channels: [{
+        label: 'DAPI',
+        color: '0000FF',
+        family: 'linear',
+        window: { min: 0, max: 4095, start: 10, end: 2000 },
+      }, {
+        label: 'GFP',
+        color: '00FF00',
+        family: 'linear',
+        window: { min: 0, max: 4095, start: 25, end: 1800 },
+      }],
+    },
+  };
+  if (versionAtRoot) ome.version = '0.4';
+  else ome.multiscales[0].version = '0.4';
   return [
     omeZarrJsonFile('cells.zarr/.zattrs', {
-      ome: {
-        ...(versionAtRoot ? { version: '0.4' } : {}),
-        multiscales: [{
-          ...(!versionAtRoot ? { version: '0.4' } : {}),
-          name: 'cells',
-          axes,
-          datasets: [{
-            path: '0',
-            coordinateTransformations: [{ type: 'scale', scale }],
-          }],
-        }],
-        omero: {
-          channels: [{
-            label: 'DAPI',
-            color: '0000FF',
-            family: 'linear',
-            window: { min: 0, max: 4095, start: 10, end: 2000 },
-          }, {
-            label: 'GFP',
-            color: '00FF00',
-            family: 'linear',
-            window: { min: 0, max: 4095, start: 25, end: 1800 },
-          }],
-        },
-      },
+      ome,
     }),
     omeZarrJsonFile('cells.zarr/0/.zarray', arrayMeta),
     ...(withChunk ? [omeZarrBinaryFile(chunkPath, chunk)] : []),
@@ -240,7 +241,7 @@ export function chunkedPlaneOmeZarrFiles({ omitPath = '', chunkOverrides = {}, a
     }),
     omeZarrJsonFile('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [1, 3, 4],
+      'shape': [1, 3, 4],
       chunks: [1, 2, 3],
       dtype: '<u2',
       compressor: null,
@@ -285,7 +286,7 @@ export function manyChunkOmeZarrFiles({ tracker }) {
     }),
     omeZarrJsonFile('cells.zarr/0/.zarray', {
       zarr_format: 2,
-      shape: [1, height, width],
+      'shape': [1, height, width],
       chunks: [1, 1, 1],
       dtype: '|u1',
       compressor: null,
