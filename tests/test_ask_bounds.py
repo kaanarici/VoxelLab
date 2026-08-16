@@ -82,6 +82,8 @@ def test_build_ask_prompt_includes_approximate_point_context() -> None:
     assert "Approximate point context" in prompt
     assert "approximate" in prompt
     assert "Do not diagnose" in prompt
+    assert "Do not classify anatomy as normal or abnormal" in ask.ASK_SYSTEM
+    assert "Do not classify the study as normal or abnormal" in ask.CONSULT_SYSTEM
 
 
 def test_build_ask_prompt_keeps_viewer_context_separate_from_question() -> None:

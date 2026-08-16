@@ -13,7 +13,7 @@ export function auditAdvisoryUrls(payload) {
   const urls = new Set();
   for (const vulnerability of Object.values(payload?.vulnerabilities || {})) {
     for (const via of vulnerability?.via || []) {
-      if (via && typeof via === 'object' && via.url) urls.add(via.url);
+      if (via && !Array.isArray(via) && Object.getPrototypeOf(via) === Object.prototype && via.url) urls.add(via.url);
     }
   }
   return [...urls].sort();

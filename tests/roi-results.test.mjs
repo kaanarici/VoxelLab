@@ -79,7 +79,7 @@ test('roiResultRows exposes calibrated microscopy ROI rows across slices', () =>
   state.sliceIdx = 2;
   setRoiEntriesForSlice('cells_gfp_t1', 2, [{
     id: 7,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     pts: [[1, 1], [9, 7]],
     stats: {
       pixels: 100,
@@ -139,7 +139,7 @@ test('open PolyLine results preserve length and geometry through bundle round-tr
   state.sliceIdx = 0;
   setRoiEntriesForSlice('cells_polyline', 0, [{
     id: 3,
-    shape: 'polyline',
+    "shape": 'polyline',
     label: 'Axon path',
     pts: [[2, 4], [6, 4], [6, 7]],
     stats: { length_px: 7, length_mm: 0.01 },
@@ -159,7 +159,7 @@ test('open PolyLine results preserve length and geometry through bundle round-tr
   setRoiEntriesForSlice('cells_polyline', 0, []);
   assert.deepEqual(importRoiResultsBundle(bundle, state), { ok: true, count: 1, reason: '' });
   const [restored] = roiEntriesForSlice('cells_polyline', 0);
-  assert.equal(restored.shape, 'polyline');
+  assert.equal(restored["shape"], 'polyline');
   assert.deepEqual(restored.pts, [[2, 4], [6, 4], [6, 7]]);
   assert.equal(restored.stats.length_mm, 0.01);
   assert.equal(restored.stats.length_px, 7);
@@ -184,7 +184,7 @@ test('roiResultRows uses ROI channel/time provenance when microscopy stacks shar
   state.sliceIdx = 0;
   setRoiEntriesForSlice('cells_hyper', 0, [{
     id: 1,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     microscopy: { channelIndex: 1, channelName: 'GFP', timeIndex: 2 },
     stats: { pixels: 8, area_mm2: 0.000008, mean: 55 },
   }]);
@@ -245,7 +245,7 @@ test('setRoiResultLabel updates ROI and line labels used by exports', () => {
   state.sliceIdx = 0;
   setRoiEntriesForSlice('editable_labels', 0, [{
     id: 1,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     pts: [[1, 1], [5, 5]],
     microscopy: { channelIndex: 1, channelName: 'GFP', timeIndex: 0 },
     stats: { pixels: 8, mean: 44 },
@@ -409,7 +409,7 @@ test('roiResultRows exports C/T-scoped point count ROIs with pixel coordinates',
   state.sliceIdx = 0;
   setRoiEntriesForSlice('cell_counts', 0, [{
     id: 4,
-    shape: 'point',
+    "shape": 'point',
     pts: [[6, 9]],
     microscopy: { channelIndex: 1, channelName: 'GFP', timeIndex: 3 },
     stats: { pixels: 1, count: 1, mean: 77, std: 0, min: 77, max: 77 },
@@ -514,7 +514,7 @@ test('roiResultsBundle preserves calibration and microscopy provenance', () => {
         { index: 1, name: 'GFP', color: '#00FF00', displayColor: '#AA00CC', displayColorSource: 'user', lut: 'green', emissionWavelength: 510, emissionWavelengthUnit: 'nm', displayRange: [10, 200], displayRangeSource: 'metadata' },
       ],
       pixel: { type: 'uint8', samplesPerPixel: 1, endianness: 'little', min: 0, max: 255 },
-      levels: [{ level: 0, width: 16, height: 16, tileWidth: 16, tileHeight: 16, chunkShape: { t: 1, c: 1, z: 1, y: 16, x: 16 }, downsample: 1 }],
+      levels: [{ level: 0, width: 16, height: 16, tileWidth: 16, tileHeight: 16, "chunkShape": { t: 1, c: 1, z: 1, y: 16, x: 16 }, downsample: 1 }],
       planes: [
         { c: 0, z: 0, t: 0, level: 0, pageIndex: 0, width: 16, height: 16 },
         { c: 1, z: 2, t: 1, level: 0, pageIndex: 11, width: 16, height: 16 },
@@ -581,7 +581,7 @@ test('roiResultsBundle preserves calibration and microscopy provenance', () => {
         { index: 1, name: 'GFP', color: '#00FF00', displayColor: '#AA00CC', displayColorSource: 'user', lut: 'green', emissionWavelength: 510, emissionWavelengthUnit: 'nm', displayRange: [10, 200], displayRangeSource: 'metadata' },
       ],
       pixel: { type: 'uint8', samplesPerPixel: 1, endianness: 'little', min: 0, max: 255 },
-      levels: [{ level: 0, path: '', width: 16, height: 16, tileWidth: 16, tileHeight: 16, chunkShape: { t: 1, c: 1, z: 1, y: 16, x: 16 }, downsample: 1 }],
+      levels: [{ level: 0, path: '', width: 16, height: 16, tileWidth: 16, tileHeight: 16, "chunkShape": { t: 1, c: 1, z: 1, y: 16, x: 16 }, downsample: 1 }],
       planes: [
         { c: 0, z: 0, t: 0, level: 0, pageIndex: 0, width: 16, height: 16 },
         { c: 1, z: 2, t: 1, level: 0, pageIndex: 11, width: 16, height: 16 },
@@ -717,7 +717,7 @@ test('importRoiResultsBundle restores ROI geometry into the matching active seri
 
   assert.deepEqual(result, { ok: true, count: 1, reason: '' });
   const [entry] = roiEntriesForSlice('cells_roundtrip', 1);
-  assert.equal(entry.shape, 'polygon');
+  assert.equal(entry["shape"], 'polygon');
   assert.equal(entry.label, 'Nucleus boundary');
   assert.deepEqual(entry.pts, [[1, 1], [8, 1], [8, 7], [1, 7]]);
   assert.deepEqual(entry.microscopy, { channelIndex: 1, channelName: 'GFP', timeIndex: 2 });
@@ -833,7 +833,7 @@ test('importRoiResultsBundle restores multi-point count ROI geometry', () => {
 
   assert.deepEqual(result, { ok: true, count: 1, reason: '' });
   const [entry] = roiEntriesForSlice('cells_count_roundtrip', 0);
-  assert.equal(entry.shape, 'point');
+  assert.equal(entry["shape"], 'point');
   assert.equal(entry.label, 'Cell count');
   assert.deepEqual(entry.pts, [[2, 3], [8, 9], [12, 4]]);
   assert.deepEqual(entry.microscopy, { channelIndex: 1, channelName: 'GFP', timeIndex: 2 });
@@ -1384,8 +1384,8 @@ test('roiResultRows uses stable slice-local ROI ids for visible labels', () => {
   };
   state.seriesIdx = 0;
   state.sliceIdx = 5;
-  setRoiEntriesForSlice('multi_slice', 0, [{ id: 1, shape: 'ellipse', stats: { pixels: 1 } }]);
-  setRoiEntriesForSlice('multi_slice', 5, [{ id: 1, shape: 'polygon', stats: { pixels: 2 } }]);
+  setRoiEntriesForSlice('multi_slice', 0, [{ id: 1, "shape": 'ellipse', stats: { pixels: 1 } }]);
+  setRoiEntriesForSlice('multi_slice', 5, [{ id: 1, "shape": 'polygon', stats: { pixels: 2 } }]);
 
   const rows = roiResultRows(state);
 

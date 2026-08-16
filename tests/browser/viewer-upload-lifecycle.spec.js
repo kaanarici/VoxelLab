@@ -242,7 +242,7 @@ test('dismissed desktop intake cannot import into a reopened upload session', as
     body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
   }));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof window.__dispatchDesktopOpen === 'function');
+  await page.waitForFunction(() => window.__dispatchDesktopOpen instanceof Function);
 
   await page.evaluate(() => {
     void window.__dispatchDesktopOpen({
@@ -309,7 +309,7 @@ test('newer desktop intake supersedes an older intake during modal setup', async
     body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
   }));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof window.__dispatchDesktopOpen === 'function');
+  await page.waitForFunction(() => window.__dispatchDesktopOpen instanceof Function);
 
   await page.evaluate(() => {
     void window.__dispatchDesktopOpen({
@@ -371,7 +371,7 @@ test('newer desktop intake dismisses an already-visible sidecar-only warning', a
     body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
   }));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof window.__dispatchDesktopOpen === 'function');
+  await page.waitForFunction(() => window.__dispatchDesktopOpen instanceof Function);
 
   await page.evaluate(() => {
     void window.__dispatchDesktopOpen({

@@ -2,11 +2,16 @@
 // consult (/api/consult) modal.
 import { state, subscribe } from './core/state.js';
 import { $, escapeHtml, openModal, clientToCanvasPx } from './dom.js';
-import { viewerAiFlags, localApiHeaders } from './config.js';
+import { getConfig, localApiHeaders, viewerAiFlags } from './config.js';
 import { drawMeasurements } from './roi/measure.js';
 import { notify } from './notify.js';
 import { cachedFetchResponse, cachedFetchJson } from './core/cached-fetch.js';
-import { normalizeAskResult, normalizeAskSidecar, normalizeConsultResult } from './ask-envelopes.js';
+import {
+  EnvelopeValidationError,
+  normalizeAskResult,
+  normalizeAskSidecar,
+  normalizeConsultResult,
+} from './ask-envelopes.js';
 import { readAskEventStream } from './ask-event-stream.js';
 import { cloudActionWorkflowLines, cloudActionWorkflowRecords } from './cloud-actions.js';
 import { cloudRuntimeStatus } from './cloud.js';
@@ -18,6 +23,13 @@ import {
   setAskPen,
 } from './core/state/viewer-tool-commands.js';
 import { syncAskPickingUi } from './ask-mode.js';
+import {
+  askModelDisclosure,
+  askModelRequestFields,
+  pickAskModel,
+  readStoredAskModelKey,
+  writeStoredAskModelKey,
+} from './ask-models.js';
 
 /** Min drag size (px in slice space) each dimension — below this we nudge the user. */
 const ASK_MIN_DRAG = 24;
@@ -36,6 +48,30 @@ const localAiMessage = (flags) => {
   if (flags.aiUnavailableMessage) return flags.aiUnavailableMessage;
   return 'AI actions are unavailable in this mode.';
 };
+
+function consultFailureMessage(error) {
+  if (error instanceof EnvelopeValidationError) {
+    return 'The consult response was not compatible with this VoxelLab build.';
+  }
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('no analysis data')) {
+    return 'Run analysis on this study before creating a consolidated read.';
+  }
+  if (message.includes('token') || message.includes('session expired')) {
+    return 'The local VoxelLab session expired. Restart VoxelLab and try again.';
+  }
+  if (
+    message.includes('provider')
+    || message.includes('model')
+    || message.includes('executable')
+    || message.includes('not found')
+    || message.includes('not logged in')
+    || message.includes('authentication')
+  ) {
+    return 'The local AI provider is not ready. Install and sign in to Claude Code or Codex, then restart VoxelLab.';
+  }
+  return 'Consult could not be generated. Try again, or restart VoxelLab if the problem continues.';
+}
 
 function compactAskValue(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
@@ -79,9 +115,15 @@ function statsSourceForAsk(series = {}) {
   return slug ? `data/${slug}_stats.json` : '';
 }
 
+function consultRecord(value) {
+  if (!value || Array.isArray(value)) return null;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null ? value : null;
+}
+
 function activeQuantificationContextLines(series) {
-  const stats = state.stats;
-  if (!series || !stats || typeof stats !== 'object') return [];
+  const stats = consultRecord(state.stats);
+  if (!series || !stats) return [];
   const facts = [];
   const regionVolumes = Array.isArray(stats.regionVolumes) ? stats.regionVolumes : [];
   for (const region of regionVolumes.slice(0, 4)) {
@@ -158,13 +200,12 @@ function openRegistrationCompareFromAsk() {
   const target = registrationCompareTargetForSeries(active)
     || seriesList.map(series => registrationCompareTargetForSeries(series)).find(Boolean);
   if (!target) {
-    notify('No registration comparison is available in the loaded study', { id: 'ask-registration-compare-empty', duration: 2400 });
+    notify('No registration comparison is available in the loaded study', { id: 'ask-registration-compare-empty', kind: 'warning' });
     return;
   }
   window.dispatchEvent(new CustomEvent('voxellab:open-registration-compare', { detail: target }));
   notify(`Opening ${target.fixedName} / ${target.movingName} comparison`, {
     id: 'ask-registration-compare-opened',
-    duration: 1800,
   });
 }
 
@@ -172,7 +213,7 @@ function cloudActionStudyLines(activeIndex = state.seriesIdx) {
   const seriesList = Array.isArray(state.manifest?.series) ? state.manifest.series : [];
   const records = seriesList
     .map((item, index) => {
-      const action = item?.cloudAction && typeof item.cloudAction === 'object' ? item.cloudAction : null;
+      const action = consultRecord(item?.cloudAction);
       const jobId = compactAskValue(action?.jobId || item?.sourceJobId || '');
       if (!action && !jobId) return null;
       const actionName = compactAskValue(action?.label || action?.id || 'Legacy cloud job');
@@ -227,7 +268,7 @@ function askCloudActionContext() {
   if (!series) return '';
   const seriesList = Array.isArray(state.manifest?.series) ? state.manifest.series : [];
   const label = compactAskValue(series.name || series.slug || 'active series');
-  const action = series.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : null;
+  const action = consultRecord(series.cloudAction);
   const lines = [`Active viewer series: ${label}.`];
   const status = cloudRuntimeStatus();
   if (action) {
@@ -288,15 +329,8 @@ let _lifecycleWatched = false;
 let _askBusy = false;
 
 /** Selected AI provider/model (persisted), switched from the bar's model pill. */
-const ASK_MODEL_KEY = 'mri-viewer/aiModel/v1';
-const ASK_MODELS = {
-  'opus-4.8': { provider: 'claude', model: 'opus', label: 'Opus 4.8' },
-  'gpt-5.5': { provider: 'codex', model: 'gpt-5.5', label: 'GPT-5.5' },
-};
-let _aiChoice = (() => {
-  try { const k = localStorage.getItem(ASK_MODEL_KEY); return ASK_MODELS[k] ? k : 'opus-4.8'; }
-  catch { return 'opus-4.8'; }
-})();
+let _askModels = [];
+let _aiChoice = readStoredAskModelKey();
 
 function cropPreviewDataUrl(x0, y0, x1, y1) {
   const canvas = $('view');
@@ -353,7 +387,7 @@ function autoGrowAskInput() {
 
 /** FLIP the bar's children across the single-row ↔ stacked layout change. */
 function flipBarReflow(bar, mutate) {
-  const kids = [...bar.children].filter((c) => c.id !== 'ask-bar-pop');
+  const kids = [...bar.children];
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { mutate(); return; }
   const first = kids.map((c) => c.getBoundingClientRect());
   mutate();
@@ -381,7 +415,8 @@ function syncAskSendEnabled() {
 }
 
 function openCloudProcessingUploadFromAsk(action = {}) {
-  const askAction = action && typeof action === 'object' && typeof action.id === 'string' ? action : {};
+  const candidate = consultRecord(action);
+  const askAction = candidate?.id?.constructor === String ? candidate : {};
   const detail = compactAskValue(askAction.detail || '');
   window.dispatchEvent(new CustomEvent('voxellab:open-cloud-processing-upload', {
     detail: {
@@ -391,16 +426,16 @@ function openCloudProcessingUploadFromAsk(action = {}) {
   }));
 }
 
-function openCloudResultsFromAsk() {
-  const result = openCloudResultEvidence();
-  if (!result.opened) {
-    notify('No completed cloud results in the loaded study', { id: 'ask-cloud-results-empty', duration: 2200 });
+async function openCloudResultsFromAsk() {
+  const result = await openCloudResultEvidence();
+  if (result.reason === 'none') {
+    notify('No completed cloud results in the loaded study', { id: 'ask-cloud-results-empty', kind: 'warning' });
     return;
   }
+  if (!result.opened) return;
   const name = result.record?.name || 'cloud result';
   notify(result.alreadyActive ? 'Cloud result already selected' : `Opened ${name}`, {
     id: 'ask-cloud-results-opened',
-    duration: 1800,
   });
 }
 
@@ -413,7 +448,7 @@ const ASK_ACTION_SPECS = {
   },
   'open-cloud-results': {
     label: 'Open Cloud Results',
-    detail: 'Open completed cloud-result evidence in the viewer.',
+    detail: 'Select that completed cloud-result series.',
     icon: 'i-layers',
     run: openCloudResultsFromAsk,
   },
@@ -449,6 +484,113 @@ function renderAskActions(host, actions = []) {
   host.hidden = host.childElementCount === 0;
 }
 
+function currentAskModel() {
+  return pickAskModel(_askModels, _aiChoice, getConfig().ai?.provider || '');
+}
+
+function syncAskDisclosure(choice) {
+  const note = $('ask-composer-note');
+  if (!note) return;
+  const disclosure = askModelDisclosure(choice);
+  note.textContent = disclosure.text;
+  note.title = disclosure.title;
+}
+
+function applyAskModel(key) {
+  const picked = pickAskModel(_askModels, key, getConfig().ai?.provider || '');
+  _aiChoice = picked?.key || '';
+  if (picked) writeStoredAskModelKey(picked.key);
+  const modelLabel = $('ask-model-label');
+  if (modelLabel) modelLabel.textContent = picked?.label || 'Model';
+  syncAskDisclosure(picked);
+  document.querySelectorAll('.ask-model-opt').forEach((opt) => {
+    opt.setAttribute('aria-selected', String(opt.dataset.key === _aiChoice));
+  });
+}
+
+function syncAskModelUi() {
+  const modelBtn = $('ask-bar-model');
+  const modelMenu = $('ask-model-menu');
+  if (!modelBtn || !modelMenu) return;
+  const hasModels = _askModels.length > 0;
+  modelBtn.hidden = !hasModels;
+  if (!hasModels) {
+    modelMenu.hidden = true;
+    modelMenu.replaceChildren();
+    modelBtn.setAttribute('aria-expanded', 'false');
+    syncAskDisclosure(null);
+    return;
+  }
+  applyAskModel(_aiChoice);
+  modelMenu.replaceChildren();
+  modelMenu.setAttribute('role', 'listbox');
+  modelMenu.setAttribute('aria-label', 'Model');
+  let lastGroup = '';
+  for (const item of _askModels) {
+    if (item.group && item.group !== lastGroup) {
+      if (lastGroup) {
+        const sep = document.createElement('div');
+        sep.className = 'ask-model-sep';
+        sep.setAttribute('role', 'separator');
+        modelMenu.appendChild(sep);
+      }
+      lastGroup = item.group;
+      const head = document.createElement('div');
+      head.className = 'ask-model-group';
+      head.textContent = item.group;
+      modelMenu.appendChild(head);
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ask-model-opt';
+    button.dataset.key = item.key;
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', String(item.key === _aiChoice));
+    const label = document.createElement('span');
+    label.className = 'ask-model-opt-label';
+    label.textContent = item.label;
+    button.appendChild(label);
+    const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    check.setAttribute('class', 'ask-model-check');
+    check.setAttribute('viewBox', '0 0 24 24');
+    check.setAttribute('width', '13');
+    check.setAttribute('height', '13');
+    check.setAttribute('fill', 'none');
+    check.setAttribute('stroke', 'currentColor');
+    check.setAttribute('stroke-width', '2.5');
+    check.setAttribute('stroke-linecap', 'round');
+    check.setAttribute('stroke-linejoin', 'round');
+    check.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M20 6 9 17l-5-5');
+    check.appendChild(path);
+    button.appendChild(check);
+    button.addEventListener('click', () => {
+      applyAskModel(item.key);
+      modelMenu.hidden = true;
+      modelBtn.setAttribute('aria-expanded', 'false');
+    });
+    modelMenu.appendChild(button);
+  }
+}
+
+async function refreshAskModels() {
+  const flags = viewerAiFlags();
+  if (!flags.localAiActionsEnabled) {
+    _askModels = [];
+    syncAskModelUi();
+    return;
+  }
+  try {
+    const response = await fetch('/api/ai/models', { headers: localApiHeaders() });
+    const payload = response.ok ? await response.json() : {};
+    _askModels = Array.isArray(payload.models) ? payload.models : [];
+  } catch {
+    _askModels = [];
+  }
+  syncAskModelUi();
+}
+
 function buildAskComposer() {
   if (_composerBuilt) return;
   const wrap = $('canvas-wrap');
@@ -465,10 +607,6 @@ function buildAskComposer() {
           <span class="ask-scope-title">Ask about this study</span>
           <span class="ask-scope-loc" id="ask-scope-loc"></span>
         </div>
-        <button type="button" class="ask-scope-action" id="ask-open-cloud-workflow" aria-label="Open Cloud GPU processing">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="icons.svg#i-upload"/></svg>
-          <span>Cloud GPU</span>
-        </button>
         <button type="button" class="ask-scope-close" id="ask-scope-close" aria-label="Close (Esc)">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -476,36 +614,38 @@ function buildAskComposer() {
       <div class="ask-thread" id="ask-thread" hidden></div>
     </div>
     <form class="ask-bar" id="ask-bar">
-      <button type="button" class="ask-bar-plus" id="ask-bar-plus" aria-label="Add" aria-haspopup="true" aria-expanded="false">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
+      <div class="ask-bar-slot ask-bar-slot--plus">
+        <button type="button" class="ask-bar-plus" id="ask-bar-plus" aria-label="Add" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="ask-bar-pop" id="ask-bar-pop" hidden>
+          <button type="button" class="ask-bar-pop-item" id="ask-pop-pen">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            <span>Select a region</span>
+          </button>
+          <div class="ask-pop-sep" id="ask-pop-sep" hidden></div>
+          <div class="ask-pop-head" id="ask-pop-head" hidden>Add a study as context · sent to the model</div>
+          <div class="ask-pop-studies" id="ask-pop-studies"></div>
+        </div>
+      </div>
       <textarea class="ask-bar-input" id="ask-bar-input" rows="1"
         placeholder="${escapeHtml(DEFAULT_ASK_PLACEHOLDER)}" aria-label="Question for AI"></textarea>
-      <button type="button" class="ask-bar-model" id="ask-bar-model" aria-haspopup="true" aria-expanded="false" aria-label="Model">
-        <span id="ask-model-label">Claude</span>
-        <svg class="ask-model-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
+      <div class="ask-bar-slot ask-bar-slot--model">
+        <button type="button" class="ask-bar-model" id="ask-bar-model" aria-haspopup="true" aria-expanded="false" aria-label="Model" hidden>
+          <span id="ask-model-label">Model</span>
+          <svg class="ask-model-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="ask-model-menu" id="ask-model-menu" hidden></div>
+      </div>
       <button type="submit" class="ask-bar-send" id="ask-bar-send" aria-label="Send (Enter)" disabled>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
       </button>
-      <div class="ask-model-menu" id="ask-model-menu" hidden>
-        <button type="button" class="ask-model-opt" data-key="opus-4.8">Opus 4.8</button>
-        <button type="button" class="ask-model-opt" data-key="gpt-5.5">GPT-5.5</button>
-      </div>
-      <div class="ask-bar-pop" id="ask-bar-pop" hidden>
-        <button type="button" class="ask-bar-pop-item" id="ask-pop-pen">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          <span>Select a region</span>
-        </button>
-        <div class="ask-pop-sep" id="ask-pop-sep" hidden></div>
-        <div class="ask-pop-head" id="ask-pop-head" hidden>Add a study as context</div>
-        <div class="ask-pop-studies" id="ask-pop-studies"></div>
-      </div>
     </form>
-    <div class="ask-composer-note">Descriptive observations only · not a medical diagnosis · ⇧↵ for a new line</div>
+    <div class="ask-composer-note" id="ask-composer-note"></div>
   `;
   wrap.appendChild(el);
   _composerBuilt = true;
+  syncAskDisclosure(currentAskModel());
 
   const ta = el.querySelector('#ask-bar-input');
   el.querySelector('#ask-bar').addEventListener('submit', (e) => {
@@ -523,16 +663,21 @@ function buildAskComposer() {
     }
   });
   el.querySelector('#ask-scope-close').addEventListener('click', () => closeAskComposer());
-  el.querySelector('#ask-open-cloud-workflow').addEventListener('click', openCloudProcessingUploadFromAsk);
 
   // "+" popover: arm the pen (region select). Outside-click / Escape closes it.
   const plus = el.querySelector('#ask-bar-plus');
   const pop = el.querySelector('#ask-bar-pop');
+  const modelBtn = el.querySelector('#ask-bar-model');
+  const modelMenu = el.querySelector('#ask-model-menu');
   const setPop = (open) => { pop.hidden = !open; plus.setAttribute('aria-expanded', String(open)); };
+  const setModelMenu = (open) => { modelMenu.hidden = !open; modelBtn.setAttribute('aria-expanded', String(open)); };
   plus.addEventListener('click', (e) => {
     e.stopPropagation();
     const open = pop.hidden;
-    if (open) renderPopStudies();
+    if (open) {
+      setModelMenu(false);
+      renderPopStudies();
+    }
     setPop(open);
   });
   el.querySelector('#ask-pop-pen').addEventListener('click', () => {
@@ -540,21 +685,7 @@ function buildAskComposer() {
     setAskPen(true);
     syncAskPickingUi();
   });
-  // Model selector pill: pick provider/model, persist, relabel.
-  const modelBtn = el.querySelector('#ask-bar-model');
-  const modelMenu = el.querySelector('#ask-model-menu');
-  const modelLabel = el.querySelector('#ask-model-label');
-  const setModelMenu = (open) => { modelMenu.hidden = !open; modelBtn.setAttribute('aria-expanded', String(open)); };
-  const applyModel = (key) => {
-    _aiChoice = ASK_MODELS[key] ? key : 'opus-4.8';
-    modelLabel.textContent = ASK_MODELS[_aiChoice].label;
-    try { localStorage.setItem(ASK_MODEL_KEY, _aiChoice); } catch { /* ignore */ }
-  };
-  applyModel(_aiChoice);
   modelBtn.addEventListener('click', (e) => { e.stopPropagation(); setPop(false); setModelMenu(modelMenu.hidden); });
-  modelMenu.querySelectorAll('.ask-model-opt').forEach((opt) => {
-    opt.addEventListener('click', () => { applyModel(opt.dataset.key); setModelMenu(false); });
-  });
 
   document.addEventListener('mousedown', (e) => {
     if (!pop.hidden && !pop.contains(e.target) && !plus.contains(e.target)) setPop(false);
@@ -686,6 +817,7 @@ function _wireStackHover(stack) {
 function openAskComposer(ctx) {
   buildAskComposer();
   watchComposerLifecycle();
+  void refreshAskModels();
   const el = $('ask-composer');
   if (!el) return;
   _ask = {
@@ -1072,7 +1204,7 @@ async function submitAskQuestion() {
         region,
         question,
         viewerContext: viewerContext.join('\n\n') || undefined,
-        provider: ASK_MODELS[_aiChoice].provider, model: ASK_MODELS[_aiChoice].model || undefined,
+        ...askModelRequestFields(currentAskModel()),
       }),
     });
     if (!r.ok || !r.body) {
@@ -1231,7 +1363,7 @@ export function handleAskPointerDown(ev) {
     // A click (no real box) in pen mode adds nothing — the composer is already open.
     if (rw <= ASK_CLICK_EPS && rh <= ASK_CLICK_EPS) return;
     if (rw < ASK_MIN_DRAG || rh < ASK_MIN_DRAG) {
-      notify(`Drag a larger box (at least ${ASK_MIN_DRAG}×${ASK_MIN_DRAG} px on each side).`, { duration: 3400 });
+      notify(`Drag a larger box (at least ${ASK_MIN_DRAG}×${ASK_MIN_DRAG} px on each side).`, { kind: 'warning' });
       return;
     }
 
@@ -1276,9 +1408,12 @@ export async function runConsult(force = false) {
     let result;
     if (!force) {
       const r = await fetch('/api/consult', { headers: localApiHeaders() });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      result = await r.json();
-      if (result && Object.keys(result).length > 0) result = normalizeConsultResult(result);
+      const cachedResult = await r.json();
+      if (r.status === 409 && cachedResult.regeneratePath) result = null;
+      else if (!r.ok) throw new Error(cachedResult.error || `HTTP ${r.status}`);
+      else result = cachedResult && Object.keys(cachedResult).length > 0
+        ? normalizeConsultResult(cachedResult)
+        : cachedResult;
     }
     if (force || !result || Object.keys(result).length === 0) {
       const r2 = await fetch('/api/consult?force=1', { method: 'POST', headers: localApiHeaders() });
@@ -1288,7 +1423,13 @@ export async function runConsult(force = false) {
     }
     renderConsultBody(body, result);
   } catch (e) {
-    body.innerHTML = `<div class="ask-a err">Error: ${escapeHtml(e.message)}</div>`;
+    body.innerHTML = `
+      <div class="ask-a err" role="alert">${escapeHtml(consultFailureMessage(e))}</div>
+      <div class="annot-actions">
+        <button class="annot-btn primary" id="consult-retry" type="button">Try again</button>
+      </div>
+    `;
+    $('consult-retry')?.addEventListener('click', () => runConsult(true));
   }
 }
 

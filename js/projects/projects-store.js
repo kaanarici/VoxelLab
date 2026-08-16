@@ -77,6 +77,19 @@ export function togglePinSlug(slug) {
   setPinnedSlugs(pins);
 }
 
+export async function removeSeriesSlugsFromProjects(slugOrSlugs) {
+  const remove = new Set(Array.isArray(slugOrSlugs) ? slugOrSlugs : [slugOrSlugs]);
+  if (!remove.size) return;
+  const projects = await getAllProjects();
+  for (const project of projects) {
+    const next = project.seriesSlugs.filter(slug => !remove.has(slug));
+    if (next.length === project.seriesSlugs.length) continue;
+    project.seriesSlugs = next;
+    await putProject(project);
+  }
+  setPinnedSlugs(getPinnedSlugs().filter(slug => !remove.has(slug)));
+}
+
 export async function createProjectRecord(name) {
   const projects = await getAllProjects();
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);

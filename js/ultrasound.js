@@ -18,7 +18,7 @@ const _PROBE_GEOMETRIES = new Set(['sector', 'linear', 'curvilinear', '3d-probe'
 const _US_DATA_TYPES = new Set(['cine', 'still', '3d-volume', 'doppler', 'm-mode']);
 
 function calibrationSummary(summary = null) {
-  if (!summary || typeof summary !== 'object') return null;
+  if (!summary || Array.isArray(summary) || Object.getPrototypeOf(summary) !== Object.prototype) return null;
   const status = String(summary.status || '').trim().toLowerCase();
   const source = String(summary.source || '').trim().toLowerCase();
   const probeGeometry = String(summary.probeGeometry || '').trim().toLowerCase();

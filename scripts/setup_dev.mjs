@@ -1,52 +1,87 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = join(dirname(scriptPath), '..');
-const rawArgs = process.argv.slice(2);
-const flags = new Set();
-const options = new Map();
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const venvPython = process.platform === 'win32'
   ? join(root, '.venv', 'Scripts', 'python.exe')
   : join(root, '.venv', 'bin', 'python');
 
-for (let index = 0; index < rawArgs.length; index += 1) {
-  const arg = rawArgs[index];
-  if (arg.startsWith('--provider=')) {
-    options.set('--provider', arg.slice('--provider='.length));
-    continue;
-  }
-  if (arg === '--provider') {
-    const value = rawArgs[index + 1];
-    if (!value || value.startsWith('--')) {
-      console.error('Missing value for --provider');
-      process.exit(1);
+function parseSetupArgs(rawArgs) {
+  const parsedFlags = new Set();
+  const parsedOptions = new Map();
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg.startsWith('--provider=')) {
+      parsedOptions.set('--provider', arg.slice('--provider='.length));
+      continue;
     }
-    options.set('--provider', value);
-    index += 1;
-    continue;
-  }
-  if (arg.startsWith('--demo=')) {
-    options.set('--demo', arg.slice('--demo='.length));
-    continue;
-  }
-  if (arg === '--demo') {
-    const value = rawArgs[index + 1];
-    if (!value || value.startsWith('--')) {
-      console.error('Missing value for --demo');
-      process.exit(1);
+    if (arg === '--provider') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) throw new Error('Missing value for --provider');
+      parsedOptions.set('--provider', value);
+      index += 1;
+      continue;
     }
-    options.set('--demo', value);
-    index += 1;
-    continue;
+    if (arg.startsWith('--demo=')) {
+      parsedOptions.set('--demo', arg.slice('--demo='.length));
+      continue;
+    }
+    if (arg === '--demo') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) throw new Error('Missing value for --demo');
+      parsedOptions.set('--demo', value);
+      index += 1;
+      continue;
+    }
+    parsedFlags.add(arg);
   }
-  flags.add(arg);
+  return { flags: parsedFlags, options: parsedOptions };
+}
+
+function printHelp() {
+  console.log(`Usage: npm run setup -- [options]
+
+Local viewer (default):
+  npm run setup
+  Installs requirements/dev.lock, npm packages, Playwright Chromium, and
+  optionally the lite demo pack.
+
+Optional dependency locks:
+  --ai                    requirements/ai.lock (local Ask/Consult only)
+  --pipeline | --cloud    requirements/ci.lock (Modal SDK + imaging libs)
+  --rtk                   requirements/rtk.lock (standalone; no Modal)
+
+Pipeline, cloud, and AI flags may be combined. Do not combine --rtk with them.
+
+Other flags:
+  --demo lite|standard|full|none
+  --with-mri / --with-ct        extra public source packs
+  --provider claude|codex       only with --ai
+  --skip-python / --skip-npm / --skip-playwright
+
+Cloud GPU still needs a Modal login, R2 buckets, .env, and
+VIEWER_CLOUD_PROCESSING=true. See R2_SETUP.md.
+Local TotalSegmentator/SynthSeg/HD-BET are not installed by these flags.
+`);
+}
+
+export function setupLockName(selectedFlags) {
+  const hasRtk = selectedFlags.has('--rtk');
+  const hasOtherExtra = ['--ai', '--pipeline', '--cloud'].some(flag => selectedFlags.has(flag));
+  if (hasRtk && hasOtherExtra) {
+    throw new Error('--rtk cannot be combined with --ai, --pipeline, or --cloud; use --rtk by itself.');
+  }
+  if (hasRtk) return 'rtk.lock';
+  if (selectedFlags.has('--pipeline') || selectedFlags.has('--cloud')) return 'ci.lock';
+  if (selectedFlags.has('--ai')) return 'ai.lock';
+  return 'dev.lock';
 }
 
 function run(command, args, options = {}) {
@@ -101,7 +136,7 @@ function printNextSteps({ demoMode, withMri, withCt, flags }) {
   }
 }
 
-async function chooseDemoSelection() {
+async function chooseDemoSelection(flags, options) {
   if (options.has('--demo') || !process.stdin.isTTY || !process.stdout.isTTY) {
     return {
       demoMode: options.get('--demo') || 'none',
@@ -168,56 +203,62 @@ function findPython() {
   process.exit(1);
 }
 
-const extras = ['dev'];
-if (flags.has('--ai')) extras.push('ai');
-if (flags.has('--pipeline')) extras.push('pipeline');
-if (flags.has('--cloud')) extras.push('cloud');
-if (flags.has('--rtk')) extras.push('rtk');
+async function main(rawArgs) {
+  const { flags, options } = parseSetupArgs(rawArgs);
+  if (flags.has('--help') || flags.has('-h')) {
+    printHelp();
+    return;
+  }
+  const lockName = setupLockName(flags);
+  const python = findPython();
+  const demoSelection = await chooseDemoSelection(flags, options);
+  const demoMode = demoSelection.demoMode;
 
-const python = findPython();
-const demoSelection = await chooseDemoSelection();
-const demoMode = demoSelection.demoMode;
+  if (!existsSync(venvPython)) {
+    run(python.command, [...python.baseArgs, '-m', 'venv', '.venv']);
+  }
 
-if (!existsSync(venvPython)) {
-  run(python.command, [...python.baseArgs, '-m', 'venv', '.venv']);
+  if (!flags.has('--skip-python')) {
+    run(venvPython, ['-m', 'pip', 'install', '--require-hashes', '-r', `requirements/${lockName}`]);
+  }
+
+  if (!flags.has('--skip-npm')) {
+    const npmInstallMode = existsSync(join(root, 'package-lock.json')) ? 'ci' : 'install';
+    run(npmCmd, [npmInstallMode]);
+  }
+
+  if (!flags.has('--skip-playwright')) {
+    run(npxCmd, ['playwright', 'install', 'chromium']);
+  }
+
+  if (flags.has('--ai')) {
+    const provider = options.get('--provider');
+    const args = ['scripts/check_ai_ready.py'];
+    if (provider) args.push('--provider', provider);
+    run(venvPython, args);
+  }
+
+  if (demoMode !== 'none' || demoSelection.withMri || demoSelection.withCt) {
+    const args = ['scripts/install_demo_data.py', '--demo', demoMode];
+    if (demoSelection.withMri) args.push('--with-mri');
+    if (demoSelection.withCt) args.push('--with-ct');
+    run(venvPython, args);
+  }
+
+  console.log('\nSetup complete.');
+  printNextSteps({
+    demoMode,
+    withMri: demoSelection.withMri,
+    withCt: demoSelection.withCt,
+    flags,
+  });
 }
 
-if (!flags.has('--skip-python')) {
-  const lockName = flags.has('--rtk')
-    ? 'rtk.lock'
-    : extras.length > 1
-      ? 'ci.lock'
-      : 'dev.lock';
-  run(venvPython, ['-m', 'pip', 'install', '--require-hashes', '-r', `requirements/${lockName}`]);
+if (scriptPath === resolve(process.argv[1] || '')) {
+  try {
+    await main(process.argv.slice(2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
-
-if (!flags.has('--skip-npm')) {
-  const npmInstallMode = existsSync(join(root, 'package-lock.json')) ? 'ci' : 'install';
-  run(npmCmd, [npmInstallMode]);
-}
-
-if (!flags.has('--skip-playwright')) {
-  run(npxCmd, ['playwright', 'install', 'chromium']);
-}
-
-if (flags.has('--ai')) {
-  const provider = options.get('--provider');
-  const args = ['scripts/check_ai_ready.py'];
-  if (provider) args.push('--provider', provider);
-  run(venvPython, args);
-}
-
-if (demoMode !== 'none' || demoSelection.withMri || demoSelection.withCt) {
-  const args = ['scripts/install_demo_data.py', '--demo', demoMode];
-  if (demoSelection.withMri) args.push('--with-mri');
-  if (demoSelection.withCt) args.push('--with-ct');
-  run(venvPython, args);
-}
-
-console.log('\nSetup complete.');
-printNextSteps({
-  demoMode,
-  withMri: demoSelection.withMri,
-  withCt: demoSelection.withCt,
-  flags,
-});

@@ -4,7 +4,6 @@
 // the modal is gone.
 import { state } from '../core/state.js';
 import { $, escapeHtml, closeModal } from '../dom.js';
-import { notify } from '../notify.js';
 import { enableRegionsIfAvailable } from '../core/state/viewer-commands.js';
 import { setUploadStatus } from './upload-status.js';
 
@@ -40,8 +39,8 @@ export async function handleOmeZarrStreamImport(statusEl, modal, selectSeries, s
   // so observe it rather than hooking every close affordance.
   const controller = new AbortController();
   const uploadModal = $('upload-modal');
-  const observer = (typeof MutationObserver !== 'undefined' && uploadModal)
-    ? new MutationObserver(() => { if (!uploadModal.classList.contains('visible')) controller.abort(); })
+  const observer = (globalThis.MutationObserver instanceof Function && uploadModal)
+    ? new globalThis.MutationObserver(() => { if (!uploadModal.classList.contains('visible')) controller.abort(); })
     : null;
   observer?.observe(uploadModal, { attributes: true, attributeFilter: ['class'] });
   try {
@@ -69,7 +68,6 @@ export async function handleOmeZarrStreamImport(statusEl, modal, selectSeries, s
       enableRegionsIfAvailable(state.manifest.series[selectedIndex]);
       await selectSeries(selectedIndex);
     }
-    notify(stream.provenance);
   } catch (e) {
     if (controller.signal.aborted) return;
     const reason = e?.reason || e?.message || 'OME-Zarr streaming failed';

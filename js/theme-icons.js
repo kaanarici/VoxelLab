@@ -1,6 +1,6 @@
 // Sun/moon glyphs on #btn-theme — must match html.light + localStorage (see theme-init.js).
 export function syncThemeIcons() {
-  if (typeof document === 'undefined') return;
+  if (!globalThis.document) return;
   const isLight = document.documentElement.classList.contains('light');
   const sun = document.getElementById('theme-icon-sun');
   const moon = document.getElementById('theme-icon-moon');

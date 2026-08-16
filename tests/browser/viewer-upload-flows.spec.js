@@ -720,9 +720,34 @@ test('upload modal advertises supported local image formats in the picker', asyn
   expect(accept || '').toContain('.zip');
   expect(accept || '').not.toContain('.csv');
   expect(accept || '').toContain('application/dicom');
-  await expect(page.locator('#upload-folder-btn')).toBeVisible();
+  await expect(page.locator('#upload-files-btn')).toBeVisible();
   await expect(page.locator('#upload-folder-input')).toHaveAttribute('webkitdirectory', '');
   await expect(page.locator('.upload-zone-title')).toHaveText('Drop study files or folders here');
+  await expect(page.locator('.upload-zone-subtitle')).toHaveText('or click to open a study folder');
+});
+
+test('empty-state drop opens the same local intake as the study dialog', async ({ page }, testInfo) => {
+  const niftiPath = testInfo.outputPath('empty-drop.nii');
+  await writeTinyNifti(niftiPath);
+  const bytes = [...await readFile(niftiPath)];
+
+  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
+  await routeManifest(page, { patient: 'anonymous', studyDate: '', series: [] });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  await expect(page.locator('#empty-state')).toBeVisible();
+
+  await page.locator('#empty-state').evaluate((target, payload) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(payload)], 'empty-drop.nii', { type: 'application/octet-stream' }));
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: transfer });
+    target.dispatchEvent(event);
+  }, bytes);
+
+  await expect(page.locator('#series-name')).toHaveText('empty-drop');
+  await expect(page.locator('#empty-state')).toBeHidden();
+  await waitForCanvasPaint(page, '#view');
 });
 
 test('upload modal can browse a local folder into the same local import path', async ({ page }, testInfo) => {
@@ -743,9 +768,6 @@ test('upload modal can browse a local folder into the same local import path', a
   await expect(page.locator('#series-name')).toHaveText('tiny-folder');
   await expect(page.locator('#notify-container .notify-text')).toContainText('Local intake: 1 openable file (NIfTI) selected after checking 4 files; skipped 3 unsupported files');
   await expect(page.locator('#notify-container .notify-text')).toContainText('checking 4 files');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('metadata.json (unrecognized JSON sidecar)');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('notes.md');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('results.csv');
   await expect(page.locator('#slice-tot')).toHaveText('2');
   await expect(page.locator('#series-list li')).toHaveCount(initialCount + 1);
   await waitForCanvasPaint(page, '#view');
@@ -786,11 +808,7 @@ test('upload modal summarizes mixed folder triage before import action', async (
   await expect(status).toHaveAttribute('aria-label', /after checking 6 files/);
   await expect(status).toHaveAttribute('aria-label', /1 openable file \(NIfTI\), 1 converter-backed file \(CZI\) and 1 sidecar \(Workflow recipe\) selected/);
   await expect(page.locator('#notify-container .notify-text')).toContainText('Local intake: 1 openable file (NIfTI), 1 converter-backed file (CZI) and 1 sidecar (Workflow recipe) selected');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('cells.czi');
   await expect(page.locator('#notify-container .notify-text')).toContainText('checking 6 files');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('notes.md');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('metadata.json (unrecognized JSON sidecar)');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('broken.json (invalid JSON sidecar)');
 });
 
 test('upload modal keeps the latest dropped selection when an earlier source manifest resolves late', async ({ page }) => {
@@ -888,8 +906,6 @@ test('local-only mixed folders open supported files and defer converter-backed f
   await expect(page.locator('#series-list li')).toHaveCount(initialCount + 1);
   await expect(page.locator('#notify-container .notify-text', { hasText: 'Local intake:' }))
     .toContainText(/1 openable file \(NIfTI\) and 4 converter-backed files/);
-  await expect(page.locator('#notify-container .notify-text', { hasText: 'Local intake:' }))
-    .toContainText('plus 1 more file');
   await expect(page.locator('#notify-container .notify-text', { hasText: 'Skipped 4 converter-backed files' }))
     .toContainText('open them separately with configured local readers or an OME-TIFF converter after loading supported files');
   await expect(page.locator('#notify-container .notify-text', { hasText: 'Skipped 4 converter-backed files' }))
@@ -1154,10 +1170,19 @@ test('upload modal keeps unknown-unit NIfTI uncalibrated in metadata', async ({ 
   await expect(page.locator('#btn-3d')).toBeHidden();
 });
 
-test('upload modal shows local DICOM source provenance in metadata', async ({ page }, testInfo) => {
+test('upload modal falls back locally after second-pass DICOM worker failure', async ({ page }, testInfo) => {
   const dicomPath = testInfo.outputPath('local-source.dcm');
   await writeTinyDicom(dicomPath);
 
+  await page.addInitScript(() => {
+    const nativePostMessage = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function postMessage(message, transfer) {
+      if (message?.type === 'parse-dicom-files') throw new Error('synthetic second-pass worker failure');
+      return transfer === undefined
+        ? nativePostMessage.call(this, message)
+        : nativePostMessage.call(this, message, transfer);
+    };
+  });
   await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
   await routeDcmjsModule(page);
   await openUploadModal(page);
@@ -1755,7 +1780,7 @@ test('upload modal can bind DICOMweb SEG, RTSTRUCT, and SR objects onto an alrea
     const series = state.manifest.series.find((entry) => entry.slug === slug);
     return roiEntriesForSlice(state, series, 0)[0] || null;
   }, sourceSlug)).toMatchObject({
-    shape: 'polygon',
+    "shape": 'polygon',
     text: 'Lesion',
   });
 

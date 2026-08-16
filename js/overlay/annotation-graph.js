@@ -8,7 +8,7 @@ export const ROI_STORAGE_KEY = 'mri-viewer/rois/v2';
 export const NOTE_STORAGE_KEY = 'mri-viewer/annotations/v2';
 
 function resolveSeries(host, seriesOrSlug) {
-  if (seriesOrSlug && typeof seriesOrSlug === 'object') return seriesOrSlug;
+  if (seriesOrSlug && seriesOrSlug?.constructor !== String) return seriesOrSlug;
   const active = host?.manifest?.series?.[host?.seriesIdx];
   if (active?.slug === seriesOrSlug) return active;
   const matches = (host?.manifest?.series || []).filter((series) => series?.slug === seriesOrSlug);
@@ -26,7 +26,7 @@ function context(host, seriesOrSlug) {
 }
 
 function standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list) {
-  if (typeof hostOrSeries === 'string') {
+  if (hostOrSeries?.constructor === String) {
     return { host: appState, series: hostOrSeries, sliceIdx: seriesOrSlice, list: sliceOrList };
   }
   return { host: hostOrSeries, series: seriesOrSlice, sliceIdx: sliceOrList, list };
@@ -138,7 +138,7 @@ export function drawingEntriesForSeries(host, seriesOrSlug) {
     }
   }
   pushSeriesEntries(out, ctx, readBucket(ROI_STORAGE_KEY), 'roi', (entry, sliceIdx) => ({
-    kind: ['ellipse', 'polygon', 'polyline', 'point'].includes(entry.shape) ? entry.shape : 'polygon',
+    kind: ['ellipse', 'polygon', 'polyline', 'point'].includes(entry["shape"]) ? entry["shape"] : 'polygon',
     id: `roi:${ctx.slug}|${sliceIdx}:${entry.id ?? 0}`, sliceIdx, data: entry,
   }));
   pushSeriesEntries(out, ctx, readBucket(NOTE_STORAGE_KEY), 'note', (entry, sliceIdx) => ({
@@ -202,8 +202,8 @@ export function deleteDrawingEntryById(list, id) {
 }
 
 export function annotatedSlicesForSeries(hostOrSeries, seriesOrSlug) {
-  const host = typeof hostOrSeries === 'string' ? appState : hostOrSeries;
-  const series = typeof hostOrSeries === 'string' ? hostOrSeries : seriesOrSlug;
+  const host = hostOrSeries?.constructor === String ? appState : hostOrSeries;
+  const series = hostOrSeries?.constructor === String ? hostOrSeries : seriesOrSlug;
   const ctx = context(host, series);
   const out = new Set();
   if (!ctx) return out;

@@ -22,9 +22,9 @@ const REMOTE_WINDOW_RADIUS = 1;
 const REMOTE_OVERLAY_PREFETCH_LIMIT = Infinity;
 
 export function initOverlayStack(h) {
-  if (typeof h.is3dActive === 'function') _is3dActive = h.is3dActive;
-  if (typeof h.ensureVoxels === 'function') _ensureVoxels = h.ensureVoxels;
-  if (typeof h.updateLabelTexture === 'function') _updateLabelTexture = h.updateLabelTexture;
+  if (h.is3dActive instanceof Function) _is3dActive = h.is3dActive;
+  if (h.ensureVoxels instanceof Function) _ensureVoxels = h.ensureVoxels;
+  if (h.updateLabelTexture instanceof Function) _updateLabelTexture = h.updateLabelTexture;
 }
 
 function ensureRegionMeta(type, series, overlays) {
@@ -77,10 +77,13 @@ export function ensureOverlayStack(type) {
       if (state[key] === existing && state.sliceIdx === currentIndex) syncOverlays();
     });
     existing.ensureWindow?.(currentIndex, windowRadius);
-    existing.prefetchRemaining?.(currentIndex, windowRadius, {
+    const prefetch = existing.prefetchRemaining?.(currentIndex, windowRadius, {
       concurrency: prefetchConcurrency,
       limit: prefetchLimit,
-    }).then(() => {
+    }) || Promise.resolve([]);
+    const prefetchToken = existing._prefetchToken;
+    prefetch.then(() => {
+      if (existing._prefetchToken !== prefetchToken) return;
       if (_is3dActive()) {
         invalidateVoxelCache();
         if (_ensureVoxels()) void _updateLabelTexture();
@@ -106,10 +109,13 @@ export function ensureOverlayStack(type) {
   Promise.all(loaders).then(() => {
     if (state[key] === imgs) syncOverlays();
   });
-  imgs.prefetchRemaining?.(currentIndex, windowRadius, {
+  const prefetch = imgs.prefetchRemaining?.(currentIndex, windowRadius, {
     concurrency: prefetchConcurrency,
     limit: prefetchLimit,
-  }).then(() => {
+  }) || Promise.resolve([]);
+  const prefetchToken = imgs._prefetchToken;
+  prefetch.then(() => {
+    if (imgs._prefetchToken !== prefetchToken) return;
     if (_is3dActive()) {
       invalidateVoxelCache();
       if (_ensureVoxels()) void _updateLabelTexture();

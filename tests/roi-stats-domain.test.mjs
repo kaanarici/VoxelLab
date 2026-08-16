@@ -36,7 +36,7 @@ test('regression: ROI rows without an explicit domain stay 8-bit display intensi
   microscopySeries();
   setRoiEntriesForSlice('cells_t1', 0, [{
     id: 1,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     pts: [[1, 1], [9, 7]],
     stats: { pixels: 100, area_mm2: 100 * 0.001 * 0.001, mean: 42, std: 3, min: 10, max: 90 },
     createdAt: 1_700_000_000_000,
@@ -53,7 +53,7 @@ test('D1b: rows carrying raw_16bit export raw intensity with derived IntDen', ()
   microscopySeries();
   setRoiEntriesForSlice('cells_t1', 0, [{
     id: 2,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     pts: [[1, 1], [9, 7]],
     // Constant raw plane region — mean far above the 8-bit ceiling proves the raw domain.
     stats: {
@@ -79,7 +79,7 @@ test('32-bit scalar microscopy rows retain the generic raw scalar contract', () 
   microscopySeries();
   setRoiEntriesForSlice('cells_t1', 0, [{
     id: 3,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     pts: [[1, 1], [9, 7]],
     stats: {
       pixels: 2,

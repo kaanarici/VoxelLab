@@ -73,20 +73,20 @@ export async function checkPackagedMacAppLaunch(inputPath = 'out/forge') {
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.waitForFunction(() => (
       document.readyState !== 'loading'
-      && typeof globalThis.voxellabDesktop === 'object'
+      && globalThis.voxellabDesktop?.getAppInfo instanceof Function
       && document.getElementById('canvas-wrap')
     ), null, { timeout: 20_000 });
     const result = await page.evaluate(async () => ({
       href: window.location.href,
       title: document.title,
-      requireType: typeof globalThis.require,
-      processType: typeof globalThis.process,
+      requireExposed: 'require' in globalThis,
+      processExposed: 'process' in globalThis,
       appInfo: await globalThis.voxellabDesktop.getAppInfo(),
     }));
     assert.equal(result.href, 'voxellab://app/index.html');
     assert.match(result.title, /^VoxelLab(?:$|: )/);
-    assert.equal(result.requireType, 'undefined');
-    assert.equal(result.processType, 'undefined');
+    assert.equal(result.requireExposed, false);
+    assert.equal(result.processExposed, false);
     assert.equal(result.appInfo.name, PRODUCT_NAME);
     assert.equal(result.appInfo.platform, 'darwin');
     assert.deepEqual(pageErrors, []);
@@ -114,22 +114,23 @@ export async function checkPackagedWindowsAppLaunch(inputPath = 'out/forge') {
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.waitForFunction(() => (
       document.readyState !== 'loading'
-      && typeof globalThis.voxellabDesktop === 'object'
+      && globalThis.voxellabDesktop?.getAppInfo instanceof Function
       && document.getElementById('canvas-wrap')
     ), null, { timeout: 20_000 });
     const result = await page.evaluate(async () => ({
       href: window.location.href,
       title: document.title,
-      requireType: typeof globalThis.require,
-      processType: typeof globalThis.process,
+      requireExposed: 'require' in globalThis,
+      processExposed: 'process' in globalThis,
       appInfo: await globalThis.voxellabDesktop.getAppInfo(),
     }));
     assert.equal(result.href, 'voxellab://app/index.html');
     assert.match(result.title, /^VoxelLab(?:$|: )/);
-    assert.equal(result.requireType, 'undefined');
-    assert.equal(result.processType, 'undefined');
+    assert.equal(result.requireExposed, false);
+    assert.equal(result.processExposed, false);
     assert.equal(result.appInfo.name, PRODUCT_NAME);
     assert.equal(result.appInfo.platform, 'win32');
+    assert.equal(result.appInfo.arch, 'x64');
     assert.deepEqual(pageErrors, []);
     const closeMode = await closePackagedApp(app);
     return { executablePath, appInfo: result.appInfo, closeMode };

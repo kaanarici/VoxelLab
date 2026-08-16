@@ -173,6 +173,7 @@ test('loads a local-first volume fixture and paints the main 2D canvas', async (
   await expect(page.locator('#slice-tot')).toHaveText(String(primarySeries.slices));
   await expect(page.locator('#canvas-wrap')).toBeVisible();
   await expect(page.locator('#view')).toBeVisible();
+  await expect(page.locator('#meta .meta-row').filter({ hasText: 'Cloud result' })).toHaveCount(0);
 
   const stats = await waitForCanvasPaint(page);
   expect(stats.hasContext, `main canvas did not expose a 2D context: ${JSON.stringify(stats)}`).toBe(true);
@@ -180,6 +181,16 @@ test('loads a local-first volume fixture and paints the main 2D canvas', async (
   expect(stats.height, `main canvas height was unexpected: ${JSON.stringify(stats)}`).toBe(primarySeries.height);
   expect(stats.nonBlackPixels, `main canvas did not paint nonblack pixels in headless mode: ${JSON.stringify(stats)}`).toBeGreaterThan(0);
   expect(stats.maxChannel, `main canvas max channel stayed blank in headless mode: ${JSON.stringify(stats)}`).toBeGreaterThan(0);
+
+  const scrub = page.locator('#scrub');
+  await expect(scrub).toHaveAttribute('max', String(primarySeries.slices - 1));
+  await scrub.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#slice-cur')).toHaveText('2');
+  await page.keyboard.press('End');
+  await expect(page.locator('#slice-cur')).toHaveText(String(primarySeries.slices));
+  await page.keyboard.press('Home');
+  await expect(page.locator('#slice-cur')).toHaveText('1');
 
   await page.locator('#btn-mpr').click();
   await expect(page.locator('#mpr-ax')).toBeVisible();

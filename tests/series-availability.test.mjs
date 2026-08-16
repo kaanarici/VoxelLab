@@ -20,6 +20,9 @@ const {
   seriesProbeOrder,
   isSeriesKnownUnavailable,
   clearSeriesAvailability,
+  markSeriesUnavailable,
+  seriesCanOpenInViewer,
+  seriesHasSessionPixels,
 } = await import('../js/series/series-availability.js');
 
 const series = (slug, extra = {}) => ({ slug, slices: 10, ...extra });
@@ -90,4 +93,25 @@ test('seriesProbeOrder puts the preferred index first and keeps the rest in mani
 
 test('seriesProbeOrder drops a preferred index that is not in the manifest', () => {
   assert.deepEqual(seriesProbeOrder([series('a')], 5), [0]);
+});
+
+test('seriesCanOpenInViewer accepts in-session local stacks without a remote URL', () => {
+  const local = series('local_ct4');
+  const stacks = { local_ct4: Array.from({ length: 10 }, () => ({ complete: true, naturalWidth: 1 })) };
+  assert.equal(seriesHasSessionPixels(local, { localStacks: stacks }), true);
+  assert.equal(seriesCanOpenInViewer(local, { localStacks: stacks }), true);
+});
+
+test('seriesCanOpenInViewer rejects a known-unavailable series without session pixels', () => {
+  clearSeriesAvailability();
+  markSeriesUnavailable('cloud_ct4');
+  assert.equal(seriesCanOpenInViewer(series('cloud_ct4'), { localStacks: {} }), false);
+});
+
+test('seriesCanOpenInViewer allows a remote cloud series until it is known unavailable', () => {
+  clearSeriesAvailability();
+  const remote = series('cloud_ct4', { sliceUrlBase: 'https://r2.example/data/cloud_ct4' });
+  assert.equal(seriesCanOpenInViewer(remote, { localStacks: {} }), true);
+  markSeriesUnavailable('cloud_ct4');
+  assert.equal(seriesCanOpenInViewer(remote, { localStacks: {} }), false);
 });

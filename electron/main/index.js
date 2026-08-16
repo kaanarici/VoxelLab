@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, shell, session } from 'electron';
 import { spawn } from 'node:child_process';
+import { watch } from 'node:fs';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,7 @@ import {
   saveCloudSettings,
 } from './cloud-settings.js';
 import { ConverterJobManager } from './converter-jobs.js';
-import { openTrustedExternalUrl } from './external-urls.js';
+import { LATEST_RELEASE_URL, openTrustedExternalUrl } from './external-urls.js';
 import { launchPathsFromArgv } from './launch-paths.js';
 import { handleDesktopLocalApiRequest } from './local-api-proxy.js';
 import { collectSupportedFolderFiles, nativePathItem, nativePathItems, openFolderPayload, readNativeFileRange } from './native-paths.js';
@@ -20,6 +21,13 @@ import {
   rememberRecentDocuments,
   removeRecentDocuments,
 } from './recent-documents.js';
+import {
+  MAX_SAVED_IMPORTS,
+  MAX_SAVED_IMPORT_PATHS,
+  readSavedImports,
+  rememberSavedImport,
+  removeSavedImports,
+} from './saved-imports.js';
 import { registerStaticProtocol } from './static-protocol.js';
 import { handleWindowsSquirrelEvent } from './windows-file-associations.js';
 import { restoredWindowOptions, trackWindowState } from './window-state.js';
@@ -33,6 +41,7 @@ import {
   DESKTOP_SIDECAR_INPUT_EXTENSIONS,
   IPC,
   MENU_COMMAND,
+  WINDOWS_APP_USER_MODEL_ID,
   openPathsPayload,
 } from '../shared/desktop-contracts.js';
 
@@ -61,6 +70,8 @@ const converterJobs = new ConverterJobManager({
 const openedConversionOutputs = new Set();
 const RECENT_SIDECAR_EXTENSIONS = new Set(DESKTOP_SIDECAR_INPUT_EXTENSIONS);
 let recentDocuments = [];
+let savedImports = [];
+let startupLaunchPromise = Promise.resolve();
 let releasingConverterArtifactsBeforeQuit = false;
 let converterArtifactsReleasedForQuit = false;
 
@@ -68,6 +79,7 @@ if (handleWindowsSquirrelEvent(process.argv, process.execPath, spawn)) {
   app.quit();
   process.exit(0);
 }
+if (process.platform === 'win32') app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
 
 protocol.registerSchemesAsPrivileged([{
   scheme: APP_SCHEME,
@@ -215,6 +227,29 @@ async function clearDesktopRecentDocuments() {
   return recentDocuments;
 }
 
+async function restorableSavedImportPayloads() {
+  const payloads = [];
+  let unavailable = 0;
+  for (const record of savedImports) {
+    const items = await nativePathItems(record.paths);
+    if (items.length !== record.paths.length || items.some(item => item.unsupported || item.isDirectory)) {
+      unavailable += 1;
+      continue;
+    }
+    const payload = openPathsPayload(items.map(item => ({
+      ...item,
+      savedImportId: record.id,
+    })));
+    if (payload.supported.length !== items.length) {
+      unavailable += 1;
+      continue;
+    }
+    for (const item of items) selectedPaths.add(item.path);
+    payloads.push(payload);
+  }
+  return { payloads, unavailable };
+}
+
 async function publishLaunchPaths(argv, cwd) {
   const launchPaths = launchPathsFromArgv(argv, {
     cwd,
@@ -330,11 +365,38 @@ function installIpc() {
     requireTrustedSender(event);
     return clearDesktopRecentDocuments();
   });
+  ipcMain.handle(IPC.saveImportedSeries, async (event, sourcePaths) => {
+    requireTrustedSender(event);
+    const paths = Array.isArray(sourcePaths) ? sourcePaths.map(item => String(item || '')).filter(Boolean) : [];
+    if (!paths.length || paths.length > MAX_SAVED_IMPORT_PATHS) {
+      throw new Error(`A saved desktop import needs between 1 and ${MAX_SAVED_IMPORT_PATHS} source files`);
+    }
+    for (const itemPath of paths) {
+      if (!selectedPaths.has(itemPath)) {
+        throw new Error('Saved imports may contain only files selected through VoxelLab');
+      }
+    }
+    const result = await rememberSavedImport(app, paths);
+    savedImports = result.records;
+    return { id: result.record.id, fileCount: result.record.paths.length };
+  });
+  ipcMain.handle(IPC.removeImportedSeries, async (event, ids) => {
+    requireTrustedSender(event);
+    const targets = (Array.isArray(ids) ? ids : [ids]).map(id => String(id || '')).filter(Boolean);
+    if (!targets.length) return false;
+    if (targets.length > MAX_SAVED_IMPORTS) {
+      throw new Error(`Cannot remove more than ${MAX_SAVED_IMPORTS} saved imports at once`);
+    }
+    const before = savedImports.length;
+    savedImports = await removeSavedImports(app, targets);
+    return savedImports.length < before;
+  });
   ipcMain.handle(IPC.readFileRange, async (event, filePath, range) => {
     requireTrustedSender(event);
     const target = String(filePath || '');
     if (!selectedPaths.has(target)) throw new Error('File was not selected through VoxelLab desktop open dialog');
-    return readNativeFileRange(target, range && typeof range === 'object' ? range : {});
+    const byteRange = Object.prototype.toString.call(range) === '[object Object]' ? range : {};
+    return readNativeFileRange(target, byteRange);
   });
   ipcMain.handle(IPC.getConverterCapabilities, (event) => {
     requireTrustedSender(event);
@@ -367,11 +429,18 @@ function installIpc() {
     shell.showItemInFolder(target);
     return true;
   });
-  ipcMain.handle(IPC.rendererReady, (event) => {
+  ipcMain.handle(IPC.rendererReady, async (event) => {
     requireTrustedSender(event);
+    await startupLaunchPromise;
     const window = BrowserWindow.fromWebContents(event.sender);
+    const hasExplicitOpen = pendingOpenPayloads.length > 0;
     if (window) flushPendingOpenPaths(window);
-    return true;
+    if (hasExplicitOpen) return { savedImports: [], unavailableSavedImports: 0 };
+    const restored = await restorableSavedImportPayloads();
+    return {
+      savedImports: restored.payloads,
+      unavailableSavedImports: restored.unavailable,
+    };
   });
 }
 
@@ -404,6 +473,27 @@ function installCsp() {
   });
 }
 
+function watchUnpackagedAssets() {
+  if (app.isPackaged || IS_SMOKE) return;
+  let timer = null;
+  const reload = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.reloadIgnoringCache();
+      }
+    }, 120);
+  };
+  const dirs = ['css', 'js', 'templates'].map(dir => path.join(ROOT_DIR, dir));
+  const files = ['index.html', 'icons.svg', 'viewer.js'].map(name => path.join(ROOT_DIR, name));
+  for (const dir of dirs) {
+    try { watch(dir, { recursive: true }, reload); } catch { /* watch is best-effort in unpackaged dev */ }
+  }
+  for (const file of files) {
+    try { watch(file, reload); } catch { /* same */ }
+  }
+}
+
 function createWindow() {
   // Smokes keep a fixed, deterministic window; real launches restore the last
   // size/position/state so the app reopens where the researcher left it.
@@ -433,7 +523,7 @@ function createWindow() {
   if (!IS_SMOKE) trackWindowState(window, app);
   window.once('ready-to-show', () => {
     if (SMOKE_KEEP_HIDDEN) return;
-    if (SMOKE_NON_ACTIVATING && typeof window.showInactive === 'function') window.showInactive();
+    if (SMOKE_NON_ACTIVATING && window.showInactive instanceof Function) window.showInactive();
     else window.show();
   });
   window.on('enter-full-screen', () => broadcastWindowState(window));
@@ -509,6 +599,7 @@ function installMenu() {
       role: 'help',
       label: 'Help',
       submenu: [
+        { label: 'Check for Updates', click: () => openTrustedExternalUrl(shell, LATEST_RELEASE_URL) },
         { label: 'VoxelLab Documentation', click: () => openTrustedExternalUrl(shell, REPO_URL) },
         { label: 'Report an Issue', click: () => openTrustedExternalUrl(shell, `${REPO_URL}/issues`) },
         ...(isMac ? [] : [
@@ -562,6 +653,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     recentDocuments = await readRecentDocuments(app);
+    savedImports = await readSavedImports(app);
     // Converted data is session-scoped. This also recovers artifacts that a
     // previous crash could not send to the operating system trash on exit.
     await converterJobs.releaseStaleArtifacts();
@@ -595,7 +687,8 @@ if (!app.requestSingleInstanceLock()) {
       ]));
     }
     createWindow();
-    publishLaunchPaths(process.argv, process.cwd()).catch(showOpenError);
+    watchUnpackagedAssets();
+    startupLaunchPromise = publishLaunchPaths(process.argv, process.cwd()).catch(showOpenError);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

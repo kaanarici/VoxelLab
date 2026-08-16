@@ -15,6 +15,10 @@ import {
   omeZarrResourceBudget,
 } from './zarr-resource-budget.js';
 
+function isZarrMetadataRecord(value) {
+  return Object.prototype.toString.call(value) === '[object Object]';
+}
+
 function normalizeRelPath(value) {
   return String(value || '').replaceAll('\\', '/').replace(/^\.\/+/, '').replace(/^\/+/, '').replace(/\/+/g, '/').replace(/\/$/, '');
 }
@@ -24,9 +28,9 @@ function joinPath(...parts) {
 }
 
 function omeAttributes(input) {
-  if (input?.ome && typeof input.ome === 'object') return input.ome;
-  if (input?.attributes?.ome && typeof input.attributes.ome === 'object') return input.attributes.ome;
-  return input && typeof input === 'object' ? input : {};
+  if (isZarrMetadataRecord(input?.ome)) return input.ome;
+  if (isZarrMetadataRecord(input?.attributes?.ome)) return input.attributes.ome;
+  return isZarrMetadataRecord(input) ? input : {};
 }
 
 function axisIndex(axes, name) {
@@ -79,13 +83,13 @@ function preferredSpatialUnit(units) {
 
 // Reuse the local path's chunk-tiling math, but source decoded tiles from the remote store's
 // readChunk({shape, strides, view}) instead of an in-memory file map.
-async function planePixelsFromStore(store, levelPath, arrayMeta, shape, chunks, axes, dtype, { c, z, t }) {
+async function planePixelsFromStore(store, levelPath, arrayMeta, dimensions, chunks, axes, dtype, { c, z, t }) {
   const xIndex = axisIndex(axes, 'x');
   const yIndex = axisIndex(axes, 'y');
   if (xIndex < 0 || yIndex < 0) throw new ZarrUnsupportedCodecError('axes (streaming requires x and y axes)');
-  const width = shape[xIndex];
-  const height = shape[yIndex];
-  const baseCoords = new Array(shape.length).fill(0);
+  const width = dimensions[xIndex];
+  const height = dimensions[yIndex];
+  const baseCoords = new Array(dimensions.length).fill(0);
   const cIndex = axisIndex(axes, 'c');
   const zIndex = axisIndex(axes, 'z');
   const tIndex = axisIndex(axes, 't');
@@ -114,10 +118,10 @@ async function planePixelsFromStore(store, levelPath, arrayMeta, shape, chunks, 
   for (const { chunkCoords, chunk } of tiles) {
     const xStart = chunkCoords[xIndex] * chunks[xIndex];
     const yStart = chunkCoords[yIndex] * chunks[yIndex];
-    const xEnd = Math.min(width, xStart + chunk.shape[xIndex]);
-    const yEnd = Math.min(height, yStart + chunk.shape[yIndex]);
+    const xEnd = Math.min(width, xStart + chunk['shape'][xIndex]);
+    const yEnd = Math.min(height, yStart + chunk['shape'][yIndex]);
     let planeOffset = 0;
-    for (let axis = 0; axis < shape.length; axis += 1) {
+    for (let axis = 0; axis < dimensions.length; axis += 1) {
       if (axis !== xIndex && axis !== yIndex) {
         planeOffset += (baseCoords[axis] - chunkCoords[axis] * chunks[axis]) * chunk.strides[axis];
       }
@@ -132,9 +136,9 @@ async function planePixelsFromStore(store, levelPath, arrayMeta, shape, chunks, 
   return { width, height, pixels };
 }
 
-function levelShapeSize(shape, axes, name, fallback = 1) {
+function levelDimensionSize(dimensions, axes, name, fallback = 1) {
   const index = axisIndex(axes, name);
-  return index >= 0 && shape[index] > 0 ? shape[index] : fallback;
+  return index >= 0 && dimensions[index] > 0 ? dimensions[index] : fallback;
 }
 
 function rootName(baseUrl) {
@@ -192,7 +196,7 @@ export async function streamOmeZarrFromUrl(baseUrl, {
   decode = decodeZarrChunk,
   signal,
 } = {}) {
-  if (typeof fetchImpl !== 'function') throw new ZarrUnsupportedCodecError('fetchImpl (streaming requires an injected fetch)');
+  if (!(fetchImpl instanceof Function)) throw new ZarrUnsupportedCodecError('fetchImpl (streaming requires an injected fetch)');
   const cleanBase = String(baseUrl || '').replace(/\/+$/, '');
   if (!cleanBase) throw new ZarrUnsupportedCodecError('baseUrl (streaming requires an OME-Zarr URL)');
 
@@ -224,12 +228,12 @@ export async function streamOmeZarrFromUrl(baseUrl, {
       const arrayMeta = arrayMetadataByPath[level.path];
       let parsedLevel = null;
       try { parsedLevel = parseZarrArrayMeta(arrayMeta, { context: 'OME-Zarr streaming' }); } catch { /* chosen level reports the named validation failure below */ }
-      const shape = parsedLevel?.shape || [];
+      const dimensions = parsedLevel?.['shape'] || [];
       return {
         level: Number(level.level ?? 0),
         path: level.path,
-        width: levelShapeSize(shape, axes, 'x', 0),
-        height: levelShapeSize(shape, axes, 'y', 0),
+        width: levelDimensionSize(dimensions, axes, 'x', 0),
+        height: levelDimensionSize(dimensions, axes, 'y', 0),
         scale: level.scale,
         downsample: levelDownsample(level, levelZero, axes),
         parsed: parsedLevel,
@@ -246,28 +250,29 @@ export async function streamOmeZarrFromUrl(baseUrl, {
     const chosenLevel = datasetLevels.find(level => level.path === selection.path) || levelZero;
     const arrayMeta = arrayMetadataByPath[selection.path];
     const parsed = parseZarrArrayMeta(arrayMeta, { context: `OME-Zarr streaming level '${selection.path}'` });
-    const { shape, chunks, dtype } = parsed;
+    const dimensions = parsed['shape'];
+    const { chunks, dtype } = parsed;
     const codecLabel = describeZarrCodec(parsed.compressor, parsed.filters);
     const datasetArrayMetadataByPath = Object.fromEntries(levelInputs.map(level => [
       level.path,
       zarrArrayMetaForDataset(level.arrayMeta, level.parsed),
     ]));
 
-    const sizeC = levelShapeSize(shape, axes, 'c', 1);
-    const sizeZ = levelShapeSize(shape, axes, 'z', 1);
-    const sizeT = levelShapeSize(shape, axes, 't', 1);
+    const sizeC = levelDimensionSize(dimensions, axes, 'c', 1);
+    const sizeZ = levelDimensionSize(dimensions, axes, 'z', 1);
+    const sizeT = levelDimensionSize(dimensions, axes, 't', 1);
     const xIndex = axisIndex(axes, 'x');
     const yIndex = axisIndex(axes, 'y');
     const resourceBudget = omeZarrResourceBudget({
-      width: levelShapeSize(shape, axes, 'x', 0),
-      height: levelShapeSize(shape, axes, 'y', 0),
+      width: levelDimensionSize(dimensions, axes, 'x', 0),
+      height: levelDimensionSize(dimensions, axes, 'y', 0),
       sizeC,
       sizeZ,
       sizeT,
       chunkWidth: xIndex >= 0 ? chunks[xIndex] : 0,
       chunkHeight: yIndex >= 0 ? chunks[yIndex] : 0,
       axes,
-      shape,
+      'shape': dimensions,
       chunks,
       bytesPerElement: dtype.bytes,
       maxPlanePixels,
@@ -281,7 +286,7 @@ export async function streamOmeZarrFromUrl(baseUrl, {
       for (let c = 0; c < sizeC; c += 1) {
         for (let z = 0; z < sizeZ; z += 1) {
           onProgress('planes', `${built}/${planeCount}`);
-          const plane = await planePixelsFromStore(store, selection.path, arrayMeta, shape, chunks, axes, dtype, { c, z, t });
+          const plane = await planePixelsFromStore(store, selection.path, arrayMeta, dimensions, chunks, axes, dtype, { c, z, t });
           pages.push({
             ...plane,
             bitsPerSample: dtype.bits,
@@ -303,8 +308,8 @@ export async function streamOmeZarrFromUrl(baseUrl, {
 
     const results = buildMicroscopySeriesResults(pages, {
       source: 'OME-Zarr',
-      sizeX: levelShapeSize(shape, axes, 'x', pages[0]?.width || 1),
-      sizeY: levelShapeSize(shape, axes, 'y', pages[0]?.height || 1),
+      sizeX: levelDimensionSize(dimensions, axes, 'x', pages[0]?.width || 1),
+      sizeY: levelDimensionSize(dimensions, axes, 'y', pages[0]?.height || 1),
       sizeZ,
       sizeC,
       sizeT,

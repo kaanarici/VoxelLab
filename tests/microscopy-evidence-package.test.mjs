@@ -95,7 +95,7 @@ function setupPackageState() {
   };
   setRoiEntriesForSlice('cells_evidence', 0, [{
     id: 1,
-    shape: 'polygon',
+    'shape': 'polygon',
     label: 'Particle 1',
     pts: [[0, 0], [4, 0], [4, 4], [0, 4]],
     microscopy: { channelIndex: 0, channelName: 'DAPI', timeIndex: 0 },

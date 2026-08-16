@@ -247,7 +247,7 @@ function assertSingleZstdFrame(bytes, expectedBytes) {
 }
 
 export function decodeZstdRawVolume(value, expectedVoxels, Decompress) {
-  if (typeof Decompress !== 'function') throw new TypeError('raw volume zstd decoder is unavailable');
+  if (!(Decompress instanceof Function)) throw new TypeError('raw volume zstd decoder is unavailable');
   const bytes = bytesView(value);
   const expectedBytes = rawVolumeExpectedByteLength(expectedVoxels);
   const expectedChecksum = assertSingleZstdFrame(bytes, expectedBytes);

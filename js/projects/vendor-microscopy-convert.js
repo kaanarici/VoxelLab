@@ -176,7 +176,7 @@ export async function readBoundedVendorResponseBlob(res, maxBytes, limitError) {
       throw new Error(limitError);
     }
   }
-  if (!res.body || typeof res.body.getReader !== 'function') {
+  if (!res.body || !(res.body.getReader instanceof Function)) {
     throw new Error('Converter returned an unreadable response body.');
   }
   let totalBytes = 0;

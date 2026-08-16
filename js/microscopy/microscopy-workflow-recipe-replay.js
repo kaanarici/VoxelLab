@@ -40,6 +40,10 @@ import {
 
 const SUPPORTED_RECIPE_SCHEMAS = new Set(MICROSCOPY_WORKFLOW_RECIPE_SCHEMAS);
 
+function isWorkflowRecipeRecord(value) {
+  return Object.prototype.toString.call(value) === '[object Object]';
+}
+
 function sourceFormatForSeries(series = {}) {
   return String(series.microscopyDataset?.source?.originalFormat || series.sequence || '').trim();
 }
@@ -77,7 +81,7 @@ function seriesWithRecipeCalibration(series = {}, recipe = {}) {
   };
 }
 
-function matchesSeriesShape(recipe = {}, series = {}) {
+function matchesSeriesDimensions(recipe = {}, series = {}) {
   const target = recipe?.target || {};
   const geometry = target.geometry || {};
   const recipeWidth = finitePositiveInteger(geometry.width, 0);
@@ -248,7 +252,7 @@ function channelStateSnapshot(series = {}, sizeC = channelCount(series)) {
 
 function embeddedRoiResultsBundle(recipe) {
   const bundle = recipe?.roiResults;
-  return bundle && typeof bundle === 'object' && Array.isArray(bundle.rows) && bundle.rows.length > 0 ? bundle : null;
+  return isWorkflowRecipeRecord(bundle) && Array.isArray(bundle.rows) && bundle.rows.length > 0 ? bundle : null;
 }
 
 function embeddedMeasurementRows(recipe) {
@@ -257,7 +261,7 @@ function embeddedMeasurementRows(recipe) {
 
 function embeddedAngleRows(recipe) {
   const bundle = recipe?.angleMeasurements;
-  return bundle && typeof bundle === 'object' && Array.isArray(bundle.rows) ? bundle.rows : [];
+  return isWorkflowRecipeRecord(bundle) && Array.isArray(bundle.rows) ? bundle.rows : [];
 }
 
 function measurementsMeetRecipePrerequisite(recipe, series, host = state) {
@@ -296,7 +300,7 @@ function embeddedRoiResultsMismatch(reason = '') {
   };
 }
 
-function validateChannelShape(recipe, series, host = state) {
+function validateChannelSet(recipe, series, host = state) {
   const expected = channelCount(series);
   const channels = Array.isArray(recipe?.channels) ? recipe.channels : [];
   if (channels.length !== expected) {
@@ -382,7 +386,7 @@ function validateAngleMeasurements(recipe, series = {}) {
 
 export function validateMicroscopyWorkflowRecipe(recipe, host = state) {
   const series = activeSeries(host);
-  if (!recipe || typeof recipe !== 'object' || !SUPPORTED_RECIPE_SCHEMAS.has(recipe.schema)) {
+  if (!isWorkflowRecipeRecord(recipe) || !SUPPORTED_RECIPE_SCHEMAS.has(recipe.schema)) {
     return { ok: false, code: 'invalid_recipe', message: 'Workflow recipe JSON is not a valid VoxelLab microscopy recipe.' };
   }
   if (!series || series.imageDomain !== 'microscopy') {
@@ -391,9 +395,9 @@ export function validateMicroscopyWorkflowRecipe(recipe, host = state) {
   if (recipe?.target?.imageDomain !== 'microscopy') {
     return { ok: false, code: 'wrong_recipe_domain', message: 'This recipe is not marked for microscopy workflows.' };
   }
-  if (!matchesSeriesShape(recipe, series)) {
+  if (!matchesSeriesDimensions(recipe, series)) {
     const matches = (host?.manifest?.series || []).filter((candidate) =>
-      candidate?.imageDomain === 'microscopy' && matchesSeriesShape(recipe, candidate));
+      candidate?.imageDomain === 'microscopy' && matchesSeriesDimensions(recipe, candidate));
     if (matches.length > 1) {
       return { ok: false, code: 'ambiguous_series_match', message: 'Recipe matches multiple microscopy series. Activate one exact target series first.' };
     }
@@ -451,7 +455,7 @@ export function validateMicroscopyWorkflowRecipe(recipe, host = state) {
   if (compositeEnabled && compositeChannels.length !== sizeC) {
     return { ok: false, code: 'incompatible_channel_count', message: 'Recipe composite channel map does not match this series channel count.' };
   }
-  const channelCheck = validateChannelShape(recipe, series, host);
+  const channelCheck = validateChannelSet(recipe, series, host);
   if (!channelCheck.ok) return channelCheck;
   const angleCheck = validateAngleMeasurements(recipe, effectiveSeries);
   if (!angleCheck.ok) return angleCheck;

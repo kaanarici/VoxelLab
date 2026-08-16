@@ -134,7 +134,7 @@ export function cancelActiveAnalysis() {
 
 /** Wired once from viewer after controls exist. */
 export function initAnalysisFindings(h) {
-  if (typeof h.renderScrubTicks === 'function') _renderScrubTicks = h.renderScrubTicks;
+  if (h.renderScrubTicks instanceof Function) _renderScrubTicks = h.renderScrubTicks;
 }
 
 export function renderFindings() {

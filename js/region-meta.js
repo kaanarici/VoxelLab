@@ -5,7 +5,7 @@ export function normalizeRegionMeta(regionMeta) {
   const legend = { ...(regionMeta.legend || {}) };
   let changed = !regionMeta.legend;
   for (const [label, region] of Object.entries(regionMeta.regions || {})) {
-    const name = typeof region === 'string' ? region : region?.name;
+    const name = region?.constructor === String ? region : region?.name;
     if (name && legend[label] == null) {
       legend[label] = name;
       changed = true;
@@ -21,7 +21,7 @@ export function regionLabelName(regionMeta, label) {
   // some sidecars carry as raw segmentation ids — keeps the labels, Structures
   // panel, legend, and inspect tooltip all showing the same name.
   const region = regionMeta.regions?.[key] ?? regionMeta.regions?.[label];
-  const regionName = typeof region === 'string' ? region : region?.name;
+  const regionName = region?.constructor === String ? region : region?.name;
   if (regionName) return regionName;
   return regionMeta.legend?.[key] ?? regionMeta.legend?.[label] ?? '';
 }

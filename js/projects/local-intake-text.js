@@ -219,6 +219,31 @@ export function localIntakeStatusText(intake) {
   return `${summary} selected${afterChecking}${skippedText}${converterText}${issues}`;
 }
 
+export function localIntakeToastText(intake) {
+  if (!intake) return '';
+  const files = intake.files || [];
+  const skippedCount = Number(intake.skippedCount ?? intake.skipped?.length ?? 0);
+  const failedFiles = Number(intake.failedFiles || 0);
+  const failedFolders = Number(intake.failedFolderReads || 0);
+  const convertible = Number(intake.counts?.convertible || 0);
+  if (!skippedCount && !failedFiles && !failedFolders && !convertible) return '';
+  const summary = localIntakeSummaryText(intake);
+  const checkedText = localIntakeCheckedText(intake);
+  const afterChecking = checkedText ? ` after ${checkedText.replace(/^checked/, 'checking')}` : '';
+  const skippedText = skippedCount
+    ? `; skipped ${skippedCount} unsupported file${skippedCount === 1 ? '' : 's'}`
+    : '';
+  const issues = [
+    failedFiles ? `${failedFiles} file read${failedFiles === 1 ? '' : 's'} failed` : '',
+    failedFolders ? `${failedFolders} folder read${failedFolders === 1 ? '' : 's'} failed` : '',
+  ].filter(Boolean);
+  const issueText = issues.length ? `; ${issues.join('; ')}` : '';
+  if (!files.length) {
+    return `Local intake: no openable files${afterChecking}${skippedText}${issueText}.`;
+  }
+  return `Local intake: ${summary} selected${afterChecking}${skippedText}${issueText}.`;
+}
+
 export function localIntakeNotice(counts, skipped, checkedFiles = 0, formatItems = {}, skippedCount = skipped.length) {
   const totalSkipped = Number(skippedCount || 0);
   const skippedText = totalSkipped

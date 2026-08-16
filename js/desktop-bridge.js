@@ -7,7 +7,7 @@ import { notify } from './notify.js';
 import {
   DESKTOP_UNSUPPORTED_SELECTION_ADVICE,
   desktopConversionDialogText,
-  desktopIntakeNotice,
+  desktopIntakeToastText,
   desktopMicroscopySidecarOnlyText,
   unsupportedDesktopSelectionText,
 } from './desktop-intake-text.js';
@@ -68,7 +68,12 @@ export function createLatestDesktopIntakeDrain(processPayload) {
       while (pending) {
         const intake = pending;
         pending = null;
-        await processPayload(intake.payload, () => intake === latest);
+        try {
+          await processPayload(intake.payload, () => intake === latest);
+          intake.resolve(intake === latest);
+        } catch (error) {
+          intake.reject(error);
+        }
       }
     } finally {
       draining = false;
@@ -77,9 +82,17 @@ export function createLatestDesktopIntakeDrain(processPayload) {
   };
 
   return (payload) => {
-    latest = { payload };
+    let resolve;
+    let reject;
+    const completion = new Promise((onResolve, onReject) => {
+      resolve = onResolve;
+      reject = onReject;
+    });
+    pending?.resolve(false);
+    latest = { payload, resolve, reject };
     pending = latest;
     void drain();
+    return completion;
   };
 }
 
@@ -91,7 +104,7 @@ export function wireDesktopBridge(selectSeries) {
     const uploadModal = $('upload-modal');
     if (!uploadModal?.classList.contains('visible') || uploadModal.dataset.closeBlocked !== 'true') return false;
     uploadModal.dispatchEvent(new CustomEvent('voxellab:modal-close-blocked', { bubbles: true }));
-    notify('Stop the active cloud job before opening another study.', { id: 'desktop-intake', duration: 9000 });
+    notify('Stop the active cloud job before opening another study.', { id: 'desktop-cloud-job-block', kind: 'warning' });
     return true;
   };
   const showDesktopIntakeDialog = (title, body, { chooseOtherFiles = false } = {}) => {
@@ -136,8 +149,8 @@ export function wireDesktopBridge(selectSeries) {
       const supported = (payload?.supported || []).filter(record => record.kind === 'file');
       const sidecars = supported.filter(isDesktopSidecarRecord);
       const openable = supported.filter(record => !isDesktopSidecarRecord(record));
-      const notice = desktopIntakeNotice(payload, openable, sidecars, convertible, unsupported);
-      if (notice) notify(notice, { id: 'desktop-intake', duration: 9000 });
+      const notice = desktopIntakeToastText(payload, openable, sidecars, convertible, unsupported);
+      if (notice) notify(notice, { id: 'desktop-intake', kind: 'info', duration: 9000 });
       const microscopySidecars = sidecars.filter(isDesktopMicroscopySidecarRecord);
       if (microscopySidecars.length > 0 && microscopySidecars.length === sidecars.length && !openable.length && !convertible.length && !hasActiveMicroscopySeries()) {
         if (!isCurrentIntake()) return;
@@ -218,7 +231,21 @@ export function wireDesktopBridge(selectSeries) {
     dismissDesktopIntakeDialog = null;
     enqueueDesktopIntake(payload);
   });
-  desktop.rendererReady?.().catch((e) => {
-    showDialog('Desktop bridge failed', escapeHtml(e.message || String(e)));
-  });
+  void (async () => {
+    try {
+      const ready = await desktop.rendererReady?.();
+      const unavailable = Number(ready?.unavailableSavedImports || 0);
+      if (unavailable > 0) {
+        notify(`${unavailable} saved import${unavailable === 1 ? '' : 's'} could not be restored because source files are unavailable.`, {
+          id: 'desktop-saved-imports-unavailable',
+          kind: 'warning',
+        });
+      }
+      for (const payload of ready?.savedImports || []) {
+        await enqueueDesktopIntake(payload);
+      }
+    } catch (e) {
+      showDialog('Desktop bridge failed', escapeHtml(e.message || String(e)));
+    }
+  })();
 }

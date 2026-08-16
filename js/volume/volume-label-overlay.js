@@ -5,6 +5,7 @@ import { allLabelsFromMeta, effectiveHiddenLabels, isSelectionActive } from '../
 import { getThreeRuntime } from '../runtime/viewer-runtime.js';
 import { activeThreeLabelOverlay } from '../runtime/active-overlay-state.js';
 import * as THREE from './vendor-three.js';
+import { MAX_3D_TEXTURE_BYTES, volumeTextureSizeSupport } from './volume-texture-capabilities.js';
 
 // Swap the label texture + color LUT based on the currently-active overlay
 // toggles. Called whenever the user flips Tissue or Anatomy while 3D mode
@@ -38,7 +39,12 @@ export function updateLabelTexture() {
   }
 
   const W = series.width, H = series.height, D = series.slices;
-  if (source.length !== W * H * D) {
+  const material = state.threeRuntime.mesh.material;
+  const textureSupport = volumeTextureSizeSupport({ W, H, D }, material.userData.max3DTextureSize);
+  if (source.length !== W * H * D
+    || material.userData.preview
+    || !textureSupport.supported
+    || material.userData.baseTextureBytes + source.byteLength > MAX_3D_TEXTURE_BYTES) {
     u.uLabelMode.value = 0;
     if (u.uIsolate) u.uIsolate.value = 0;
     u.uLabelLUT.value.needsUpdate = true;
@@ -95,4 +101,3 @@ export function updateLabelTexture() {
   u.uLabelLUT.value.needsUpdate = true;
   getThreeRuntime().requestRender?.('label-texture', 160);
 }
-

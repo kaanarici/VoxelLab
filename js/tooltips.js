@@ -156,7 +156,7 @@ function onLeave() {
 }
 
 function findAnchor(node) {
-  if (!node || typeof node.closest !== 'function') return null;
+  if (!node || !(node.closest instanceof Function)) return null;
   return node.closest('[data-tip]');
 }
 

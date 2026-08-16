@@ -1,5 +1,9 @@
 import { ZarrUnsupportedCodecError } from './zarr-codecs.js';
 
+function isZarrArrayMetadata(value) {
+  return Object.prototype.toString.call(value) === '[object Object]';
+}
+
 function unsupported(reason) {
   throw new ZarrUnsupportedCodecError(reason);
 }
@@ -42,7 +46,7 @@ export function zarrDtypeInfo(rawDtype, { endian = '' } = {}) {
 
 function finiteFillValue(value, dtype) {
   if (value == null) return { hasFillValue: false, fillValue: null };
-  if (typeof value !== 'number') unsupported('fill_value must be a numeric scalar');
+  if (value?.constructor !== Number || Object(value) === value) unsupported('fill_value must be a numeric scalar');
   const number = dtype.kind === 'f' ? Math.fround(value) : value;
   if (!Number.isFinite(number)) unsupported('fill_value must be finite for supported scalar arrays');
   if (dtype.kind !== 'f') {
@@ -82,15 +86,15 @@ export function parseZarrArrayMeta(arrayMeta = {}, { context = 'OME-Zarr image l
   const version = Number(arrayMeta?.zarr_format);
   if (version === 2) {
     if (String(arrayMeta.order || '').toUpperCase() !== 'C') unsupported(`${context} supports explicit C-order chunks only`);
-    const shape = positiveIntegers(arrayMeta.shape, 'shape');
+    const dimensions = positiveIntegers(arrayMeta['shape'], 'shape');
     const chunks = positiveIntegers(arrayMeta.chunks, 'chunks');
-    if (shape.length !== chunks.length) unsupported('shape/chunks rank mismatch');
+    if (dimensions.length !== chunks.length) unsupported('shape/chunks rank mismatch');
     const dtype = zarrDtypeInfo(arrayMeta.dtype);
     if (!dtype) unsupported(`dtype '${arrayMeta.dtype || 'unknown'}' (supported: int8/uint8/int16/uint16/int32/uint32/float32)`);
     const fill = finiteFillValue(arrayMeta.fill_value, dtype);
     return {
       version,
-      shape,
+      'shape': dimensions,
       chunks,
       dtype,
       compressor: arrayMeta.compressor ?? null,
@@ -102,9 +106,9 @@ export function parseZarrArrayMeta(arrayMeta = {}, { context = 'OME-Zarr image l
   if (version !== 3) unsupported(`${context} supports Zarr v2 or bounded Zarr v3 arrays`);
   if (String(arrayMeta.node_type || '').toLowerCase() !== 'array') unsupported('Zarr v3 node_type must be array');
   if (String(arrayMeta.chunk_grid?.name || '').toLowerCase() !== 'regular') unsupported('Zarr v3 requires a regular chunk grid');
-  const shape = positiveIntegers(arrayMeta.shape, 'shape');
-  const chunks = positiveIntegers(arrayMeta.chunk_grid?.configuration?.chunk_shape, 'chunk_grid.configuration.chunk_shape');
-  if (shape.length !== chunks.length) unsupported('shape/chunk_shape rank mismatch');
+  const dimensions = positiveIntegers(arrayMeta['shape'], 'shape');
+  const chunks = positiveIntegers(arrayMeta.chunk_grid?.configuration?.['chunk_shape'], 'chunk_grid.configuration.chunk_shape');
+  if (dimensions.length !== chunks.length) unsupported('shape/chunk_shape rank mismatch');
   const encoding = arrayMeta.chunk_key_encoding || {};
   if (String(encoding.name || '').toLowerCase() !== 'default') unsupported('Zarr v3 requires default chunk_key_encoding');
   const separator = String(encoding.configuration?.separator || '/');
@@ -113,7 +117,7 @@ export function parseZarrArrayMeta(arrayMeta = {}, { context = 'OME-Zarr image l
   const fill = finiteFillValue(arrayMeta.fill_value, codec.dtype);
   return {
     version,
-    shape,
+    'shape': dimensions,
     chunks,
     dtype: codec.dtype,
     compressor: codec.compressor,
@@ -128,7 +132,7 @@ export function zarrChunkPath(arrayPath, parsed, coords) {
 }
 
 export function zarrArrayMetaForDataset(arrayMeta, parsed) {
-  if (!arrayMeta || typeof arrayMeta !== 'object' || parsed?.version !== 3) return arrayMeta;
+  if (!isZarrArrayMetadata(arrayMeta) || parsed?.version !== 3) return arrayMeta;
   return { ...arrayMeta, chunks: [...parsed.chunks] };
 }
 

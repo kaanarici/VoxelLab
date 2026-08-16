@@ -699,6 +699,205 @@ def test_download_to_path_retries_truncated_remote_body(tmp_path: Path, monkeypa
     assert not (target.parent / ".sample.ome.tif.download").exists()
 
 
+def test_download_to_path_resumes_repeated_partial_responses(tmp_path: Path, monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, payload: bytes, status: int, headers: dict[str, str]):
+            self.body = io.BytesIO(payload)
+            self.status = status
+            self.headers = headers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size: int = -1) -> bytes:
+            return self.body.read(size)
+
+    responses = iter(
+        (
+            FakeResponse(b"abc", 200, {"Content-Length": "8"}),
+            FakeResponse(b"def", 206, {"Content-Length": "3", "Content-Range": "bytes 3-5/8"}),
+            FakeResponse(b"gh", 206, {"Content-Length": "2", "Content-Range": "bytes 6-7/8"}),
+        )
+    )
+    ranges: list[str | None] = []
+
+    def fake_urlopen(request, **_kwargs):
+        ranges.append(request.get_header("Range") if isinstance(request, demo_install.urllib.request.Request) else None)
+        return next(responses)
+
+    monkeypatch.setattr(demo_install.urllib.request, "urlopen", fake_urlopen)
+
+    target = tmp_path / "demo_sources" / "sample.zip"
+    result = demo_install.download_to_path(
+        "https://example.test/sample.zip",
+        target,
+        max_bytes=8,
+        expected_bytes=8,
+    )
+
+    assert result.read_bytes() == b"abcdefgh"
+    assert ranges == [None, "bytes=3-", "bytes=6-"]
+
+
+def test_download_to_path_restarts_when_server_ignores_range(tmp_path: Path, monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, payload: bytes):
+            self.body = io.BytesIO(payload)
+            self.status = 200
+            self.headers = {"Content-Length": "8"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size: int = -1) -> bytes:
+            return self.body.read(size)
+
+    payloads = iter((b"abc", b"abcdefgh"))
+    ranges: list[str | None] = []
+
+    def fake_urlopen(request, **_kwargs):
+        ranges.append(request.get_header("Range") if isinstance(request, demo_install.urllib.request.Request) else None)
+        return FakeResponse(next(payloads))
+
+    monkeypatch.setattr(demo_install.urllib.request, "urlopen", fake_urlopen)
+
+    target = tmp_path / "demo_sources" / "sample.zip"
+    result = demo_install.download_to_path(
+        "https://example.test/sample.zip",
+        target,
+        max_bytes=8,
+        expected_bytes=8,
+    )
+
+    assert result.read_bytes() == b"abcdefgh"
+    assert ranges == [None, "bytes=3-"]
+
+
+def test_download_to_path_bounds_retries_that_make_no_progress(tmp_path: Path, monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, payload: bytes):
+            self.body = io.BytesIO(payload)
+            self.status = 200
+            self.headers = {"Content-Length": str(len(payload))}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size: int = -1) -> bytes:
+            return self.body.read(size)
+
+    calls = 0
+
+    def fake_urlopen(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return FakeResponse(b"abc")
+        raise ConnectionError("connection closed")
+
+    monkeypatch.setattr(demo_install.urllib.request, "urlopen", fake_urlopen)
+
+    target = tmp_path / "demo_sources" / "sample.zip"
+    target.parent.mkdir(parents=True)
+    _ = target.write_bytes(b"existing")
+
+    with __import__("pytest").raises(ValueError, match="no progress after 3 retries"):
+        _ = demo_install.download_to_path(
+            "https://example.test/sample.zip",
+            target,
+            max_bytes=8,
+            expected_bytes=8,
+        )
+
+    assert calls == 4
+    assert target.read_bytes() == b"existing"
+    assert not (target.parent / ".sample.zip.download").exists()
+
+
+def test_download_to_path_rejects_misaligned_partial_response(tmp_path: Path, monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, payload: bytes, status: int, content_range: str | None = None):
+            self.body = io.BytesIO(payload)
+            self.status = status
+            self.headers = {"Content-Length": str(len(payload))}
+            if content_range is not None:
+                self.headers["Content-Range"] = content_range
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size: int = -1) -> bytes:
+            return self.body.read(size)
+
+    responses = iter((FakeResponse(b"abc", 200), FakeResponse(b"abc", 206, "bytes 0-2/8")))
+    monkeypatch.setattr(demo_install.urllib.request, "urlopen", lambda *_args, **_kwargs: next(responses))
+
+    target = tmp_path / "demo_sources" / "sample.zip"
+    with __import__("pytest").raises(ValueError, match="started at 0, expected 3"):
+        _ = demo_install.download_to_path(
+            "https://example.test/sample.zip",
+            target,
+            max_bytes=8,
+            expected_bytes=8,
+        )
+
+    assert not target.exists()
+    assert not (target.parent / ".sample.zip.download").exists()
+
+
+def test_download_to_path_replaces_target_only_after_complete_download(tmp_path: Path, monkeypatch) -> None:
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Length": "8"}
+
+        def __init__(self):
+            self.body = io.BytesIO(b"complete")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size: int = -1) -> bytes:
+            return self.body.read(size)
+
+    monkeypatch.setattr(demo_install.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    target = tmp_path / "demo_sources" / "sample.zip"
+    target.parent.mkdir(parents=True)
+    _ = target.write_bytes(b"existing")
+    original_replace = Path.replace
+
+    def checked_replace(self: Path, destination: Path):
+        assert destination == target
+        assert target.read_bytes() == b"existing"
+        return original_replace(self, destination)
+
+    monkeypatch.setattr(Path, "replace", checked_replace)
+
+    result = demo_install.download_to_path(
+        "https://example.test/sample.zip",
+        target,
+        max_bytes=8,
+        expected_bytes=8,
+    )
+
+    assert result.read_bytes() == b"complete"
+
+
 def test_install_source_pack_caps_series_zip_download_from_catalog_estimate(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, payload: bytes):

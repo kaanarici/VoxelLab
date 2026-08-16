@@ -1,9 +1,9 @@
-function isObject(value) {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+function isZarrMetadataRecord(value) {
+  return Object.prototype.toString.call(value) === '[object Object]';
 }
 
 function nonEmptyString(value) {
-  if (typeof value !== 'string') return '';
+  if (value?.constructor !== String) return '';
   const trimmed = value.trim();
   return trimmed;
 }
@@ -18,7 +18,7 @@ function axisTypeFromName(name) {
 
 function normalizeAxis(rawAxis, index, errors, warnings) {
   const fallbackName = `axis_${index}`;
-  if (typeof rawAxis === 'string') {
+  if (rawAxis?.constructor === String) {
     const name = nonEmptyString(rawAxis) || fallbackName;
     warnings.push(`axes_${name}_string_form`);
     return {
@@ -32,7 +32,7 @@ function normalizeAxis(rawAxis, index, errors, warnings) {
     };
   }
 
-  if (!isObject(rawAxis)) {
+  if (!isZarrMetadataRecord(rawAxis)) {
     errors.push(`axes_${index}_invalid`);
     return {
       name: fallbackName,
@@ -112,7 +112,7 @@ function normalizeTransformList(rawTransforms, axisCount, label, errors, warning
 
   for (let i = 0; i < rawTransforms.length; i += 1) {
     const item = rawTransforms[i];
-    if (!isObject(item)) {
+    if (!isZarrMetadataRecord(item)) {
       errors.push(`${label}_transform_${i}_invalid`);
       continue;
     }
@@ -171,7 +171,7 @@ function normalizeDatasets(datasetsRaw, axisCount, errors, warnings) {
 
   return datasetsRaw.map((dataset, index) => {
     const label = `dataset_${index}`;
-    if (!isObject(dataset)) {
+    if (!isZarrMetadataRecord(dataset)) {
       errors.push(`${label}_invalid`);
       return {
         level: index,
@@ -216,7 +216,7 @@ function finiteWindowPair(window, keys) {
 
 function normalizeChannels(omero, expectedCount, errors, warnings) {
   const fallbackCount = Math.max(1, Number.isFinite(expectedCount) ? expectedCount : 1);
-  if (!isObject(omero)) {
+  if (!isZarrMetadataRecord(omero)) {
     return Array.from({ length: fallbackCount }, (_, index) => ({
       index,
       name: `Channel ${index + 1}`,
@@ -243,7 +243,7 @@ function normalizeChannels(omero, expectedCount, errors, warnings) {
   }
 
   const channels = omero.channels.map((rawChannel, index) => {
-    if (!isObject(rawChannel)) {
+    if (!isZarrMetadataRecord(rawChannel)) {
       errors.push(`omero_channel_${index}_invalid`);
       return {
         index,
@@ -259,7 +259,7 @@ function normalizeChannels(omero, expectedCount, errors, warnings) {
     const color = normalizeHexColor(rawChannel.color);
     if (!color) errors.push(`omero_channel_${index}_color_invalid`);
 
-    const window = isObject(rawChannel.window) ? rawChannel.window : null;
+    const window = isZarrMetadataRecord(rawChannel.window) ? rawChannel.window : null;
     if (!window) {
       // https://ngff.openmicroscopy.org/0.5/index.html#2-5-omero-metadata-transitional
       errors.push(`omero_channel_${index}_window_missing`);
@@ -311,11 +311,11 @@ function pixelTypeFromDtypeString(dtype) {
 }
 
 function discoverPixelType(levels, arrayMetadataByPath) {
-  if (!isObject(arrayMetadataByPath) || levels.length === 0) return null;
+  if (!isZarrMetadataRecord(arrayMetadataByPath) || levels.length === 0) return null;
   const firstPath = levels[0]?.path;
   if (!firstPath) return null;
   const meta = arrayMetadataByPath[firstPath];
-  if (!isObject(meta)) return null;
+  if (!isZarrMetadataRecord(meta)) return null;
 
   return pixelTypeFromDtypeString(meta.data_type)
     || pixelTypeFromDtypeString(meta.dtype)
@@ -323,23 +323,23 @@ function discoverPixelType(levels, arrayMetadataByPath) {
 }
 
 function levelZeroArrayMeta(levels, arrayMetadataByPath) {
-  if (!isObject(arrayMetadataByPath) || levels.length === 0) return null;
+  if (!isZarrMetadataRecord(arrayMetadataByPath) || levels.length === 0) return null;
   const firstPath = levels[0]?.path;
   if (!firstPath) return null;
   const meta = arrayMetadataByPath[firstPath];
-  return isObject(meta) ? meta : null;
+  return isZarrMetadataRecord(meta) ? meta : null;
 }
 
-function normalizeShape(rawShape) {
-  if (!Array.isArray(rawShape)) return null;
-  const shape = rawShape.map((value) => Math.floor(Number(value)));
-  return shape.every((value) => Number.isFinite(value) && value > 0) ? shape : null;
+function normalizeDimensions(rawDimensions) {
+  if (!Array.isArray(rawDimensions)) return null;
+  const dimensions = rawDimensions.map((value) => Math.floor(Number(value)));
+  return dimensions.every((value) => Number.isFinite(value) && value > 0) ? dimensions : null;
 }
 
 function rootOmeAttributes(input) {
-  if (!isObject(input)) return {};
-  if (isObject(input.ome)) return input.ome;
-  if (isObject(input.attributes?.ome)) return input.attributes.ome;
+  if (!isZarrMetadataRecord(input)) return {};
+  if (isZarrMetadataRecord(input.ome)) return input.ome;
+  if (isZarrMetadataRecord(input.attributes?.ome)) return input.attributes.ome;
   return input;
 }
 
@@ -395,7 +395,7 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
   }
 
   if (multiscales.length > 1) warnings.push('multiscales_multiple_entries_first_selected');
-  const selected = isObject(multiscales[0]) ? multiscales[0] : {};
+  const selected = isZarrMetadataRecord(multiscales[0]) ? multiscales[0] : {};
   const omeVersion = nonEmptyString(ome.version) || nonEmptyString(selected.version);
   if (!omeVersion) warnings.push('ome_version_missing');
   if (omeVersion && !/^0\.(4|5)(\..*)?$/.test(omeVersion)) warnings.push('ome_version_unrecognized');
@@ -423,12 +423,12 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
   const levelZeroScale = datasets[0]?.scale;
   const levelZeroTranslation = datasets[0]?.translation;
   const levelZeroMeta = levelZeroArrayMeta(datasets, arrayMetadataByPath);
-  const levelZeroShape = normalizeShape(levelZeroMeta?.shape);
+  const levelZeroDimensions = normalizeDimensions(levelZeroMeta?.['shape']);
   const levelZeroDimensionNames = Array.isArray(levelZeroMeta?.dimension_names)
     ? levelZeroMeta.dimension_names.map((name) => nonEmptyString(name))
     : null;
 
-  if (levelZeroShape && levelZeroShape.length !== axes.length) {
+  if (levelZeroDimensions && levelZeroDimensions.length !== axes.length) {
     // https://ngff.openmicroscopy.org/0.5/index.html#2-1-axes-metadata
     errors.push('axes_dimension_count_mismatch');
   }
@@ -456,7 +456,7 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
       + (Number.isFinite(multiscaleTranslation) ? multiscaleTranslation : 0);
     axis.translation = Number.isFinite(translationValue) ? translationValue : 0;
     axis.known = axis.scale > 0;
-    axis.size = levelZeroShape?.[i] > 0 ? levelZeroShape[i] : 1;
+    axis.size = levelZeroDimensions?.[i] > 0 ? levelZeroDimensions[i] : 1;
   }
 
   const channelAxis = axes.find((axis) => axis.type === 'channel');
@@ -466,7 +466,7 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
     channelAxis.known = false;
   }
 
-  if (isObject(ome.omero)) warnings.push('omero_transitional_metadata');
+  if (isZarrMetadataRecord(ome.omero)) warnings.push('omero_transitional_metadata');
   const channels = normalizeChannels(ome.omero, channelCount, errors, warnings);
 
   const pixelType = discoverPixelType(datasets, arrayMetadataByPath) || 'unknown';
@@ -496,7 +496,7 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
       version: omeVersion || null,
       name: nonEmptyString(selected.name) || null,
       type: nonEmptyString(selected.type) || null,
-      metadata: isObject(selected.metadata) ? selected.metadata : null,
+      metadata: isZarrMetadataRecord(selected.metadata) ? selected.metadata : null,
     },
     errors,
     warnings,

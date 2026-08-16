@@ -4,7 +4,7 @@
 // that names concrete element ids (confirm-modal, *-modal, .ask-close/.hc-close).
 
 /** @param {string} id @returns {HTMLElement|null} */
-export const $ = (id) => (typeof document === 'undefined' ? null : document.getElementById(id));
+export const $ = (id) => (globalThis.document ? document.getElementById(id) : null);
 
 /** Escape a string for safe interpolation into innerHTML. */
 export function escapeHtml(s) {
@@ -74,7 +74,7 @@ export function releaseFocus(el) {
   if (idx === -1) return;
   const [trap] = _focusStack.splice(idx, 1);
   trap.el.removeEventListener('keydown', trap.onKey);
-  if (typeof trap.prev?.focus === 'function') trap.prev.focus();
+  if (trap.prev?.focus instanceof Function) trap.prev.focus();
 }
 
 // Convert a client (mouse) X/Y to canvas-internal pixel coords. The CSS
@@ -86,6 +86,16 @@ export function clientToCanvasPx(canvas, clientX, clientY) {
     (clientX - r.left) / r.width  * canvas.width,
     (clientY - r.top)  / r.height * canvas.height,
   ];
+}
+
+export function canvasScreenScale(canvas, sourceWidth = canvas?.width, sourceHeight = canvas?.height) {
+  const rect = canvas?.getBoundingClientRect?.();
+  const x = Number(rect?.width) / Number(sourceWidth);
+  const y = Number(rect?.height) / Number(sourceHeight);
+  return {
+    x: Number.isFinite(x) && x > 0 ? x : 1,
+    y: Number.isFinite(y) && y > 0 ? y : 1,
+  };
 }
 
 export function openModal(id) {

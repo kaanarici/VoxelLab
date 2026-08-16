@@ -67,7 +67,7 @@ async function writeChunkedOmeZarrFixture(testInfo) {
   };
   const levelArray = {
     zarr_format: 2,
-    shape: [2, 96, 128],
+    'shape': [2, 96, 128],
     chunks: [1, 48, 64],
     dtype: '<u2',
     compressor: null,
@@ -201,7 +201,7 @@ test('OME-Zarr microscopy ROI results export calibration, replay recipes, and re
   const intakeNotice = page.locator('#notify-container .notify-text').filter({ hasText: 'Local intake:' }).last();
   await expect(intakeNotice).toContainText('openable files (OME-Zarr');
   await expect(intakeNotice).toContainText('skipped 1 unsupported file');
-  await expect(intakeNotice).toContainText('notes.md');
+  await expect(intakeNotice).not.toContainText('notes.md');
   await expect(intakeNotice).not.toContainText('JSON sidecar');
   await expect(page.locator('#series-desc')).toContainText('OME-Zarr');
   await expect(page.locator('#meta')).toContainText('0.250 µm × 0.500 µm');
@@ -449,7 +449,7 @@ test('OME-Zarr metadata-only boundaries show a warning instead of success', asyn
       },
       '0/.zarray': {
         zarr_format: 2,
-        shape: [16, 16],
+        'shape': [16, 16],
         chunks: [16, 16],
         dtype: '<u2',
         compressor: { id: 'gzip' },

@@ -1,6 +1,8 @@
 // DOM event wiring: toolbar, canvas, MPR panels, keyboard shortcuts.
 import { state } from './core/state.js';
 import { $, escapeHtml, showDialog, initModals } from './dom.js';
+import { notify } from './notify.js';
+import { collectDroppedFiles } from './file-drop.js';
 import { toggleAskMode } from './ask-mode.js';
 import {
   hydrateCTWindowPills,
@@ -37,9 +39,9 @@ import { rememberPreferredOverlay, forgetPreferredOverlay } from './overlay/over
 import { syncOverlays } from './sync.js';
 import { initSlimSAMTool, isSlimSAMMode, toggleSlimSAM } from './overlay/slimsam-tool.js';
 import {
-  sync3DScrubber as _sync3DScrubber,
   updateUniforms,
   setThreeDView,
+  toggleThreeTurntable,
   ensureVoxels,
   ensureHRVoxels,
   buildVolume,
@@ -60,6 +62,7 @@ import { wireViewCanvas } from './wire-controls-view-canvas.js';
 import {
   setBrainStack,
   setCineFps,
+  setClipAxis,
   setFusionOpacity,
   setLoaded,
   resetCompareViewport,
@@ -77,6 +80,7 @@ import { invalidateVoxelCache } from './runtime/viewer-runtime.js';
 import { beginPerfTrace } from './core/perf-trace.js';
 import { rememberSeriesViewState } from './core/state/series-view-memory.js';
 import { activeOverlayStateForSeries } from './runtime/active-overlay-state.js';
+import { volumeProjectionSamplingSupport } from './volume/volume-raycast-steps.js';
 
 function wireDesktopBridgeIfAvailable(selectSeries) {
   if (!globalThis.voxellabDesktop) return;
@@ -116,14 +120,14 @@ export function wireControls(deps) {
   const zScrub = $('s-zscrub');
   if (zScrub) {
     let _zScrubRAF = 0;
-    let _pendingZIdx = state.sliceIdx;
+    let _pendingZIdx = +zScrub.value;
     zScrub.addEventListener('input', () => {
       _pendingZIdx = +zScrub.value;
-      stopCine();
       if (_zScrubRAF) return;
       _zScrubRAF = requestAnimationFrame(() => {
         _zScrubRAF = 0;
-        setSliceIndex(_pendingZIdx);
+        const slices = state.manifest.series[state.seriesIdx]?.slices || 1;
+        setClipAxis('max', 2, (_pendingZIdx + 1) / slices);
       });
     });
   }
@@ -153,6 +157,21 @@ export function wireControls(deps) {
   };
   $('btn-upload').onclick = openStudyUpload;
   $('empty-state-upload').onclick = openStudyUpload;
+  const emptyState = $('empty-state');
+  emptyState.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  emptyState.addEventListener('drop', async (event) => {
+    event.preventDefault();
+    try {
+      const files = await collectDroppedFiles(event.dataTransfer);
+      const { showStudyUploadModal } = await import('./projects/study-upload-modal.js');
+      await showStudyUploadModal(selectSeries, files.length ? { initialFiles: files } : {});
+    } catch (error) {
+      showDialog('Upload failed', escapeHtml(error.message || String(error)));
+    }
+  });
   wireDesktopBridgeIfAvailable(selectSeries);
 
   $('btn-auto').onclick = autoWindowLevel;
@@ -369,9 +388,12 @@ export function wireControls(deps) {
   $('btn-sr').onclick = async () => {
     try {
       const { exportDicomSR } = await import('./dicom/dicom-sr.js');
-      const { count, filename } = await exportDicomSR(state);
+      const { measurementCount, annotationCount, filename } = await exportDicomSR(state);
+      const saved = [];
+      if (measurementCount) saved.push(`${measurementCount} measurement${measurementCount === 1 ? '' : 's'}`);
+      if (annotationCount) saved.push(`${annotationCount} annotation${annotationCount === 1 ? '' : 's'}`);
       showDialog('DICOM SR exported', `
-        <div class="dlg-body">Saved ${count} measurement${count > 1 ? 's' : ''} as <code>${escapeHtml(filename)}</code>.</div>
+        <div class="dlg-body">Saved ${saved.join(' and ')} as <code>${escapeHtml(filename)}</code>.</div>
         <div class="dlg-sub">TID 1500-style research export for downstream inspection. Validate semantics in your target viewer before relying on round-trip interoperability.</div>
       `);
     } catch (err) {
@@ -489,9 +511,25 @@ export function wireControls(deps) {
 
   document.querySelectorAll('#render-mode .pill').forEach((pill) => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('#render-mode .pill').forEach((p) => p.classList.remove('active'));
-      pill.classList.add('active');
-      setRenderMode(pill.dataset.mode);
+      const requested = pill.dataset.mode;
+      const applied = setRenderMode(requested);
+      document.querySelectorAll('#render-mode .pill').forEach((p) => {
+        const active = p.dataset.mode === applied;
+        p.classList.toggle('active', active);
+        p.setAttribute('aria-pressed', String(active));
+      });
+      if (applied !== requested) {
+        const series = state.manifest?.series?.[state.seriesIdx];
+        const support = volumeProjectionSamplingSupport({
+          width: series?.width,
+          height: series?.height,
+          depth: series?.slices,
+        });
+        notify(`3D ${requested === 'mip' ? 'MIP' : 'MinIP'} preview unavailable: this view needs ${support.requiredSteps} ray samples, exceeding the ${support.maximum}-sample quality bound. Use an MPR slab for voxel-accurate extrema.`, {
+          id: 'volume-projection-limit',
+          kind: 'warning',
+        });
+      }
     });
   });
 
@@ -502,6 +540,7 @@ export function wireControls(deps) {
   document.querySelectorAll('.preset-btn[data-view]').forEach((btn) => {
     btn.addEventListener('click', () => { void setThreeDView(btn.dataset.view); });
   });
+  $('three-turntable')?.addEventListener('click', () => { void toggleThreeTurntable(); });
 
   $('btn-3d').onclick = toggle3D;
   $('btn-mpr').onclick = toggleMPR;

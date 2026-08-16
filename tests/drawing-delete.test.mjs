@@ -76,7 +76,7 @@ test('ROI delete removes the stored shape by stable id', () => {
   state.sliceIdx = 2;
   setRoiEntriesForSlice(state, state.manifest.series[0], 2, [{
     id: 7,
-    shape: 'ellipse',
+    "shape": 'ellipse',
     pts: [[10, 10], [30, 30]],
     stats: { area_mm2: 20, mean: 4, std: 1 },
   }]);

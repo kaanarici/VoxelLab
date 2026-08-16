@@ -55,14 +55,14 @@ function routeFetch(routes, calls = []) {
     calls.push(url);
     const item = routes.get(url);
     if (!item) return response({ status: 404 });
-    return typeof item === 'function' ? item(url) : item;
+    return item instanceof Function ? item(url) : item;
   };
 }
 
 function arrayMeta(overrides = {}) {
   return {
     zarr_format: 2,
-    shape: [1, 4, 4],
+    'shape': [1, 4, 4],
     chunks: [1, 2, 2],
     dtype: '<u2',
     compressor: { id: 'blosc', cname: 'lz4' },
@@ -109,7 +109,7 @@ test('readChunk builds dotted and slash-separated URLs and returns C-order chunk
     'https://example.test/cells.zarr/0/0.1.1',
     'https://example.test/cells.zarr/1/0/1/1',
   ]);
-  assert.deepEqual(dotted.shape, [1, 2, 2]);
+  assert.deepEqual(dotted['shape'], [1, 2, 2]);
   assert.deepEqual(dotted.strides, [4, 2, 1]);
   assert.equal(dotted.view.byteLength, 8);
   assert.equal(slashed.view.byteLength, 8);
@@ -134,13 +134,13 @@ test('readChunk decodes full declared Zarr v2 edge-chunk shapes', async () => {
   });
 
   const chunk = await store.readChunk('0', [0, 1, 1], arrayMeta({
-    shape: [1, 3, 4],
+    'shape': [1, 3, 4],
     chunks: [1, 2, 3],
     dtype: '|u1',
     compressor: null,
   }));
 
-  assert.deepEqual(chunk.shape, [1, 2, 3]);
+  assert.deepEqual(chunk['shape'], [1, 2, 3]);
   assert.deepEqual(chunk.strides, [6, 3, 1]);
   assert.equal(chunk.view.byteLength, 6);
   assert.equal(decodeCalls[0].expectedBytes, 6);
@@ -196,7 +196,7 @@ test('readChunk rejects declared decoded chunks over budget before scheduling a 
 
   await assert.rejects(
     store.readChunk('0', [0, 0, 0], arrayMeta({
-      shape: [100_000_000, 1, 1],
+      'shape': [100_000_000, 1, 1],
       chunks: [100_000_000, 1, 1],
       dtype: '|u1',
     })),
@@ -223,7 +223,7 @@ test('readChunk rejects an oversized Content-Length without calling arrayBuffer'
   });
 
   await assert.rejects(
-    store.readChunk('0', [0, 0, 0], arrayMeta({ shape: [1, 1, 1], chunks: [1, 1, 1], dtype: '|u1' })),
+    store.readChunk('0', [0, 0, 0], arrayMeta({ 'shape': [1, 1, 1], chunks: [1, 1, 1], dtype: '|u1' })),
     { name: 'ZarrChunkEncodedLengthError' },
   );
   assert.equal(arrayBufferCalls, 0);
@@ -241,7 +241,7 @@ test('readChunk stops a streamed payload that exceeds the encoded chunk budget',
   });
 
   await assert.rejects(
-    store.readChunk('0', [0, 0, 0], arrayMeta({ shape: [1, 1, 1], chunks: [1, 1, 1], dtype: '|u1' })),
+    store.readChunk('0', [0, 0, 0], arrayMeta({ 'shape': [1, 1, 1], chunks: [1, 1, 1], dtype: '|u1' })),
     (error) => error.name === 'ZarrChunkEncodedLengthError' && /while streaming/.test(error.message),
   );
 });
@@ -263,7 +263,7 @@ test('readChunk LRU cache refreshes hits and evicts the oldest chunk', async () 
     decode: async (data) => data,
     cacheLimit: 2,
   });
-  const meta = arrayMeta({ shape: [1, 1, 3], chunks: [1, 1, 1], dtype: '|u1' });
+  const meta = arrayMeta({ 'shape': [1, 1, 3], chunks: [1, 1, 1], dtype: '|u1' });
 
   await store.readChunk('0', [0, 0, 0], meta);
   await store.readChunk('0', [0, 0, 1], meta);
@@ -316,7 +316,7 @@ test('readChunk bounds concurrent fetches', async () => {
     decode: async (data) => data,
     concurrency: 2,
   });
-  const meta = arrayMeta({ shape: [1, 1, 6], chunks: [1, 1, 1], dtype: '|u1' });
+  const meta = arrayMeta({ 'shape': [1, 1, 6], chunks: [1, 1, 1], dtype: '|u1' });
 
   await Promise.all(Array.from({ length: 6 }, (_, x) => store.readChunk('0', [0, 0, x], meta)));
 
@@ -340,7 +340,7 @@ test('abort rejects in-flight and queued chunk reads', async () => {
     decode: async (data) => data,
     concurrency: 1,
   });
-  const meta = arrayMeta({ shape: [1, 1, 2], chunks: [1, 1, 1], dtype: '|u1' });
+  const meta = arrayMeta({ 'shape': [1, 1, 2], chunks: [1, 1, 1], dtype: '|u1' });
 
   const inFlight = store.readChunk('0', [0, 0, 0], meta);
   const queued = store.readChunk('0', [0, 0, 1], meta);

@@ -3,6 +3,7 @@
 
 import { $, escapeHtml } from '../dom.js';
 import { imageUrlForStack } from '../series/series-image-stack.js';
+import { downsampleLocalByteSlice, localByteSliceData } from '../series/local-byte-slice.js';
 import { state } from '../core/state.js';
 import { notify } from '../notify.js';
 import {
@@ -24,6 +25,7 @@ import { sortSeriesArray, studyType } from './projects-sidebar-sort.js';
 
 const INTERACTIVE_UI_BLOCKING_ESCAPE =
   '.cmdk-backdrop.open, #annot-modal.visible, #ask-modal.visible, #consult-modal.visible, #upload-modal.visible, #confirm-modal.visible, #help-modal.visible, #shortcuts-modal.visible, #cloud-settings-modal.visible';
+const THUMBNAIL_MAX_DIMENSION = 160;
 let projectsRenderSeq = 0;
 
 const PIN_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -31,13 +33,36 @@ const PIN_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   <path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
 </svg>`;
 
+function localSliceThumbnailDataUrl(source) {
+  const bytes = localByteSliceData(source);
+  if (!bytes) return source?.currentSrc || source?.src || '';
+  const width = Number(source.naturalWidth);
+  const height = Number(source.naturalHeight);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || bytes.length !== width * height) return '';
+  const thumbnail = downsampleLocalByteSlice(bytes, width, height, THUMBNAIL_MAX_DIMENSION);
+  const canvas = document.createElement('canvas');
+  canvas.width = thumbnail.width;
+  canvas.height = thumbnail.height;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(thumbnail.width, thumbnail.height);
+  for (let index = 0, offset = 0; index < thumbnail.bytes.length; index += 1, offset += 4) {
+    const value = thumbnail.bytes[index];
+    image.data[offset] = value;
+    image.data[offset + 1] = value;
+    image.data[offset + 2] = value;
+    image.data[offset + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
 async function getProjectsForRender() {
   try {
     return await getAllProjects();
   } catch {
     notify('Folder organization is temporarily unavailable; series remain openable.', {
       id: 'projects-storage-warning',
-      duration: 6000,
+      kind: 'warning',
     });
     return null;
   }
@@ -75,7 +100,7 @@ export async function expandFolderForSeries(slug) {
   } catch {
     notify('Folder organization is temporarily unavailable; series remain openable.', {
       id: 'projects-storage-warning',
-      duration: 6000,
+      kind: 'warning',
     });
   }
 }
@@ -120,7 +145,7 @@ function scheduleStudiesFadeIn(seriesList, pinnedList) {
     if (!el) return;
     el.classList.remove('studies-fade-in');
     if (!el.querySelector('li[data-series-slug]')) return;
-    if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (globalThis.matchMedia instanceof Function && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     void el.offsetWidth;
     requestAnimationFrame(() => {
       el.classList.add('studies-fade-in');
@@ -193,7 +218,7 @@ function applyActiveSelectionInPlace(list, pinnedList, activeSlug) {
 
   if (activeRow) {
     const hidden = activeRow.offsetParent === null;
-    if (!hidden && typeof activeRow.scrollIntoView === 'function') {
+    if (!hidden && activeRow.scrollIntoView instanceof Function) {
       activeRow.scrollIntoView({ block: 'nearest' });
     }
   }
@@ -292,11 +317,6 @@ export async function renderProjectsSidebar(manifest, currentSeriesIdx) {
     const menuBtn = header.querySelector('.project-menu-btn');
     menuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const existing = menuBtn.querySelector('.folder-menu');
-      if (existing) {
-        existing.remove();
-        return;
-      }
       showFolderMenu(menuBtn, project);
     });
 
@@ -581,7 +601,9 @@ function createSeriesItem(s, active, isPinned = false) {
 }
 
 function seriesCloudMarkHtml(s = {}) {
-  const cloudAction = s.cloudAction && typeof s.cloudAction === 'object' ? s.cloudAction : null;
+  const cloudAction = s.cloudAction && !Array.isArray(s.cloudAction) && Object.getPrototypeOf(s.cloudAction) === Object.prototype
+    ? s.cloudAction
+    : null;
   const cloudJobId = String(cloudAction?.jobId || s.sourceJobId || '').trim();
   const cloudLabel = cloudAction?.label || (cloudJobId ? 'Cloud result' : '');
   if (!cloudLabel) return '';
@@ -668,9 +690,12 @@ function wireSeriesThumbnailTooltip() {
 
     const localStack = state._localStacks?.[slug];
     if (localStack) {
-      // Imported stacks already retain their slice Images; using the matching
-      // one keeps hover previews local instead of inventing a data/ URL.
-      img.src = localStack[midIdx]?.currentSrc || localStack[midIdx]?.src || '';
+      let cached = thumbCache.get(slug);
+      if (!cached) {
+        cached = { src: localSliceThumbnailDataUrl(localStack[midIdx]) };
+        thumbCache.set(slug, cached);
+      }
+      img.src = cached.src;
     } else if (thumbCache.has(slug)) {
       img.src = thumbCache.get(slug).src;
     } else {

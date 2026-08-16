@@ -15,6 +15,10 @@ import { selectPyramidLevel } from './zarr/zarr-level-select.js';
 // Two 32 MiB reads keep that transient peak bounded while preserving overlap.
 const OME_ZARR_CHUNK_LOAD_CONCURRENCY = 2;
 
+function isZarrMetadataRecord(value) {
+  return Object.prototype.toString.call(value) === '[object Object]';
+}
+
 function normalizePath(value) {
   return String(value || '').replaceAll('\\', '/').replace(/^\.\/+/, '').replace(/\/+/g, '/');
 }
@@ -42,7 +46,8 @@ function joinPath(...parts) {
 }
 
 async function textForFile(file) {
-  if (typeof file.text === 'function') return file.text();
+  if (file?.text instanceof Function) return file.text();
+  if (!(file?.arrayBuffer instanceof Function)) throw new Error('OME-Zarr metadata file does not expose text() or arrayBuffer().');
   const buffer = await file.arrayBuffer();
   return new TextDecoder('utf-8').decode(buffer);
 }
@@ -51,7 +56,7 @@ async function bytesForFile(file) {
   if (Number(file?.size) > MAX_OME_ZARR_ENCODED_CHUNK_BYTES) {
     throw new Error(`OME-Zarr resource limit: encoded chunk exceeds the ${MAX_OME_ZARR_ENCODED_CHUNK_BYTES} byte budget.`);
   }
-  if (typeof file?.stream !== 'function') {
+  if (!(file?.stream instanceof Function)) {
     throw new Error('OME-Zarr resource limit: bounded encoded chunk streaming is unavailable.');
   }
   return readBoundedOmeZarrByteStream(file.stream(), {
@@ -60,9 +65,9 @@ async function bytesForFile(file) {
 }
 
 function omeAttributes(input) {
-  if (input?.ome && typeof input.ome === 'object') return input.ome;
-  if (input?.attributes?.ome && typeof input.attributes.ome === 'object') return input.attributes.ome;
-  return input && typeof input === 'object' ? input : {};
+  if (isZarrMetadataRecord(input?.ome)) return input.ome;
+  if (isZarrMetadataRecord(input?.attributes?.ome)) return input.attributes.ome;
+  return isZarrMetadataRecord(input) ? input : {};
 }
 
 function isOmeZarrRootMetadata(input) {
@@ -76,12 +81,12 @@ function zarrArrayPath(rootPath, datasetPath, fileName) {
 
 export { isOmeZarrFile };
 
-function cOrderStrides(shape) {
-  const strides = new Array(shape.length);
+function cOrderStrides(dimensions) {
+  const strides = new Array(dimensions.length);
   let stride = 1;
-  for (let i = shape.length - 1; i >= 0; i -= 1) {
+  for (let i = dimensions.length - 1; i >= 0; i -= 1) {
     strides[i] = stride;
-    stride *= shape[i];
+    stride *= dimensions[i];
   }
   return strides;
 }
@@ -115,7 +120,7 @@ function makeChunkStore({ filesByPath, rootPath, datasetPath, parsed }) {
         if (!parsed.hasFillValue) {
           throw new Error(`OME-Zarr chunk is missing and the array has no concrete fill_value: ${path}`);
         }
-        const entry = { shape: parsed.chunks, strides: cOrderStrides(parsed.chunks), view: null, fillValue: parsed.fillValue };
+        const entry = { 'shape': parsed.chunks, strides: cOrderStrides(parsed.chunks), view: null, fillValue: parsed.fillValue };
         cache.set(key, entry);
         return entry;
       }
@@ -123,8 +128,8 @@ function makeChunkStore({ filesByPath, rootPath, datasetPath, parsed }) {
       // Zarr v2 stores every chunk at the declared chunk shape. Edge chunks are
       // clipped only while copying into the logical array; their overhang bytes
       // remain part of the encoded/decoded chunk contract.
-      const storedChunkShape = parsed.chunks;
-      const expectedBytes = storedChunkShape.reduce((product, value) => product * value, 1) * parsed.dtype.bytes;
+      const storedChunkDimensions = parsed.chunks;
+      const expectedBytes = storedChunkDimensions.reduce((product, value) => product * value, 1) * parsed.dtype.bytes;
       const bytes = await decodeZarrChunk(encoded, {
         compressor: parsed.compressor,
         filters: parsed.filters,
@@ -132,8 +137,8 @@ function makeChunkStore({ filesByPath, rootPath, datasetPath, parsed }) {
         expectedBytes,
       });
       const entry = {
-        shape: storedChunkShape,
-        strides: cOrderStrides(storedChunkShape),
+        'shape': storedChunkDimensions,
+        strides: cOrderStrides(storedChunkDimensions),
         view: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
       };
       cache.set(key, entry);
@@ -161,21 +166,21 @@ function levelAxisScale(level, axes, name) {
   return Number.isFinite(value) && value > 0 ? value : axisScale(axes, name);
 }
 
-function levelShapeSize(shape, axes, name, fallback = 1) {
+function levelDimensionSize(dimensions, axes, name, fallback = 1) {
   const index = axisIndex(axes, name);
-  return index >= 0 && shape[index] > 0 ? shape[index] : fallback;
+  return index >= 0 && dimensions[index] > 0 ? dimensions[index] : fallback;
 }
 
 function assertSelectedLevelAxes(levelZero, chosen, axes) {
   if (!levelZero?.parsed || !chosen?.parsed) throw new Error('OME-Zarr pyramid level metadata is incomplete.');
-  if (levelZero.parsed.shape.length !== axes.length || chosen.parsed.shape.length !== axes.length) {
+  if (levelZero.parsed['shape'].length !== axes.length || chosen.parsed['shape'].length !== axes.length) {
     throw new Error('OME-Zarr pyramid array rank does not match declared axes.');
   }
   for (let index = 0; index < axes.length; index += 1) {
     const name = String(axes[index]?.name || '').toLowerCase();
     if (['x', 'y', 'z'].includes(name)) continue;
-    const base = levelZero.parsed.shape[index];
-    const selected = chosen.parsed.shape[index];
+    const base = levelZero.parsed['shape'][index];
+    const selected = chosen.parsed['shape'][index];
     if (selected !== base) {
       throw new Error(`OME-Zarr selected level changes non-spatial axis '${name || index}' from ${base} to ${selected}.`);
     }
@@ -203,13 +208,13 @@ function preferredSpatialUnit(units) {
   return '';
 }
 
-async function planePixelsFromChunks(chunkStore, shape, chunks, axes, dtype, { c, z, t }) {
+async function planePixelsFromChunks(chunkStore, dimensions, chunks, axes, dtype, { c, z, t }) {
   const xIndex = axisIndex(axes, 'x');
   const yIndex = axisIndex(axes, 'y');
   if (xIndex < 0 || yIndex < 0) throw new Error('OME-Zarr image loading requires x and y axes.');
-  const width = shape[xIndex];
-  const height = shape[yIndex];
-  const baseCoords = new Array(shape.length).fill(0);
+  const width = dimensions[xIndex];
+  const height = dimensions[yIndex];
+  const baseCoords = new Array(dimensions.length).fill(0);
   const cIndex = axisIndex(axes, 'c');
   const zIndex = axisIndex(axes, 'z');
   const tIndex = axisIndex(axes, 't');
@@ -235,10 +240,10 @@ async function planePixelsFromChunks(chunkStore, shape, chunks, axes, dtype, { c
     const chunk = chunkStore.get(chunkCoords);
     const xStart = chunkCoords[xIndex] * chunks[xIndex];
     const yStart = chunkCoords[yIndex] * chunks[yIndex];
-    const xEnd = Math.min(width, xStart + chunk.shape[xIndex]);
-    const yEnd = Math.min(height, yStart + chunk.shape[yIndex]);
+    const xEnd = Math.min(width, xStart + chunk['shape'][xIndex]);
+    const yEnd = Math.min(height, yStart + chunk['shape'][yIndex]);
     let planeOffset = 0;
-    for (let axis = 0; axis < shape.length; axis += 1) {
+    for (let axis = 0; axis < dimensions.length; axis += 1) {
       if (axis !== xIndex && axis !== yIndex) {
         planeOffset += (baseCoords[axis] - chunkCoords[axis] * chunks[axis]) * chunk.strides[axis];
       }
@@ -285,7 +290,7 @@ export async function discoverOmeZarrMetadata(files, { normalize = normalizeOmeZ
       const json = JSON.parse(await textForFile(file));
       if (path.endsWith('.zmetadata')) {
         const rootPath = parentPath(path, '.zmetadata');
-        const metadata = json && typeof json.metadata === 'object' && !Array.isArray(json.metadata) ? json.metadata : {};
+        const metadata = isZarrMetadataRecord(json?.metadata) ? json.metadata : {};
         for (const [relativePath, metadataJson] of Object.entries(metadata)) {
           const consolidatedPath = joinPath(rootPath, relativePath);
           if (!entries.has(consolidatedPath)) entries.set(consolidatedPath, metadataJson);
@@ -352,8 +357,8 @@ export async function buildOmeZarrSeriesResults(discovery, files) {
     return {
       level: level.level,
       path: level.path,
-      width: axisIndex(axes, 'x') >= 0 ? parsed.shape[axisIndex(axes, 'x')] : 0,
-      height: axisIndex(axes, 'y') >= 0 ? parsed.shape[axisIndex(axes, 'y')] : 0,
+      width: axisIndex(axes, 'x') >= 0 ? parsed['shape'][axisIndex(axes, 'x')] : 0,
+      height: axisIndex(axes, 'y') >= 0 ? parsed['shape'][axisIndex(axes, 'y')] : 0,
       scale: level.scale,
       downsample: Math.max(...['x', 'y'].map((name) => {
         const index = axisIndex(axes, name);
@@ -371,28 +376,29 @@ export async function buildOmeZarrSeriesResults(discovery, files) {
   if (!chosen) throw new Error('OME-Zarr selected pyramid metadata is missing.');
   assertSelectedLevelAxes(levelInputs[0], chosen, axes);
   const { parsed } = chosen;
-  const { shape, chunks, dtype } = parsed;
+  const dimensions = parsed['shape'];
+  const { chunks, dtype } = parsed;
   const codecLabel = describeZarrCodec(parsed.compressor, parsed.filters);
   const datasetArrayMetadataByPath = Object.fromEntries(levelInputs.map(level => [
     level.path,
     zarrArrayMetaForDataset(level.arrayMeta, level.parsed),
   ]));
   const chunkStore = makeChunkStore({ filesByPath: discovery.filesByPath || fileMap(files), rootPath: discovery.rootPath, datasetPath: chosen.path, parsed });
-  const sizeC = levelShapeSize(shape, axes, 'c');
-  const sizeZ = levelShapeSize(shape, axes, 'z');
-  const sizeT = levelShapeSize(shape, axes, 't');
+  const sizeC = levelDimensionSize(dimensions, axes, 'c');
+  const sizeZ = levelDimensionSize(dimensions, axes, 'z');
+  const sizeT = levelDimensionSize(dimensions, axes, 't');
   const xIndex = axisIndex(axes, 'x');
   const yIndex = axisIndex(axes, 'y');
   const resourceBudget = omeZarrResourceBudget({
-    width: xIndex >= 0 ? shape[xIndex] : 0,
-    height: yIndex >= 0 ? shape[yIndex] : 0,
+    width: xIndex >= 0 ? dimensions[xIndex] : 0,
+    height: yIndex >= 0 ? dimensions[yIndex] : 0,
     sizeC,
     sizeZ,
     sizeT,
     chunkWidth: xIndex >= 0 ? chunks[xIndex] : 0,
     chunkHeight: yIndex >= 0 ? chunks[yIndex] : 0,
     axes,
-    shape,
+    'shape': dimensions,
     chunks,
     bytesPerElement: dtype.bytes,
   });
@@ -403,7 +409,7 @@ export async function buildOmeZarrSeriesResults(discovery, files) {
     for (let c = 0; c < sizeC; c += 1) {
       for (let z = 0; z < sizeZ; z += 1) {
         pages.push({
-          ...await planePixelsFromChunks(chunkStore, shape, chunks, axes, dtype, { c, z, t }),
+          ...await planePixelsFromChunks(chunkStore, dimensions, chunks, axes, dtype, { c, z, t }),
           bitsPerSample: dtype.bits,
           sampleFormat: dtype.sampleFormat,
           samplesPerPixel: 1,
@@ -420,8 +426,8 @@ export async function buildOmeZarrSeriesResults(discovery, files) {
   const rootName = (discovery.rootPath.split('/').pop() || 'ome-zarr').replace(/\.zarr$/i, '') || 'ome-zarr';
   const results = buildMicroscopySeriesResults(pages, {
     source: 'OME-Zarr',
-    sizeX: levelShapeSize(shape, axes, 'x', pages[0]?.width || 1),
-    sizeY: levelShapeSize(shape, axes, 'y', pages[0]?.height || 1),
+    sizeX: levelDimensionSize(dimensions, axes, 'x', pages[0]?.width || 1),
+    sizeY: levelDimensionSize(dimensions, axes, 'y', pages[0]?.height || 1),
     sizeZ,
     sizeC,
     sizeT,

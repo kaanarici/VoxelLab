@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
 import { createLatestDesktopIntakeDrain } from '../js/desktop-bridge.js';
+import { openDesktopOrBrowserFilePicker } from '../js/projects/study-upload-modal.js';
 
 function source(relativePath) {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
@@ -30,11 +31,19 @@ test('desktop retry action restores one error surface when the native picker rej
   assert.match(desktopBridge, /'File open failed'/);
 });
 
-test('desktop upload zone opens the native file picker while browser intake keeps the file input', () => {
-  const uploadModal = source('../js/projects/study-upload-modal.js');
-
-  assert.match(uploadModal, /if \(isDesktopHost && typeof desktop\.openFiles === 'function'\)[\s\S]*?desktop\.openFiles\(\)/);
-  assert.match(uploadModal, /if \(isDesktopHost && typeof desktop\.openFiles === 'function'\)[\s\S]*?return;\s*}\s*input\.click\(\)/);
+test('desktop upload uses the native picker while browser intake clicks the file input', async () => {
+  const calls = [];
+  assert.equal(await openDesktopOrBrowserFilePicker({
+    isDesktopHost: true,
+    desktop: { openFiles: async () => calls.push('desktop') },
+    input: { click: () => calls.push('browser') },
+  }), 'desktop');
+  assert.equal(await openDesktopOrBrowserFilePicker({
+    isDesktopHost: false,
+    desktop: null,
+    input: { click: () => calls.push('browser') },
+  }), 'browser');
+  assert.deepEqual(calls, ['desktop', 'browser']);
 });
 
 test('desktop intake drain runs only the latest queued payload after active work settles', async () => {

@@ -15,6 +15,21 @@ const DEFAULT_MAX_PROBES = 6;
 
 const unavailableSlugs = new Set();
 
+export function seriesHasSessionPixels(series, { localStacks = {} } = {}) {
+  const slug = String(series?.slug || '').trim();
+  if (!slug || !Number.isFinite(series?.slices) || series.slices <= 0) return false;
+  const stack = localStacks[slug];
+  return Array.isArray(stack) && stack.length === series.slices;
+}
+
+export function seriesCanOpenInViewer(series, {
+  localStacks = {},
+} = {}) {
+  if (seriesHasSessionPixels(series, { localStacks })) return true;
+  if (!series?.slug || !Number.isFinite(series?.slices) || series.slices <= 0) return false;
+  return !isSeriesKnownUnavailable(series.slug);
+}
+
 export function isSeriesKnownUnavailable(slug) {
   return !!slug && unavailableSlugs.has(slug);
 }

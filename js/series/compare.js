@@ -12,6 +12,7 @@ import { cachedFetchJson } from '../core/cached-fetch.js';
 import {
   closestSliceIndexForPatientPoint,
   inPlaneDisplaySize,
+  inPlanePixelSpacing,
   patientPointAtSlice,
   seriesCompareGroup,
 } from '../core/geometry.js';
@@ -20,10 +21,10 @@ import { COLORMAPS, getFusedWLLut, getFusedWLU32 } from '../colormap.js';
 import { softFail } from '../core/error.js';
 import { renderInspectionReadout, resolveVoxelInspection } from '../inspection-readout.js';
 import { drawCompositeSlice } from '../slice-compositor.js';
-import { getRegistrationQuality } from '../metadata.js';
+import { getRegistrationRecord } from '../metadata.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
 import { selectionRegionColors } from '../runtime/region-color-isolation.js';
-import { isRenderableImage, overlaySessionForSeries } from '../runtime/review-readiness.js';
+import { overlaySessionForSeries } from '../runtime/review-readiness.js';
 import { resetCompareViewport, setCompareViewport, setWindowLevel } from '../core/state/viewer-commands.js';
 import { setSpinnerPending } from '../spinner.js';
 import { loadImageStack, regionMetaUrlForSeries } from './series-image-stack.js';
@@ -222,9 +223,9 @@ export function trimCompareCaches(keepSlugs = []) {
 }
 
 export function initCompare({ selectSeries, step = () => {}, hideHover = () => {} }) {
-  if (typeof selectSeries === 'function') _selectSeries = selectSeries;
-  if (typeof step === 'function') _step = step;
-  if (typeof hideHover === 'function') _hideHover = hideHover;
+  if (selectSeries instanceof Function) _selectSeries = selectSeries;
+  if (step instanceof Function) _step = step;
+  if (hideHover instanceof Function) _hideHover = hideHover;
   wireCompareInteractions();
 }
 
@@ -233,10 +234,6 @@ function compareSpinner(pending, token = _comparePendingToken) {
   // Keep the scrubber live while peers stream in — locking it is a big part of
   // "the scrubber doesn't help you". The pending spinner is feedback enough.
   setSpinnerPending('compare', !!pending);
-}
-
-function stackImageReady(stack, index) {
-  return isRenderableImage(stack?.[index]);
 }
 
 function resolvedGroupKey(series) {
@@ -294,15 +291,56 @@ function comparePendingKey(peers, z, matches = {}) {
   ].join('|');
 }
 
-function registrationLabel(series, primarySlug) {
-  if (!series || series.slug === primarySlug) return series?.name || '';
-  const quality = getRegistrationQuality(series.slug);
-  if (!quality) return series.name;
+function registrationQualityForPair(series, primary) {
+  const record = getRegistrationRecord(series?.slug);
+  const reference = String(record?.referenceSlug || '').trim();
+  const primaryIds = [primary?.slug, primary?.sourceSeriesUID, primary?.seriesInstanceUID]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  return reference && primaryIds.includes(reference) ? record.quality : null;
+}
+
+function registrationLabel(series, primary, indexSync) {
+  if (!series) return '';
   const parts = [series.name];
+  if (!inPlanePixelSpacing(series).known) parts.push('uncalibrated');
+  if (series.slug === primary?.slug) return parts.join(' · ');
+  if (indexSync) parts.push('index sync', 'not registered');
+  const quality = registrationQualityForPair(series, primary);
+  if (!quality) return parts.join(' · ');
   if (quality.verdict) parts.push(quality.verdict);
   else if (quality.grade && quality.grade !== 'unknown') parts.push(quality.grade);
   if (Number.isFinite(quality.mm)) parts.push(`${quality.mm.toFixed(quality.mm >= 10 ? 1 : 2)} mm`);
   return parts.join(' · ');
+}
+
+function compareSeriesDetail(series) {
+  const spacing = inPlanePixelSpacing(series);
+  const matrix = `${series.width || '?'} × ${series.height || '?'}`;
+  const calibration = spacing.known
+    ? `${spacing.rowMm.toFixed(2)} × ${spacing.colMm.toFixed(2)} mm/px`
+    : 'spacing unknown';
+  return [series.description || series.sourceFolder || '', matrix, calibration].filter(Boolean).join(' · ');
+}
+
+function sharedCompareMmScale(cells) {
+  let scale = Infinity;
+  let calibrated = 0;
+  for (const cell of cells) {
+    const series = state.manifest.series.find((entry) => entry.slug === cell.dataset.slug);
+    const spacing = inPlanePixelSpacing(series);
+    if (!series || !spacing.known) continue;
+    const width = Number(cell.clientWidth);
+    const height = Number(cell.clientHeight);
+    if (!(width > 0 && height > 0)) return null;
+    scale = Math.min(
+      scale,
+      width / (series.width * spacing.colMm),
+      height / (series.height * spacing.rowMm),
+    );
+    calibrated += 1;
+  }
+  return calibrated > 0 && Number.isFinite(scale) && scale > 0 ? scale : null;
 }
 
 function ensureCompareCurrentSlice(peers, z, primarySlug, matches = {}) {
@@ -326,17 +364,17 @@ function ensureCompareCurrentSlice(peers, z, primarySlug, matches = {}) {
       },
     });
     const stack = state.cmpStacks[series.slug];
-    if (stack?.ensureIndex && !stackImageReady(stack, zi)) {
+    if (stack?.ensureIndex && !stack[zi]?.complete) {
       tasks.push(stack.ensureIndex(zi, { priority: 'high' }));
     }
-    if (overlaySession.tissue.enabled && !overlaySession.tissue.currentSliceReady && po.seg?.ensureIndex) {
+    if (overlaySession.tissue.enabled && !po.seg?.[zi]?.complete && po.seg?.ensureIndex) {
       tasks.push(po.seg.ensureIndex(zi, { priority: 'high' }));
     }
-    if (overlaySession.heatmap.enabled && !overlaySession.heatmap.currentSliceReady && po.sym?.ensureIndex) {
+    if (overlaySession.heatmap.enabled && !po.sym?.[zi]?.complete && po.sym?.ensureIndex) {
       tasks.push(po.sym.ensureIndex(zi, { priority: 'high' }));
     }
     if (overlaySession.labels.enabled) {
-      if (!overlaySession.labels.currentSliceReady && po.regions?.ensureIndex) {
+      if (!po.regions?.[zi]?.complete && po.regions?.ensureIndex) {
         tasks.push(po.regions.ensureIndex(zi, { priority: 'high' }));
       }
       if (!overlaySession.labels.metaReady && !po.regionMeta) {
@@ -351,7 +389,7 @@ function ensureCompareCurrentSlice(peers, z, primarySlug, matches = {}) {
     const fusionStack = series.slug === primarySlug && overlays.fusion.enabled
       ? (state.cmpStacks[state.fusionSlug] || overlays.fusion.imgs)
       : null;
-    if (overlaySession.fusion.enabled && !overlaySession.fusion.currentSliceReady && fusionStack?.ensureIndex) {
+    if (overlaySession.fusion.enabled && !fusionStack?.[zi]?.complete && fusionStack?.ensureIndex) {
       tasks.push(fusionStack.ensureIndex(zi, { priority: 'high' }));
     }
   }
@@ -413,34 +451,58 @@ export function buildCompareMenu(menuEl, { onSelectionChanged = null, onStop = n
   const head = document.createElement('div');
   head.className = 'cmp-menu-head';
   const indexSync = state.mode === 'cmp' && compareUsesIndexSync(peers, state.manifest.series[state.seriesIdx]);
-  head.textContent = indexSync ? 'Compare series · synced by index' : 'Compare series';
+  head.textContent = indexSync ? 'Compare series · index sync' : 'Compare series';
   menuEl.appendChild(head);
 
-  for (const s of series) {
-    const item = document.createElement('label');
-    item.className = 'dd-item cmp-pick ui-checkbox';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.className = 'ui-checkbox-input';
-    cb.value = s.slug;
-    cb.checked = activeSlugs.has(s.slug);
-    const box = document.createElement('span');
-    box.className = 'ui-checkbox-box';
-    box.setAttribute('aria-hidden', 'true');
-    const toggle = document.createElement('span');
-    toggle.className = 'ui-checkbox-toggle';
-    toggle.appendChild(cb);
-    toggle.appendChild(box);
-    const span = document.createElement('span');
-    span.textContent = s.name;
-    item.appendChild(toggle);
-    item.appendChild(span);
-    item.addEventListener('click', (e) => e.stopPropagation());
-    cb.addEventListener('change', () => {
-      const result = applyMenuSelection(menuEl);
-      onSelectionChanged?.(result);
-    });
-    menuEl.appendChild(item);
+  const primary = state.manifest.series[state.seriesIdx];
+  const primaryGroup = resolvedGroupKey(primary);
+  const aligned = series.filter((item) => item.slug === primary.slug
+    || (primaryGroup != null && resolvedGroupKey(item) === primaryGroup));
+  const alignedSlugs = new Set(aligned.map((item) => item.slug));
+  const sections = [
+    ['Aligned series', aligned],
+    ['Other or unknown study · not registered', series.filter((item) => !alignedSlugs.has(item.slug))],
+  ];
+  for (const [sectionLabel, entries] of sections) {
+    if (!entries.length) continue;
+    const section = document.createElement('div');
+    section.className = 'cmp-menu-section';
+    section.textContent = sectionLabel;
+    menuEl.appendChild(section);
+    for (const s of entries) {
+      const item = document.createElement('label');
+      item.className = 'dd-item cmp-pick ui-checkbox';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'ui-checkbox-input';
+      cb.value = s.slug;
+      cb.checked = activeSlugs.has(s.slug);
+      const box = document.createElement('span');
+      box.className = 'ui-checkbox-box';
+      box.setAttribute('aria-hidden', 'true');
+      const toggle = document.createElement('span');
+      toggle.className = 'ui-checkbox-toggle';
+      toggle.appendChild(cb);
+      toggle.appendChild(box);
+      const copy = document.createElement('span');
+      copy.className = 'cmp-pick-copy';
+      const name = document.createElement('span');
+      name.className = 'cmp-pick-name';
+      name.textContent = s.name;
+      const detail = document.createElement('span');
+      detail.className = 'cmp-pick-detail';
+      detail.textContent = compareSeriesDetail(s);
+      copy.appendChild(name);
+      copy.appendChild(detail);
+      item.appendChild(toggle);
+      item.appendChild(copy);
+      item.addEventListener('click', (e) => e.stopPropagation());
+      cb.addEventListener('change', () => {
+        const result = applyMenuSelection(menuEl);
+        onSelectionChanged?.(result);
+      });
+      menuEl.appendChild(item);
+    }
   }
 
   if (onStop) {
@@ -603,12 +665,14 @@ export function drawCompare() {
   const z = state.sliceIdx;
   const peers = getGroupPeers();
   const primarySeries = state.manifest.series[state.seriesIdx];
+  const indexSync = compareUsesIndexSync(peers, primarySeries);
   const matches = compareSliceMatches(peers, primarySeries, z);
   const primarySlug = state.manifest.series[state.seriesIdx]?.slug;
   const hotLut = COLORMAPS.hot.lut;
   const wlLut = getFusedWLLut();
   if (ensureCompareCurrentSlice(peers, z, primarySlug, matches)) return;
   compareSpinner(false);
+  const mmScale = sharedCompareMmScale(cells);
 
   cells.forEach((cell) => {
     const slug = cell.dataset.slug;
@@ -621,8 +685,13 @@ export function drawCompare() {
     const label = cell.querySelector('.cmp-lbl');
     canvas.width = series.width;
     canvas.height = series.height;
-    // Shape: { width: 512, height: 768 } so compare panes match physical in-plane aspect.
-    const displaySize = inPlaneDisplaySize(series);
+    const spacing = inPlanePixelSpacing(series);
+    const displaySize = mmScale && spacing.known
+      ? {
+          width: series.width * spacing.colMm * mmScale,
+          height: series.height * spacing.rowMm * mmScale,
+        }
+      : inPlaneDisplaySize(series);
     canvas.style.width = `${displaySize.width}px`;
     canvas.style.height = `${displaySize.height}px`;
     const match = matches[slug];
@@ -633,7 +702,7 @@ export function drawCompare() {
       return;
     }
     cell.classList?.remove?.('out-of-range');
-    if (label) label.textContent = registrationLabel(series, primarySlug);
+    if (label) label.textContent = registrationLabel(series, primarySeries, indexSync);
     const zi = match?.index ?? Math.min(z, series.slices - 1);
     warmCompareOverlay(stack, zi);
     const img = stack[zi];

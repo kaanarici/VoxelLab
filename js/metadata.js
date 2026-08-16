@@ -42,7 +42,7 @@ function firstFinite(...values) {
 function registrationEntryFromData(data, slug) {
   if (!data || !slug) return null;
   const entry = data.pairs?.[slug] || data[slug];
-  if (!entry || typeof entry !== 'object') return null;
+  if (Object.prototype.toString.call(entry) !== '[object Object]') return null;
   return entry;
 }
 
@@ -119,10 +119,10 @@ export function registrationRecordFromData(data, slug) {
 
 function registrationRecordFromSeries(series = {}) {
   const entry = series?.registration || series?.engineReport?.registration;
-  if (!entry || typeof entry !== 'object') return null;
+  if (Object.prototype.toString.call(entry) !== '[object Object]') return null;
   const method = String(entry.method || '').trim();
-  const transformInput = entry.transform && typeof entry.transform === 'object' ? entry.transform : {};
-  const metricsInput = entry.metrics && typeof entry.metrics === 'object' ? entry.metrics : {};
+  const transformInput = Object.prototype.toString.call(entry.transform) === '[object Object]' ? entry.transform : {};
+  const metricsInput = Object.prototype.toString.call(entry.metrics) === '[object Object]' ? entry.metrics : {};
   const translationMm = finiteNumberArray(transformInput.translationMm || entry.translation_mm);
   const transform = {
     type: String(transformInput.type || '').trim() || registrationTransformType(method),
@@ -132,7 +132,7 @@ function registrationRecordFromSeries(series = {}) {
     rotationMagnitudeMm: firstFinite(transformInput.rotationMagnitudeMm, entry.rotation_magnitude_mm),
   };
   const verdict = String(entry.verdict || entry.quality?.verdict || '').trim();
-  const quality = entry.quality && typeof entry.quality === 'object'
+  const quality = Object.prototype.toString.call(entry.quality) === '[object Object]'
     ? {
         mm: firstFinite(entry.quality.mm),
         grade: String(entry.quality.grade || '').trim() || gradeFromRegistration(verdict, transform.translationMagnitudeMm),
@@ -256,7 +256,7 @@ function regionVolumeRows(stats) {
 }
 
 function quantificationRecords(series, stats) {
-  if (!series || !stats || typeof stats !== 'object') return [];
+  if (!series || Object.prototype.toString.call(stats) !== '[object Object]') return [];
   const source = statsSourceForSeries(series);
   const records = [];
   for (const region of regionVolumeRows(stats)) {
@@ -301,11 +301,11 @@ function quantificationRecords(series, stats) {
     'opening-based CSF top-blob estimate',
     stats.ventricleNote || 'Not a true ventricular segmentation.',
   ));
-  const wmh = stats.wmh && typeof stats.wmh === 'object' ? formatFixed(stats.wmh.volume_ml, 1) : null;
+  const wmh = Object.prototype.toString.call(stats.wmh) === '[object Object]' ? formatFixed(stats.wmh.volume_ml, 1) : null;
   if (wmh != null) records.push(quantificationRecord('WMH heuristic', wmh, 'mL', source, 'threshold estimate from sidecar stats', 'Not a validated quantitative biomarker.'));
-  const microbleeds = stats.microbleeds && typeof stats.microbleeds === 'object' ? finiteNumber(stats.microbleeds.count) : null;
+  const microbleeds = Object.prototype.toString.call(stats.microbleeds) === '[object Object]' ? finiteNumber(stats.microbleeds.count) : null;
   if (microbleeds != null) records.push(quantificationRecord('Microbleed candidates', microbleeds, 'count', source, 'algorithmic candidates from sidecar stats', 'Requires expert review.'));
-  const adcUnit = stats.adc && typeof stats.adc === 'object' ? String(stats.adc.display_unit || stats.adc.units || '').trim() : '';
+  const adcUnit = Object.prototype.toString.call(stats.adc) === '[object Object]' ? String(stats.adc.display_unit || stats.adc.units || '').trim() : '';
   if (adcUnit) records.push(quantificationRecord('ADC display unit', adcUnit, 'unit', source, 'ADC display calibration', 'Used by ROI and hover readouts.'));
   return records;
 }
@@ -391,7 +391,7 @@ export function renderQuantificationPanel() {
       tip: stats.ventricleNote || 'Opening-based CSF top-blob estimate. Not a true ventricular segmentation.',
     }));
   }
-  if (stats.wmh && typeof stats.wmh === 'object') {
+  if (Object.prototype.toString.call(stats.wmh) === '[object Object]') {
     const wmh = formatFixed(stats.wmh.volume_ml, 1);
     if (wmh != null) {
       rows.push(statsRowHtml('WMH heuristic', `${wmh} mL`, {
@@ -399,7 +399,7 @@ export function renderQuantificationPanel() {
       }));
     }
   }
-  if (stats.microbleeds && typeof stats.microbleeds === 'object') {
+  if (Object.prototype.toString.call(stats.microbleeds) === '[object Object]') {
     const count = finiteNumber(stats.microbleeds.count);
     if (count != null) {
       rows.push(statsRowHtml('Microbleed candidates', String(count), {
@@ -407,7 +407,7 @@ export function renderQuantificationPanel() {
       }));
     }
   }
-  if (stats.adc && typeof stats.adc === 'object') {
+  if (Object.prototype.toString.call(stats.adc) === '[object Object]') {
     const unit = String(stats.adc.display_unit || stats.adc.units || '').trim();
     if (unit) rows.push(statsRowHtml('ADC unit', unit, { tip: 'ADC display calibration used by ROI and hover readouts.' }));
   }

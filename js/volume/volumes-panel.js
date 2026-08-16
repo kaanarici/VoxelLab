@@ -36,10 +36,10 @@ export function renderVolumes() {
     if (state.stats.ventricleEstimateMl !== undefined) {
       extra += `<div class="vol-row vol-row-spaced"><span class="vk">Ventricle est.</span><span class="vv">${state.stats.ventricleEstimateMl} mL</span></div>`;
     }
-    if (state.stats.wmh && typeof state.stats.wmh.volume_ml === 'number') {
+    if (state.stats.wmh && Number.isFinite(state.stats.wmh.volume_ml)) {
       extra += `<div class="vol-row" data-tip="Threshold estimate: bright white-matter voxels above the WMH threshold are counted; not a validated quantitative biomarker." data-tip-pos="left"><span class="vk">WMH (heuristic)</span><span class="vv">${state.stats.wmh.volume_ml.toFixed(1)} mL</span></div>`;
     }
-    if (state.stats.microbleeds && typeof state.stats.microbleeds.count === 'number') {
+    if (state.stats.microbleeds && Number.isFinite(state.stats.microbleeds.count)) {
       const mb = state.stats.microbleeds;
       extra += `<div class="vol-row"><span class="vk">Microbleed candidates</span><span class="vv vv-link" id="jump-mb">${mb.count}</span></div>`;
     }

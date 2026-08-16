@@ -14,6 +14,7 @@ const {
   setPassthroughRootEntry,
 } = await import('../js/core/state.js');
 const { ensureVoxels, tryFlattenVoxelsInWorker } = await import('../js/volume/volume-voxels-ensure.js');
+const { createLocalByteSlice } = await import('../js/series/local-byte-slice.js');
 
 test('batch coalesces repeated writes into one notification with the final value', () => {
   const seen = [];
@@ -213,6 +214,24 @@ test('cached base voxels can still hydrate overlay volumes later', () => {
   state.useRegions = true;
   assert.equal(ensureVoxels(), true);
   assert.deepEqual([...state.regionVoxels], [1, 0, 2, 0, 0, 3, 0, 4]);
+});
+
+test('ensureVoxels rebuilds an evicted local raw volume from compact byte slices', () => {
+  state.manifest = {
+    series: [{ slug: 'local_bytes', width: 2, height: 1, slices: 2 }],
+  };
+  state.seriesIdx = 0;
+  state.useBrain = false;
+  state.voxels = null;
+  state.voxelsKey = '';
+  state._localRawVolumes = {};
+  state.imgs = [
+    createLocalByteSlice(Uint8Array.from([1, 2]), 2, 1),
+    createLocalByteSlice(Uint8Array.from([3, 4]), 2, 1),
+  ];
+
+  assert.equal(ensureVoxels(), true);
+  assert.deepEqual([...state.voxels], [1, 2, 3, 4]);
 });
 
 test('ensureVoxels keys cached volumes by series identity, not list position', () => {

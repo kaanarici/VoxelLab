@@ -10,7 +10,7 @@
   #ask-modal.visible, #consult-modal.visible, #upload-modal.visible, #confirm-modal.visible, #shortcuts-modal.visible, #cloud-settings-modal.visible { display: flex; opacity: 1; transition: opacity var(--modal-open-dur) var(--ease-smooth); }
   .ask-card {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 0;
     border-radius: var(--radius-lg);
     width: min(680px, calc(100vw - 32px));
     min-width: min(480px, calc(100vw - 32px));
@@ -51,16 +51,16 @@
     line-height: var(--lh-snug);
   }
   .ask-close {
-    width: var(--btn-sidebar); height: var(--btn-sidebar);
+    width: var(--btn-toolbar); height: var(--btn-toolbar);
     display: flex; align-items: center; justify-content: center;
-    color: var(--icon-idle); cursor: pointer; font-size: var(--icon-md); line-height: var(--lh-none);
+    color: var(--icon-idle); cursor: pointer; flex-shrink: 0;
     transition: color var(--dur-quick) var(--ease-swap), background var(--dur-quick) var(--ease-swap);
     margin-left: var(--space-xs);
     border-radius: var(--radius);
     position: relative;
     background: transparent; border: none; padding: 0;
-    font-family: inherit;
   }
+  .ask-close svg { width: var(--icon-md); height: var(--icon-md); display: block; }
   .ask-close:hover { color: var(--text); background: var(--hover); }
   .ask-close:active { opacity: 0.7; }
   .ask-close::after {
@@ -189,7 +189,7 @@
   #help-modal.visible { display: flex; opacity: 1; transition: opacity var(--modal-open-dur) var(--ease-smooth); }
   .help-card {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 0;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-modal);
     width: min(680px, calc(100vw - 32px));
@@ -255,15 +255,21 @@
   }
   .help-footer {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
     padding: var(--space-md) var(--space-xl);
     border-top: var(--border-w) solid var(--border);
   }
+  .help-release { display: flex; align-items: center; gap: var(--space-sm); }
+  .help-version { color: var(--muted); font-family: var(--ff-mono); font-size: var(--fs-caption); }
+  .help-footer a.annot-btn { text-decoration: none; }
   .shortcuts-card {
     width: min(960px, calc(100vw - 32px));
     max-height: min(760px, calc(100vh - 48px));
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 0;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-modal);
     overflow: hidden;

@@ -1037,7 +1037,7 @@ test('ImageJ hyperstack workflow supports Z/C/T-scoped calibrated count and line
   const imagejZipPath = testInfo.outputPath('imagej-hyperstack-point-line-rois.zip');
   await imagejZipDownload.saveAs(imagejZipPath);
   const exportedRois = await parseImageJRoiZip(await readFile(imagejZipPath));
-  expect(exportedRois.map(roi => roi.shape).sort()).toEqual(['line', 'point']);
+  expect(exportedRois.map(roi => roi['shape']).sort()).toEqual(['line', 'point']);
   expect(exportedRois.map(roi => roi.label).sort()).toEqual(['Line 1', 'ROI 1']);
   for (const roi of exportedRois) {
     expect(roi.zPosition).toBe(2);

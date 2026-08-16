@@ -132,3 +132,27 @@ test('injectLocalSeries retains local raw volumes for revisit paths', () => {
   assert.equal(state._localStacks.local_ct.length, 1);
   assert.equal(state._localRawVolumes.local_ct, rawVolume);
 });
+
+test('injectLocalSeries retains compact byte slices without PNG data URLs', () => {
+  const manifest = { series: [] };
+  const entry = {
+    slug: 'local_compact_ct',
+    name: 'Compact Local CT',
+    width: 2,
+    height: 1,
+    slices: 1,
+    geometryKind: 'imageStack',
+    reconstructionCapability: '2d-only',
+    renderability: '2d',
+  };
+  state._localStacks = {};
+  state._localRawVolumes = {};
+
+  injectLocalSeries(manifest, entry, [Uint8Array.from([7, 9])], null);
+
+  const slice = state._localStacks.local_compact_ct[0];
+  assert.equal(slice.complete, true);
+  assert.equal(slice.naturalWidth, 2);
+  assert.deepEqual([...slice._voxellabByteData], [7, 9]);
+  assert.equal('src' in slice, false);
+});

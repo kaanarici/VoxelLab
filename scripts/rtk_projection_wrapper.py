@@ -35,7 +35,7 @@ def load_rtk() -> tuple[Any, Any]:
         import itk
         from itk import RTK as rtk
     except Exception as exc:  # pragma: no cover - import failure path is runtime-specific.
-        raise RuntimeError("itk-rtk is required; run `npm run setup -- --pipeline --rtk` or `./.venv/bin/python -m pip install itk-rtk`") from exc
+        raise RuntimeError("itk-rtk is required; run `npm run setup -- --rtk`") from exc
     return itk, rtk
 
 

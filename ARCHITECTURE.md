@@ -52,7 +52,7 @@ graph TD
 
   slice --> mpr["js/mpr/mpr-view.js"]
   slice --> compositor["js/slice-compositor.js"]
-  mpr --> lanczos["js/lanczos.js"]
+  mpr --> sampling["js/mpr/mpr-sampling.js"]
   mpr --> mprGeometry["js/mpr/mpr-geometry.js"]
   mpr --> mprProjection["js/mpr/mpr-projection.js"]
   mpr --> compositor
@@ -99,7 +99,7 @@ graph TD
 - Local microscopy imports enter that same volume contract only when the active C/T position has a complete, regular, calibrated Z stack with retained raw planes. Missing planes, gaps, or untrusted spacing keep the series 2D-only.
 - Raw 16-bit upgrades enforce fixed voxel and modeled working-set limits, bounded response streaming, exact single-frame Zstandard metadata and checksums, and decode validation before Cache Storage or viewer state is updated.
 - 2D rendering applies window/level, colormap, plugin overlays, annotations, and label overlays on the current slice only.
-- MPR reuses the same voxel buffers, choosing a fast linear Z path during scrubbing and Lanczos quality on idle.
+- MPR reuses the same voxel buffers and trilinear intensity sampler across orthogonal, oblique, CPU, and GPU paths. Interaction quality state defers expensive repaint work without changing interpolation semantics.
 - 3D uploads only when the underlying voxel data changed; window/level and clipping stay uniform-only updates.
 - Measurements, annotations, SEG labels, region overlays, and derived-object bindings all enter after the shared series/voxel selection step rather than inventing parallel data paths.
 
@@ -107,10 +107,11 @@ graph TD
 
 | State Group | Primary Writers | Primary Readers |
 |---|---|---|
-| `manifest`, `seriesIdx`, `sliceIdx` | `viewer.js` bootstraps, then `js/core/state/viewer-commands.js` via `js/series/select-series.js` and view controls | nearly all rendering modules |
-| `mpr.*` | `js/core/state/viewer-commands.js`, called from `js/wire-controls-mpr-panel.js`, `js/sync.js`, and `js/mpr/mpr-view.js` | `js/mpr/mpr-view.js`, `js/slice-view.js`, `js/mpr/mpr-gpu.js` |
-| `three.*` | `js/runtime/viewer-runtime.js`, `js/view-modes.js`, `js/volume/volume-3d.js` | `js/volume/volume-3d.js`, clip/readout UI, runtime readiness modules |
-| `overlays.*` | `js/series/select-series.js`, `js/overlay/overlay-stack.js`, `js/wire-controls.js`, runtime overlay helpers | `js/slice-view.js`, `js/slice-compositor.js`, `js/mpr/mpr-view.js`, `js/volume/volume-label-overlay.js` |
+| `manifest`, `seriesIdx`, `sliceIdx` | `viewer.js` bootstraps the manifest; `js/core/state/viewer-commands.js` owns normal selection/slice changes; `js/series/remove-series.js` owns removal transitions | nearly all rendering modules |
+| `mpr.*` | `js/core/state/viewer-commands.js`; UI and rendering modules call those commands | `js/mpr/mpr-view.js`, `js/slice-view.js`, `js/mpr/mpr-gpu.js` |
+| `three.*` (serializable display settings) | `js/core/state/viewer-commands.js` | `js/volume/volume-3d.js`, clip/readout UI, render-state persistence |
+| `threeRuntime.*` (renderer objects and readiness) | `js/runtime/viewer-runtime.js` | `js/volume/volume-3d.js`, label-overlay rendering, runtime readiness modules |
+| `overlays.*` (configuration and loaded sidecars) | `js/core/state/viewer-commands.js` owns user-facing settings and selection resets; overlay/import modules hydrate bounded runtime data | `js/slice-view.js`, `js/slice-compositor.js`, `js/mpr/mpr-view.js`, `js/volume/volume-label-overlay.js` |
 | `voxels`, `hrVoxels` | `js/volume/volume-voxels-ensure.js`, `js/volume/volume-hr-voxels.js`, cached through `js/runtime/viewer-runtime.js` | `js/slice-view.js`, `js/mpr/mpr-view.js`, `js/mpr/mpr-gpu.js`, `js/volume/volume-3d.js` |
 | local import caches (`_local*`) | `js/dicom/dicom-import.js`, `js/dicom/dicom-derived-import.js`, microscopy import/analysis adapters, `js/dicom/dicomweb/dicomweb-source.js` | `js/series/select-series.js`, volume builders, microscopy controls and analysis |
 | measurements / annotations / ask | `js/roi/measure.js`, `js/overlay/annotation.js`, `js/overlay/annotation-graph.js`, `js/consult-ask.js` | `js/slice-view.js`, side panels, DICOM SR export/report paths |
@@ -167,6 +168,7 @@ Those inputs can participate in:
 - [`js/derived-objects.js`](js/derived-objects.js): derived-object binding contract and affine/FoR compatibility rules
 - [`js/dicom/dicom-derived-import.js`](js/dicom/dicom-derived-import.js): session-backed SEG / RTSTRUCT / VoxelLab viewer-style SR note import path plus RT Dose metadata binding, all bound to the shared geometry contract
 - [`js/mpr/mpr-geometry.js`](js/mpr/mpr-geometry.js): orthogonal MPR plane sizing and voxel mapping
+- [`js/mpr/mpr-sampling.js`](js/mpr/mpr-sampling.js): shared trilinear intensity sampling for CPU and GPU parity
 - [`js/mpr/mpr-projection.js`](js/mpr/mpr-projection.js): thin/MIP/average slab projection basis shared by CPU and GPU MPR
 - [`js/slice-compositor.js`](js/slice-compositor.js): common 2D/MPR base-plus-overlay composition semantics
 - [`js/ultrasound.js`](js/ultrasound.js): ultrasound cine and scan-conversion boundary rules

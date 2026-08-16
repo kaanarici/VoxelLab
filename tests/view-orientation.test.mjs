@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { viewPresetAnatomy, hasPatientFrame } from '../js/core/view-orientation.js';
+import {
+  hasPatientFrame,
+  mprPaneLabels,
+  viewPresetAnatomy,
+} from '../js/core/view-orientation.js';
 
 // Minimal series: only orientation drives the basis (sliceDir = row × col when
 // no IPP endpoints are supplied), which is exactly what we want to pin down.
@@ -42,5 +46,31 @@ test('no patient frame → null (caller shows neutral labels)', () => {
   assert.equal(viewPresetAnatomy({}), null);
   assert.equal(viewPresetAnatomy({ orientation: [1, 0, 0, 0, 1, 0], imageDomain: 'microscopy' }), null);
   assert.equal(hasPatientFrame({ orientation: [1, 0, 0, 0, 1, 0] }), true);
+  assert.equal(hasPatientFrame({ orientation: [1, 0, 0, 0, 1, 0], patientFrameTrusted: false }), false);
+  assert.equal(hasPatientFrame({ orientation: [1, 0, 0, 0, 1, 0], _niftiSpatialAffineLps: null }), false);
   assert.equal(hasPatientFrame({}), false);
+});
+
+test('MPR pane labels follow the patient-space acquisition normals', () => {
+  const labels = mprPaneLabels({
+    orientation: [0, 1, 0, 0, 0, -1],
+    patientFrameTrusted: true,
+  });
+
+  assert.equal(labels.ax, 'Sagittal');
+  assert.equal(labels.co, 'Axial');
+  assert.equal(labels.sa, 'Coronal');
+  assert.equal(labels.ob, 'Oblique · acquisition grid');
+});
+
+test('MPR pane labels stay neutral without a trusted patient frame', () => {
+  assert.deepEqual(mprPaneLabels({
+    orientation: [1, 0, 0, 0, 1, 0],
+    patientFrameTrusted: false,
+  }), {
+    ax: 'Acquisition XY',
+    co: 'Acquisition XZ',
+    sa: 'Acquisition YZ',
+    ob: 'Oblique · acquisition grid',
+  });
 });

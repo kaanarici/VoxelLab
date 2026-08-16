@@ -1,6 +1,12 @@
 import * as THREE from '../volume/vendor-three.js';
-export { planeForAxis, planeForOblique } from './mpr-projection.js';
 import { SEG_PALETTE, TISSUE_LABEL_COUNT } from '../core/constants.js';
+import {
+  rendererMax3DTextureSize,
+} from '../volume/volume-texture-capabilities.js';
+import { MAX_ACCURATE_SLAB_SAMPLES } from './mpr-projection.js';
+import { gpuMprInputSupport } from './mpr-gpu-support.js';
+export { planeForAxis, planeForOblique } from './mpr-projection.js';
+export { gpuMprInputSupport } from './mpr-gpu-support.js';
 
 // Shape: one shared offscreen WebGL MPR renderer reused for all panes.
 const runtime = {
@@ -11,9 +17,9 @@ const runtime = {
   material: null,
   mesh: null,
   textures: {},
-  baseRef: null,
-  baseBytes: null,
-  dimsKey: '',
+  max3DTextureSize: 0,
+  floatLinearFiltering: false,
+  lastFailureReason: '',
   // Shape: reusable 256x1 RGBA LUT byte planes + change counters for current GPU render state.
   lutCache: {
     grayBytes: new Uint8Array(256 * 4),
@@ -31,10 +37,10 @@ const runtime = {
   },
 };
 
-function createDataTexture3D(bytes, width, height, depth, filter = THREE.LinearFilter) {
-  const texture = new THREE.Data3DTexture(bytes, width, height, depth);
+function createDataTexture3D(data, width, height, depth, filter = THREE.LinearFilter) {
+  const texture = new THREE.Data3DTexture(data, width, height, depth);
   texture.format = THREE.RedFormat;
-  texture.type = THREE.UnsignedByteType;
+  texture.type = data instanceof Float32Array ? THREE.FloatType : THREE.UnsignedByteType;
   texture.minFilter = filter;
   texture.magFilter = filter;
   texture.unpackAlignment = 1;
@@ -69,6 +75,7 @@ function shaderMaterial() {
       uTexel: { value: new THREE.Vector3(1, 1, 1) },
       uCoordMax: { value: new THREE.Vector3() },
       uSlabStep: { value: new THREE.Vector3() },
+      uOutputSize: { value: new THREE.Vector2(1, 1) },
       uRegionAlpha: { value: 0.55 },
       uFusionAlpha: { value: 0.55 },
       uProjectionMode: { value: 0 },
@@ -107,6 +114,7 @@ function shaderMaterial() {
       uniform vec3 uTexel;
       uniform vec3 uCoordMax;
       uniform vec3 uSlabStep;
+      uniform vec2 uOutputSize;
       uniform float uRegionAlpha;
       uniform float uFusionAlpha;
       uniform int uProjectionMode;
@@ -116,7 +124,7 @@ function shaderMaterial() {
       uniform int uHasRegions;
       uniform int uHasFusion;
       out vec4 outColor;
-      const int MAX_SLAB_SAMPLES = 24;
+      const int MAX_SLAB_SAMPLES = ${MAX_ACCURATE_SLAB_SAMPLES};
 
       vec3 sampleLut(sampler2D tex, float idx) {
         return texture(tex, vec2((idx + 0.5) / 256.0, 0.5)).rgb;
@@ -125,6 +133,11 @@ function shaderMaterial() {
       vec3 toTexCoord(vec3 coord) {
         vec3 clamped = clamp(coord, vec3(0.0), uCoordMax);
         return (clamped + 0.5) * uTexel;
+      }
+
+      bool insideVolume(vec3 coord) {
+        return all(greaterThanEqual(coord, vec3(-0.00001)))
+          && all(lessThanEqual(coord, uCoordMax + vec3(0.00001)));
       }
 
       float sampleContinuous(sampler3D tex, vec3 coord) {
@@ -137,26 +150,30 @@ function shaderMaterial() {
 
       float projectContinuous(sampler3D tex, vec3 coord) {
         if (uSampleCount <= 1 || uProjectionMode == 0) {
-          return sampleContinuous(tex, coord);
+          return insideVolume(coord) ? sampleContinuous(tex, coord) : 0.0;
         }
         float accum = 0.0;
         float best = uProjectionMode == 3 ? 1.0 : 0.0;
+        int validSamples = 0;
         float centerOffset = float(uSampleCount - 1) * 0.5;
         for (int i = 0; i < MAX_SLAB_SAMPLES; i++) {
           if (i >= uSampleCount) break;
           vec3 sampleCoord = coord + (float(i) - centerOffset) * uSlabStep;
+          if (!insideVolume(sampleCoord)) continue;
           float value = sampleContinuous(tex, sampleCoord);
+          validSamples += 1;
           if (uProjectionMode == 1) accum += value;
           else if (uProjectionMode == 2) best = max(best, value);
           else if (uProjectionMode == 3) best = min(best, value);
         }
-        if (uProjectionMode == 1) return accum / float(uSampleCount);
+        if (validSamples == 0) return 0.0;
+        if (uProjectionMode == 1) return accum / float(validSamples);
         return best;
       }
 
       float projectDiscreteLabel(sampler3D tex, vec3 coord) {
         if (uSampleCount <= 1 || uProjectionMode == 0) {
-          return sampleDiscrete(tex, coord);
+          return insideVolume(coord) ? sampleDiscrete(tex, coord) : 0.0;
         }
         float centerOffset = float(uSampleCount - 1) * 0.5;
         if (uProjectionMode == 1) {
@@ -165,7 +182,9 @@ function shaderMaterial() {
           for (int i = 0; i < MAX_SLAB_SAMPLES; i++) {
             if (i >= uSampleCount) break;
             float offset = float(i) - centerOffset;
-            float label = sampleDiscrete(tex, coord + offset * uSlabStep);
+            vec3 sampleCoord = coord + offset * uSlabStep;
+            if (!insideVolume(sampleCoord)) continue;
+            float label = sampleDiscrete(tex, sampleCoord);
             float distance = abs(offset);
             if (label > 0.001 && distance < bestDistance) {
               bestLabel = label;
@@ -176,21 +195,28 @@ function shaderMaterial() {
         }
         float bestIntensity = 0.0;
         float bestLabel = 0.0;
+        bool found = false;
         for (int i = 0; i < MAX_SLAB_SAMPLES; i++) {
           if (i >= uSampleCount) break;
           vec3 sampleCoord = coord + (float(i) - centerOffset) * uSlabStep;
+          if (!insideVolume(sampleCoord)) continue;
           float intensity = sampleContinuous(uBase, sampleCoord);
           bool better = uProjectionMode == 3 ? intensity < bestIntensity : intensity > bestIntensity;
-          if (i == 0 || better) {
+          if (!found || better) {
             bestIntensity = intensity;
             bestLabel = sampleDiscrete(tex, sampleCoord);
+            found = true;
           }
         }
         return bestLabel;
       }
 
       void main() {
-        vec3 coord = uOrigin + vUv.x * uAxisU + vUv.y * uAxisV;
+        vec2 endpointUv = vec2(
+          uOutputSize.x > 1.0 ? (vUv.x * uOutputSize.x - 0.5) / (uOutputSize.x - 1.0) : 0.0,
+          uOutputSize.y > 1.0 ? (vUv.y * uOutputSize.y - 0.5) / (uOutputSize.y - 1.0) : 0.0
+        );
+        vec3 coord = uOrigin + endpointUv.x * uAxisU + endpointUv.y * uAxisV;
         float base = floor(projectContinuous(uBase, coord) * 255.0 + 0.5);
         vec3 rgb = sampleLut(uGrayLut, base);
 
@@ -239,8 +265,16 @@ function shaderMaterial() {
 }
 
 export function canUseGpuMpr() {
-  return typeof document !== 'undefined'
-    && typeof WebGL2RenderingContext !== 'undefined';
+  return Boolean(globalThis.document && globalThis.WebGL2RenderingContext);
+}
+
+export function gpuMprFailureReason() {
+  return runtime.lastFailureReason;
+}
+
+function failGpuMpr(reason) {
+  runtime.lastFailureReason = String(reason || 'GPU MPR unavailable');
+  return false;
 }
 
 function ensureShell(width, height) {
@@ -262,24 +296,13 @@ function ensureShell(width, height) {
     runtime.mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), runtime.material);
     runtime.mesh.frustumCulled = false;
     runtime.scene.add(runtime.mesh);
+    const gl = runtime.renderer.getContext();
+    runtime.max3DTextureSize = rendererMax3DTextureSize(runtime.renderer);
+    runtime.floatLinearFiltering = !!gl.getExtension('OES_texture_float_linear');
   }
   runtime.renderer.setPixelRatio(1);
   runtime.renderer.setSize(width, height, false);
   return runtime;
-}
-
-function bytesForBase(vox, dims) {
-  if (vox instanceof Uint8Array) return vox;
-  if (runtime.baseRef === vox && runtime.baseBytes && runtime.dimsKey === `${dims.W}x${dims.H}x${dims.D}`) {
-    return runtime.baseBytes;
-  }
-  // Shape: Uint8Array(W * H * D) normalized from hrVoxels once per source volume.
-  const out = new Uint8Array(vox.length);
-  for (let i = 0; i < vox.length; i++) out[i] = Math.max(0, Math.min(255, Math.round(vox[i] * 255)));
-  runtime.baseRef = vox;
-  runtime.baseBytes = out;
-  runtime.dimsKey = `${dims.W}x${dims.H}x${dims.D}`;
-  return out;
 }
 
 function replaceVolumeTexture(slot, ref, width, height, depth, filter) {
@@ -291,6 +314,20 @@ function replaceVolumeTexture(slot, ref, width, height, depth, filter) {
   const texture = createDataTexture3D(ref, width, height, depth, filter);
   runtime.textures[slot] = { ref, width, height, depth, texture };
   return texture;
+}
+
+export function releaseGpuMprVolumeTextures() {
+  for (const slot of ['base', 'seg', 'regions', 'sym', 'fusion']) {
+    runtime.textures[slot]?.texture?.dispose?.();
+    delete runtime.textures[slot];
+  }
+}
+
+function clearGlErrors(gl) {
+  if (!gl?.getError) return;
+  for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i += 1) {
+    // Clear stale errors so this draw owns the error observed after render.
+  }
 }
 
 function ensureLutTexture(slot, key, bytes) {
@@ -343,13 +380,24 @@ export function drawGpuMprSlice(canvas, {
   const outH = canvas.height;
   try {
     const shell = ensureShell(outW, outH);
-    if (!shell || !plane || !vox) return false;
+    if (!shell) return failGpuMpr('WebGL2 renderer unavailable');
+    if (!plane || !vox) return failGpuMpr('MPR plane or volume data unavailable');
+    const support = gpuMprInputSupport({
+      dims,
+      projection,
+      vox,
+      max3DTextureSize: shell.max3DTextureSize,
+      floatLinearFiltering: shell.floatLinearFiltering,
+    });
+    if (!support.supported) return failGpuMpr(support.reason);
+    const gl = shell.renderer.getContext();
+    if (gl.isContextLost?.()) return failGpuMpr('WebGL2 context lost');
+    clearGlErrors(gl);
 
-    const baseBytes = bytesForBase(vox, dims);
     const empty = new Uint8Array([0]);
     const uniforms = shell.material.uniforms;
 
-    uniforms.uBase.value = replaceVolumeTexture('base', baseBytes, dims.W, dims.H, dims.D, THREE.LinearFilter);
+    uniforms.uBase.value = replaceVolumeTexture('base', vox, dims.W, dims.H, dims.D, THREE.LinearFilter);
     uniforms.uSeg.value = replaceVolumeTexture('seg', segVoxels || empty, segVoxels ? dims.W : 1, segVoxels ? dims.H : 1, segVoxels ? dims.D : 1, THREE.NearestFilter);
     uniforms.uRegions.value = replaceVolumeTexture('regions', regionVoxels || empty, regionVoxels ? dims.W : 1, regionVoxels ? dims.H : 1, regionVoxels ? dims.D : 1, THREE.NearestFilter);
     uniforms.uSym.value = replaceVolumeTexture('sym', symVoxels || empty, symVoxels ? dims.W : 1, symVoxels ? dims.H : 1, symVoxels ? dims.D : 1, THREE.LinearFilter);
@@ -386,6 +434,7 @@ export function drawGpuMprSlice(canvas, {
     uniforms.uTexel.value.set(1 / dims.W, 1 / dims.H, 1 / dims.D);
     uniforms.uCoordMax.value.set(dims.W - 1, dims.H - 1, dims.D - 1);
     uniforms.uSlabStep.value.fromArray(projection?.slabStep || [0, 0, 0]);
+    uniforms.uOutputSize.value.set(outW, outH);
     uniforms.uRegionAlpha.value = regionAlpha;
     uniforms.uFusionAlpha.value = fusionAlpha;
     uniforms.uProjectionMode.value = {
@@ -401,11 +450,18 @@ export function drawGpuMprSlice(canvas, {
     uniforms.uHasFusion.value = fusionVoxels ? 1 : 0;
 
     shell.renderer.render(shell.scene, shell.camera);
+    const glError = gl.getError();
+    if (glError !== gl.NO_ERROR) {
+      releaseGpuMprVolumeTextures();
+      return failGpuMpr(`WebGL2 render error ${glError}`);
+    }
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(shell.canvas, 0, 0, outW, outH);
+    runtime.lastFailureReason = '';
     return true;
   } catch (error) {
+    releaseGpuMprVolumeTextures();
     console.warn('voxellab mpr-gpu: falling back to CPU reslice', error);
-    return false;
+    return failGpuMpr(error?.message || 'GPU MPR render failed');
   }
 }

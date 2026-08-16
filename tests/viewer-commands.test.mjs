@@ -29,6 +29,7 @@ const {
   setObliqueAngles,
   setObliqueClip,
   setOverlayEnabled,
+  setRenderMode,
   resetMprViewport,
   setSliceIndex,
   setVolumeTransfer,
@@ -164,6 +165,7 @@ test('beginSeriesSelection defaults unseen series to 2D and restores remembered 
   state.seriesIdx = 0;
   state.mode = '3d';
   state.sliceIdx = 6;
+  state.loaded = true;
 
   const firstOpen = beginSeriesSelection(1);
 
@@ -175,6 +177,7 @@ test('beginSeriesSelection defaults unseen series to 2D and restores remembered 
   assert.equal(memA.mode, '3d');
   assert.equal(memA.sliceIdx, 6);
 
+  finishSeriesSelection();
   state.mode = 'mpr';
   state.sliceIdx = 3;
   const reopen = beginSeriesSelection(0);
@@ -186,6 +189,58 @@ test('beginSeriesSelection defaults unseen series to 2D and restores remembered 
   const memB = rememberedViewFor('memory_b');
   assert.equal(memB.mode, 'mpr');
   assert.equal(memB.sliceIdx, 3);
+});
+
+test('beginSeriesSelection applies an imported series default window and level once', () => {
+  state._seriesVolumeCacheEntries = [];
+  state.seriesViewMemory = {};
+  state.manifest = {
+    series: [
+      volumeSeries('window_source', 3),
+      { ...volumeSeries('window_target', 3), _defaultWindow: 73, _defaultLevel: 91 },
+    ],
+  };
+  state.seriesIdx = 0;
+  state.window = 255;
+  state.level = 127;
+  state.loaded = true;
+
+  const selection = beginSeriesSelection(1);
+
+  assert.equal(selection.restoredView, false);
+  assert.equal(state.window, 73);
+  assert.equal(state.level, 91);
+});
+
+test('setRenderMode rejects sampled extrema previews beyond the shader step contract', () => {
+  state.manifest = { series: [{ ...volumeSeries('projection_limit', 1), width: 2049, height: 1 }] };
+  state.seriesIdx = 0;
+  state.renderMode = 'alpha';
+
+  assert.equal(setRenderMode('mip'), 'alpha');
+  assert.equal(state.renderMode, 'alpha');
+
+  state.manifest.series[0].width = 2048;
+  assert.equal(setRenderMode('mip'), 'mip');
+  assert.equal(state.renderMode, 'mip');
+});
+
+test('series selection drops an inherited extrema preview beyond its sampling limit', () => {
+  state._seriesVolumeCacheEntries = [];
+  state.seriesViewMemory = {};
+  state.manifest = {
+    series: [
+      volumeSeries('projection_small', 2),
+      { ...volumeSeries('projection_large', 2), width: 2049 },
+    ],
+  };
+  state.seriesIdx = 0;
+  state.renderMode = 'mip';
+  state.loaded = true;
+
+  beginSeriesSelection(1);
+
+  assert.equal(state.renderMode, 'alpha');
 });
 
 test('beginSeriesSelection scopes remembered views by study identity when slugs repeat', () => {
@@ -208,8 +263,10 @@ test('beginSeriesSelection scopes remembered views by study identity when slugs 
   state.seriesIdx = 0;
   state.mode = '3d';
   state.sliceIdx = 5;
+  state.loaded = true;
 
   beginSeriesSelection(1);
+  finishSeriesSelection();
   state.mode = 'mpr';
   state.sliceIdx = 2;
   const reopen = beginSeriesSelection(0);
@@ -231,6 +288,7 @@ test('beginSeriesSelection preserves compare mode only for preserveSlice peer sw
   state.seriesIdx = 0;
   state.mode = 'cmp';
   state.sliceIdx = 7;
+  state.loaded = true;
 
   const peerSwitch = beginSeriesSelection(1, { preserveSlice: true });
 
@@ -238,6 +296,40 @@ test('beginSeriesSelection preserves compare mode only for preserveSlice peer sw
   assert.equal(state.mode, 'cmp');
   assert.equal(state.sliceIdx, 4);
   assert.equal(rememberedViewFor('cmp_memory_a').mode, '2d');
+});
+
+test('beginSeriesSelection preserves a hydrated view on the first selection', () => {
+  state._seriesVolumeCacheEntries = [];
+  const series = volumeSeries('initial_memory', 10);
+  state.manifest = { patient: 'anonymous', studyDate: '', series: [series] };
+  state.seriesIdx = 0;
+  state.selectRequestId = 0;
+  state.loaded = false;
+  state.mode = '2d';
+  state.sliceIdx = 0;
+  state.useRegions = false;
+  state.seriesViewMemory = {
+    'anonymous||||initial_memory': {
+      mode: '3d',
+      sliceIdx: 6,
+      window: 200,
+      level: 90,
+      overlays: {
+        useBrain: false,
+        useSeg: false,
+        useRegions: true,
+        useSym: false,
+      },
+      lockedLabels: [],
+    },
+  };
+
+  const selected = beginSeriesSelection(0);
+
+  assert.equal(selected.restoredView, true);
+  assert.equal(state.mode, '3d');
+  assert.equal(state.sliceIdx, 6);
+  assert.equal(state.useRegions, true);
 });
 
 test('beginSeriesSelection restores saved slice but falls back to 2D when saved mode is unsupported', () => {

@@ -34,6 +34,7 @@ test('the first-run action opens the existing study upload flow', async ({ page 
   expect(widths.left).toBeGreaterThanOrEqual(0);
   expect(widths.right).toBeLessThanOrEqual(widths.viewport);
 
+  await expect(emptyState.locator('.empty-state-drop-hint')).toHaveText('or drop a study folder here');
   const openStudy = page.locator('#empty-state-upload');
   await openStudy.focus();
   await expect(openStudy).toBeFocused();
@@ -45,7 +46,7 @@ test('the first-run action opens the existing study upload flow', async ({ page 
   const advancedSummary = advanced.locator('summary');
   await expect(advanced).not.toHaveAttribute('open', '');
   await expect(page.locator('#upload-zone')).toBeVisible();
-  await expect(page.locator('#upload-folder-btn')).toBeVisible();
+  await expect(page.locator('#upload-files-btn')).toBeVisible();
   await expect(page.locator('#upload-cloud-actions')).toBeHidden();
 
   await page.evaluate(() => {
@@ -60,7 +61,7 @@ test('the first-run action opens the existing study upload flow', async ({ page 
     });
   });
   await page.locator('#upload-zone').click();
-  await page.locator('#upload-folder-btn').click();
+  await page.locator('#upload-files-btn').click();
   await expect.poll(() => page.evaluate(() => ({
     files: window.__localOpenClicks.files > 0,
     folders: window.__localOpenClicks.folders > 0,

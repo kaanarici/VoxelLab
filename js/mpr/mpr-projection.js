@@ -1,13 +1,15 @@
 import { cross3 } from '../core/geometry.js';
 
 export const MPR_PROJECTION_MODES = ['thin', 'avg', 'mip', 'minip'];
-const MAX_SLAB_SAMPLES = 24;
+export const MAX_ACCURATE_SLAB_SAMPLES = 513;
+const MAX_SLAB_THICKNESS_MM = 160;
+const MAX_VOXEL_STEP = 0.5;
 
 function voxelToPhysical(vec, spacing) {
   return [
-    vec[0] * (spacing.col || 1),
-    vec[1] * (spacing.row || 1),
-    vec[2] * (spacing.slice || 1),
+    vec[0] * spacing.col,
+    vec[1] * spacing.row,
+    vec[2] * spacing.slice,
   ];
 }
 
@@ -15,8 +17,26 @@ export function normalizeMprProjectionMode(mode) {
   return MPR_PROJECTION_MODES.includes(mode) ? mode : 'thin';
 }
 
-export function clampSlabThicknessMm(value) {
-  return Math.max(0, Math.min(160, Number(value) || 0));
+function positiveSpacing(spacing) {
+  return {
+    row: Number(spacing?.row) > 0 ? Number(spacing.row) : 1,
+    col: Number(spacing?.col) > 0 ? Number(spacing.col) : 1,
+    slice: Number(spacing?.slice) > 0 ? Number(spacing.slice) : 1,
+  };
+}
+
+export function maximumAccurateSlabThicknessMm(spacing, maxSamples = MAX_ACCURATE_SLAB_SAMPLES) {
+  const safe = positiveSpacing(spacing);
+  const worstVoxelDistancePerMm = Math.max(1 / safe.col, 1 / safe.row, 1 / safe.slice);
+  const maxStepMm = MAX_VOXEL_STEP / worstVoxelDistancePerMm;
+  return Math.min(MAX_SLAB_THICKNESS_MM, Math.max(0, maxSamples - 1) * maxStepMm);
+}
+
+export function clampSlabThicknessMm(value, spacing = null) {
+  const limit = spacing
+    ? maximumAccurateSlabThicknessMm(spacing)
+    : MAX_SLAB_THICKNESS_MM;
+  return Math.max(0, Math.min(limit, Number(value) || 0));
 }
 
 // Shape: { origin: [0, 0, 12], axisU: [255, 0, 0], axisV: [0, 255, 0] } in voxel coordinates.
@@ -52,7 +72,8 @@ export function createMprProjection(
   plane = null,
 ) {
   const normalizedMode = normalizeMprProjectionMode(mode);
-  const thickness = clampSlabThicknessMm(slabThicknessMm);
+  const safeSpacing = positiveSpacing(spacing);
+  const thickness = clampSlabThicknessMm(slabThicknessMm, safeSpacing);
   if (!plane || normalizedMode === 'thin' || thickness <= 0) {
     return {
       mode: normalizedMode,
@@ -62,8 +83,8 @@ export function createMprProjection(
     };
   }
   const physicalNormal = cross3(
-    voxelToPhysical(plane.axisU, spacing),
-    voxelToPhysical(plane.axisV, spacing),
+    voxelToPhysical(plane.axisU, safeSpacing),
+    voxelToPhysical(plane.axisV, safeSpacing),
   );
   const normalMm = Math.hypot(physicalNormal[0], physicalNormal[1], physicalNormal[2]);
   if (!(normalMm > 0)) {
@@ -74,19 +95,25 @@ export function createMprProjection(
       slabStep: [0, 0, 0],
     };
   }
-  const minSpacing = Math.max(0.5, Math.min(spacing.row || 1, spacing.col || 1, spacing.slice || 1));
-  const sampleCount = Math.max(2, Math.min(MAX_SLAB_SAMPLES, Math.round(thickness / minSpacing) + 1));
+  const physicalUnitNormal = physicalNormal.map((value) => value / normalMm);
+  const voxelDistancePerMm = Math.hypot(
+    physicalUnitNormal[0] / safeSpacing.col,
+    physicalUnitNormal[1] / safeSpacing.row,
+    physicalUnitNormal[2] / safeSpacing.slice,
+  );
+  const maxStepMm = MAX_VOXEL_STEP / Math.max(voxelDistancePerMm, 1e-12);
+  const halfSteps = Math.max(1, Math.ceil((thickness / 2) / maxStepMm));
+  const sampleCount = Math.min(MAX_ACCURATE_SLAB_SAMPLES, halfSteps * 2 + 1);
   const stepMm = thickness / Math.max(1, sampleCount - 1);
-  // Shape: [0.0, 0.0, 0.5] -> voxel-space slab step whose physical direction is plane-normal.
-  const physicalStep = physicalNormal.map((value) => value / normalMm * stepMm);
+  const physicalStep = physicalUnitNormal.map((value) => value * stepMm);
   return {
     mode: normalizedMode,
     slabThicknessMm: thickness,
     sampleCount,
     slabStep: [
-      physicalStep[0] / (spacing.col || 1),
-      physicalStep[1] / (spacing.row || 1),
-      physicalStep[2] / (spacing.slice || 1),
+      physicalStep[0] / safeSpacing.col,
+      physicalStep[1] / safeSpacing.row,
+      physicalStep[2] / safeSpacing.slice,
     ],
   };
 }
@@ -96,7 +123,15 @@ export function projectionCacheToken(projection = null) {
   return `${projection.mode}:${projection.slabThicknessMm}:${projection.sampleCount}`;
 }
 
+export function voxelCoordinateInside(dims, x, y, z) {
+  const epsilon = 1e-5;
+  return x >= -epsilon && x <= dims.W - 1 + epsilon
+    && y >= -epsilon && y <= dims.H - 1 + epsilon
+    && z >= -epsilon && z <= dims.D - 1 + epsilon;
+}
+
 function nearestDiscreteSample(volume, x, y, z, dims) {
+  if (!voxelCoordinateInside(dims, x, y, z)) return 0;
   const ix = Math.max(0, Math.min(dims.W - 1, Math.round(x)));
   const iy = Math.max(0, Math.min(dims.H - 1, Math.round(y)));
   const iz = Math.max(0, Math.min(dims.D - 1, Math.round(z)));
@@ -113,11 +148,15 @@ export function projectDiscreteSlabLabel(labelVolume, baseVolume, x, y, z, dims,
     let closestDistance = Infinity;
     for (let i = 0; i < projection.sampleCount; i++) {
       const offset = i - centerOffset;
+      const sx = x + projection.slabStep[0] * offset;
+      const sy = y + projection.slabStep[1] * offset;
+      const sz = z + projection.slabStep[2] * offset;
+      if (!voxelCoordinateInside(dims, sx, sy, sz)) continue;
       const label = nearestDiscreteSample(
         labelVolume,
-        x + projection.slabStep[0] * offset,
-        y + projection.slabStep[1] * offset,
-        z + projection.slabStep[2] * offset,
+        sx,
+        sy,
+        sz,
         dims,
       );
       const distance = Math.abs(offset);
@@ -136,6 +175,7 @@ export function projectDiscreteSlabLabel(labelVolume, baseVolume, x, y, z, dims,
     const sx = x + projection.slabStep[0] * offset;
     const sy = y + projection.slabStep[1] * offset;
     const sz = z + projection.slabStep[2] * offset;
+    if (!voxelCoordinateInside(dims, sx, sy, sz)) continue;
     const intensity = baseSampler(baseVolume, sx, sy, sz, dims.W, dims.H, dims.D);
     const better = projection.mode === 'minip' ? intensity < bestIntensity : intensity > bestIntensity;
     if (better) {
@@ -148,37 +188,33 @@ export function projectDiscreteSlabLabel(labelVolume, baseVolume, x, y, z, dims,
 
 export function projectVolumeSample(volume, x, y, z, dims, sampler, projection = null) {
   if (!projection || projection.sampleCount <= 1 || projection.mode === 'thin') {
-    return sampler(volume, x, y, z, dims.W, dims.H, dims.D);
+    return voxelCoordinateInside(dims, x, y, z)
+      ? sampler(volume, x, y, z, dims.W, dims.H, dims.D)
+      : 0;
   }
   const centerOffset = (projection.sampleCount - 1) / 2;
   if (projection.mode === 'avg') {
     let sum = 0;
+    let validSamples = 0;
     for (let i = 0; i < projection.sampleCount; i++) {
       const offset = i - centerOffset;
-      sum += sampler(
-        volume,
-        x + projection.slabStep[0] * offset,
-        y + projection.slabStep[1] * offset,
-        z + projection.slabStep[2] * offset,
-        dims.W,
-        dims.H,
-        dims.D,
-      );
+      const sx = x + projection.slabStep[0] * offset;
+      const sy = y + projection.slabStep[1] * offset;
+      const sz = z + projection.slabStep[2] * offset;
+      if (!voxelCoordinateInside(dims, sx, sy, sz)) continue;
+      sum += sampler(volume, sx, sy, sz, dims.W, dims.H, dims.D);
+      validSamples += 1;
     }
-    return sum / projection.sampleCount;
+    return validSamples ? sum / validSamples : 0;
   }
   let best = projection.mode === 'minip' ? Infinity : -Infinity;
   for (let i = 0; i < projection.sampleCount; i++) {
     const offset = i - centerOffset;
-    const sample = sampler(
-      volume,
-      x + projection.slabStep[0] * offset,
-      y + projection.slabStep[1] * offset,
-      z + projection.slabStep[2] * offset,
-      dims.W,
-      dims.H,
-      dims.D,
-    );
+    const sx = x + projection.slabStep[0] * offset;
+    const sy = y + projection.slabStep[1] * offset;
+    const sz = z + projection.slabStep[2] * offset;
+    if (!voxelCoordinateInside(dims, sx, sy, sz)) continue;
+    const sample = sampler(volume, sx, sy, sz, dims.W, dims.H, dims.D);
     if (projection.mode === 'minip') best = Math.min(best, sample);
     else best = Math.max(best, sample);
   }

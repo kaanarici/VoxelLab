@@ -33,7 +33,7 @@ export async function writeTinyOmeZarrFolder(rootDir) {
   }));
   await fs.writeFile(path.join(level, '.zarray'), JSON.stringify({
     zarr_format: 2,
-    shape: [1, 2, 2],
+    "shape": [1, 2, 2],
     chunks: [1, 2, 2],
     dtype: '|u1',
     compressor: null,
@@ -188,8 +188,9 @@ export async function writeTinySequenceTiff(pathname, pixels, options = {}) {
 
 export async function launchVoxelLab(extraArgs = [], opts = {}) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-electron-smoke-'));
+  const profileDir = opts.profileDir || path.join(tempDir, 'profile');
   const app = await electron.launch({
-    args: ['.', `--user-data-dir=${path.join(tempDir, 'profile')}`, ...extraArgs],
+    args: ['.', `--user-data-dir=${profileDir}`, ...extraArgs],
     cwd: REPO_ROOT,
     env: { ...process.env, VOXELLAB_ELECTRON_SMOKE: '1', ...(opts.env || {}) },
   });
@@ -201,9 +202,9 @@ export async function launchVoxelLab(extraArgs = [], opts = {}) {
     && document.getElementById('canvas-wrap')
     && document.getElementById('view')
     && document.getElementById('empty-state')
-    && typeof globalThis.voxellabDesktop === 'object'
+    && globalThis.voxellabDesktop?.getAppInfo instanceof Function
   ), null, { timeout: 20_000 });
-  return { app, page, pageErrors, tempDir };
+  return { app, page, pageErrors, tempDir, profileDir };
 }
 
 export async function assertSmokeWindowVisibility(app, expectedVisible) {

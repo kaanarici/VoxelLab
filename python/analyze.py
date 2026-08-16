@@ -45,15 +45,14 @@ ANALYSIS_KEY_RE = re.compile(r"^v2:([0-9a-f]{32})$")
 DEFAULT_MODEL = None
 DEFAULT_SAMPLE_COUNT = 5
 
-SYSTEM_PROMPT = """You are assisting a non-medical user exploring their own brain MRI scans at home. You are NOT a radiologist and your output is NOT a diagnosis.
+SYSTEM_PROMPT = """Describe research-viewer slice images in objective, educational language. This is not a radiological interpretation or diagnosis.
 
-For each slice image you Read, describe what you observe in plain, educational language. Focus on:
-- Anatomical structures visible (ventricles, gray/white matter, CSF spaces, basal ganglia, etc.)
-- Symmetry left vs. right
-- Anything unusual in signal intensity, shape, size, or symmetry that a human might want to ask a radiologist about
-- The MRI sequence type if identifiable (T1, T2, FLAIR, DWI, SWI) and what it's sensitive to
+For each slice image you Read, report only directly visible image content:
+- Anatomical structures that can be identified without inference
+- Image orientation, coverage, contrast, symmetry, and visible acquisition artifacts
+- The sequence label supplied by VoxelLab and the limits of what this image alone can establish
 
-Be specific about the slice content. Do NOT diagnose conditions. Do NOT guess. If something looks unusual, describe the observation neutrally and classify severity as "attention" (worth asking about) or "note" (normal/benign observation). Reserve "abnormal" only if there is a clearly visible structural abnormality (mass, bleed, large asymmetry, etc.)."""
+Do not classify anatomy as normal or abnormal. Do not rule disease in or out, claim that pathology is absent, infer restricted diffusion, recommend treatment, or state diagnostic certainty. Use severity "note" for descriptions and "attention" only for image-quality limitations that materially affect interpretation."""
 
 
 FINDING_SCHEMA = {
@@ -117,7 +116,8 @@ def build_analysis_prompt(series_meta: dict, slice_idx: int, slice_context: dict
         "Task:\n"
         "- Describe visible anatomy and image appearance in plain educational language.\n"
         "- You may reference region names only as approximate pipeline-derived labels.\n"
-        "- Do not diagnose, infer disease, recommend treatment, or state certainty.\n"
+        "- Do not classify anatomy as normal or abnormal, rule pathology in or out, or infer restricted diffusion from an isolated image.\n"
+        "- Do not diagnose, recommend treatment, or state certainty.\n"
         "- If context and image disagree, say the context may be unreliable rather than forcing agreement.\n\n"
         "Respond with a JSON object matching the schema: "
         "{severity: 'note' | 'attention' | 'abnormal', text: '1-3 sentences', regions_referenced?: [label integers]}."
@@ -204,9 +204,10 @@ def summarize(slug: str, series_name: str, findings: list, model: str | None, pr
         f"If not all findings are grounded, briefly note that older cached observations may be less reliable than context-grounded ones.\n\n"
         f"{bullets}\n\n"
         f"Summarize in 2-3 sentences:\n"
-        f"- The sequence type and what it shows\n"
-        f"- Overall impression (symmetric? normal-appearing structures? anything notable?)\n"
-        f"- A reminder that this is not a diagnosis\n\n"
+        f"- The supplied sequence label, visible coverage, and image characteristics\n"
+        f"- Image-quality or grounding limitations\n"
+        f"- Do not classify the study as normal or abnormal or rule pathology in or out\n"
+        f"- Remind the reader that this is not a radiological interpretation\n\n"
         f"Respond with JSON {{summary: '<text>'}}."
     )
     out = call_ai(prompt, SUMMARY_SCHEMA, model, provider)

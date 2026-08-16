@@ -10,7 +10,7 @@
 //   - BitsStored vs BitsAllocated: masks pixel values to BitsStored to
 //     discard padding bits in the upper portion of the allocated word.
 //   - PhotometricInterpretation: handles MONOCHROME1 (inverted) by
-//     flipping the pixel values after windowing.
+//     storing the shared 2D/MPR display domain in presentation polarity.
 //   - PixelSpacing: treated as optional. When absent, measurements are
 //     disabled (pixelSpacing = [0, 0]) rather than assuming 1mm.
 //   - RescaleSlope/Intercept: applied per-slice (can vary per frame in
@@ -24,9 +24,10 @@ import { DCMJS_IMPORT_URL } from '../core/dependencies.js';
 import {
   DEFAULT_IOP,
   geometryFromDicomMetas,
+  isOrthonormalImagePlane,
   sortDatasetsSpatially,
 } from '../core/geometry.js';
-import { parseDicomFilesInWorker } from '../volume/volume-worker-client.js';
+import { parseDicomFilesInWorker, scanDicomFilesInWorker } from '../volume/volume-worker-client.js';
 import { isBigEndianTransferSyntax, isCompressed, decodePixelData } from './dicom-codecs.js';
 import {
   frameMetasForInstance,
@@ -55,7 +56,7 @@ import {
   assertDICOMDatasetMetadata,
   assertDICOMInputFiles,
   assertDICOMSeriesWorkingSet,
-  dicomShape,
+  dicomDimensions,
 } from './dicom-import-resources.js';
 
 export { extractEnhancedMultiFrameMetas } from './dicom-frame-meta.js';
@@ -75,7 +76,7 @@ function stripBasicOffsetTable(values, frameCount) {
 export function extractEnhancedMultiFramePixels(item) {
   const meta = item?.meta || item;
   const pixelData = item?.pixelData || meta?.PixelData;
-  const { frames: frameCount, rows, columns: cols, voxelsPerSlice: framePixelCount } = dicomShape(meta);
+  const { frames: frameCount, rows, columns: cols, voxelsPerSlice: framePixelCount } = dicomDimensions(meta);
   const bitsAllocated = getInt(meta, 'BitsAllocated', 16);
   const pixelRepresentation = getInt(meta, 'PixelRepresentation', 0);
   const frameMetas = frameMetasForInstance(meta);
@@ -151,9 +152,13 @@ function integerTagValue(meta, key) {
   const value = meta?.[key];
   if (value == null) return { present: false, value: null };
   const candidate = Array.isArray(value) ? value[0] : value;
-  const lexeme = typeof candidate === 'string' ? candidate.trim() : null;
-  if (lexeme != null && !/^[+-]?\d+$/.test(lexeme)) return { present: true, value: null };
-  const parsed = typeof candidate === 'number' ? candidate : Number(lexeme);
+  let parsed = candidate;
+  if (!Number.isSafeInteger(parsed)) {
+    if (!(candidate?.trim instanceof Function)) return { present: true, value: null };
+    const lexeme = candidate.trim();
+    if (!/^[+-]?\d+$/.test(lexeme)) return { present: true, value: null };
+    parsed = Number(lexeme);
+  }
   if (!Number.isSafeInteger(parsed)) return { present: true, value: null };
   return { present: true, value: parsed };
 }
@@ -200,97 +205,166 @@ function sourceFileName(file = {}) {
   return String(file.path || '').replaceAll('\\', '/').split('/').filter(Boolean).pop() || '';
 }
 
-/** Parse local DICOM files into one or more importable series groups. */
-export async function parseDICOMFileGroups(files, onProgress = () => {}) {
+function canUseDicomWorker(files) {
+  return globalThis.Worker instanceof Function
+    && globalThis.File instanceof Function
+    && files.every(file => file instanceof globalThis.File);
+}
+
+function attachSourceFiles(datasets, files) {
+  return (datasets || []).map(item => ({
+    ...item,
+    file: files[item.sourceId] || null,
+  }));
+}
+
+async function scanDicomFilesLocally(files, onProgress) {
+  const lib = await import(DCMJS_IMPORT_URL);
+  const DicomMessage = lib.data.DicomMessage;
+  let actualInputBytes = 0;
+  const sourceManifests = await parseSourceManifests(files, {
+    onActualFileBytes(byteLength, file, index) {
+      actualInputBytes = addDICOMActualInputBytes(actualInputBytes, byteLength, file, index);
+    },
+  });
+  const datasets = [];
+  for (const [index, file] of files.entries()) {
+    if (/\.json$/i.test(file?.name || '')) continue;
+    try {
+      const ab = await file.arrayBuffer();
+      actualInputBytes = addDICOMActualInputBytes(actualInputBytes, ab.byteLength, file, index);
+      const ds = DicomMessage.readFile(ab, {
+        ignoreErrors: false,
+        untilTag: '7FE00010',
+        includeUntilTagValue: false,
+        noCopy: true,
+      });
+      const meta = lib.data.DicomMetaDictionary.naturalizeDataset(ds.dict);
+      if (!Object.hasOwn(meta, 'PixelData')) continue;
+      datasets.push({ meta, file, sourceByteLength: ab.byteLength, sourceId: index });
+      if (datasets.length % 10 === 0) onProgress('discovering', `${datasets.length} / ${files.length}`);
+    } catch (error) {
+      if (error?.dicomResourceLimit) throw error;
+    }
+  }
+  return { datasets, sourceManifests, lib, worker: false };
+}
+
+async function discoverDicomFiles(files, onProgress) {
+  if (canUseDicomWorker(files)) {
+    const scanned = await scanDicomFilesInWorker(files, onProgress);
+    if (scanned) {
+      return {
+        datasets: attachSourceFiles(scanned.datasets, files),
+        sourceManifests: new Map(Object.entries(scanned.sourceManifests || {}).map(([uid, record]) => [uid, {
+          payload: record?.payload || record,
+          file: files[record?.sourceId] || null,
+        }])),
+        worker: true,
+      };
+    }
+  }
+  return scanDicomFilesLocally(files, onProgress);
+}
+
+async function parseDicomGroupLocally(files, lib, onProgress) {
+  const DicomMessage = lib.data.DicomMessage;
+  const datasets = [];
+  for (const [index, file] of files.entries()) {
+    try {
+      const ab = await file.arrayBuffer();
+      assertDICOMActualFileBytes(ab.byteLength, file, index);
+      const ds = DicomMessage.readFile(ab);
+      const meta = lib.data.DicomMetaDictionary.naturalizeDataset(ds.dict);
+      if (!meta.PixelData) continue;
+      datasets.push({
+        meta,
+        pixelData: ds.dict['7FE00010'],
+        file,
+        sourceByteLength: ab.byteLength,
+        sourceId: index,
+      });
+      if (datasets.length % 10 === 0) onProgress('parsing', `${datasets.length} / ${files.length}`);
+    } catch (error) {
+      if (error?.dicomResourceLimit) throw error;
+    }
+  }
+  return datasets;
+}
+
+/** Discover every series, then decode and yield one bounded series at a time. */
+export async function* iterateDICOMFileGroups(files, onProgress = () => {}) {
   const selectedFiles = Array.from(files || []);
   assertDICOMInputFiles(selectedFiles);
-  onProgress('parsing', `reading ${selectedFiles.length} files...`);
-  let datasets = [];
-  let sourceManifests = new Map();
-  let workerParsed = false;
-
-  const canCloneFilesToWorker = typeof File !== 'undefined'
-    && selectedFiles.every(file => file instanceof File);
-  if (typeof Worker !== 'undefined' && canCloneFilesToWorker) {
-    const parsed = await parseDicomFilesInWorker(selectedFiles, onProgress);
-    if (parsed?.datasets?.length) {
-      datasets = parsed.datasets;
-      sourceManifests = new Map(Object.entries(parsed.sourceManifests || {}));
-      workerParsed = true;
-    }
-  }
-
-  if (!workerParsed) {
-    const lib = await import(DCMJS_IMPORT_URL);
-    const DicomMessage = lib.data.DicomMessage;
-    let actualInputBytes = 0;
-    sourceManifests = await parseSourceManifests(selectedFiles, {
-      onActualFileBytes(byteLength, file, index) {
-        actualInputBytes = addDICOMActualInputBytes(actualInputBytes, byteLength, file, index);
-      },
-    });
-    let parsed = 0;
-    for (const [index, file] of selectedFiles.entries()) {
-      if (/\.json$/i.test(file?.name || '')) continue;
-      try {
-        const ab = await file.arrayBuffer();
-        assertDICOMActualFileBytes(ab.byteLength, file, index);
-        actualInputBytes = addDICOMActualInputBytes(actualInputBytes, ab.byteLength, file, index);
-        const ds = DicomMessage.readFile(ab);
-        const meta = lib.data.DicomMetaDictionary.naturalizeDataset(ds.dict);
-        if (!meta.PixelData) continue;
-        datasets.push({
-          meta,
-          pixelData: ds.dict['7FE00010'],
-          file,
-          sourceByteLength: ab.byteLength,
-          sourceId: index,
-        });
-        parsed++;
-        if (parsed % 10 === 0) onProgress('parsing', `${parsed} / ${files.length}`);
-      } catch (error) {
-        if (error?.dicomResourceLimit) throw error;
-        // Skip unparseable files
-      }
-    }
-  }
-
-  if (!datasets.length) return null;
-  const groups = groupDatasetsBySeries(datasets);
+  onProgress('discovering', `reading metadata from ${selectedFiles.length} files...`);
+  const discovery = await discoverDicomFiles(selectedFiles, onProgress);
+  if (!discovery.datasets.length) return;
+  const groups = groupDatasetsBySeries(discovery.datasets);
   const renderableGroups = groups.filter((group) => !isDerivedObjectModality(group.datasets[0]?.meta?.Modality));
   for (const group of renderableGroups) {
     const seriesUID = String(group.datasets[0]?.meta?.SeriesInstanceUID || '');
-    group.sourceManifest = sourceManifests.get(seriesUID) || null;
+    const sourceManifest = discovery.sourceManifests.get(seriesUID);
+    group.sourceManifest = sourceManifest?.payload || null;
+    group.sourceManifestFile = sourceManifest?.file || null;
   }
-  onProgress('sorting', `${datasets.length} valid slices · ${renderableGroups.length} image series`);
+  onProgress('sorting', `${discovery.datasets.length} valid images · ${renderableGroups.length} image series`);
 
   const seed = Date.now().toString(36);
-  const results = [];
   const skippedReasons = [];
+  let resultCount = 0;
   for (let i = 0; i < renderableGroups.length; i++) {
+    const descriptors = renderableGroups[i].datasets;
+    const groupFiles = descriptors.map(item => item.file).filter(Boolean);
+    const progress = (stage, detail) => onProgress(stage, `series ${i + 1} / ${renderableGroups.length} · ${detail}`);
+    progress('parsing', `reading ${groupFiles.length} files...`);
+    let datasets;
+    if (discovery.worker) {
+      const parsed = await parseDicomFilesInWorker(groupFiles, progress);
+      datasets = parsed
+        ? attachSourceFiles(parsed.datasets, groupFiles)
+        : await parseDicomGroupLocally(groupFiles, await import(DCMJS_IMPORT_URL), progress);
+    } else {
+      datasets = await parseDicomGroupLocally(groupFiles, discovery.lib, progress);
+    }
+    renderableGroups[i].datasets = [];
+    if (!datasets.length) continue;
     const slug = renderableGroups.length === 1 ? `local_${seed}` : `local_${seed}_${i + 1}`;
     const result = await buildDICOMSeriesResult(
-      renderableGroups[i].datasets,
-      onProgress,
+      datasets,
+      progress,
       slug,
       skippedReasons,
       renderableGroups[i].sourceManifest,
     );
-    if (result) results.push(result);
+    datasets.length = 0;
+    if (result) {
+      const manifestPath = String(renderableGroups[i].sourceManifestFile?.path || '');
+      if (manifestPath && !result.desktopSourcePaths.includes(manifestPath)) {
+        result.desktopSourcePaths.push(manifestPath);
+      }
+      resultCount += 1;
+      yield result;
+    }
   }
-  if (!results.length && skippedReasons.length) {
+  if (!resultCount && skippedReasons.length) {
     throw new Error(skippedReasons.join(' | '));
   }
+}
+
+/** Parse local DICOM files into one or more importable series groups. */
+export async function parseDICOMFileGroups(files, onProgress = () => {}) {
+  const results = [];
+  for await (const result of iterateDICOMFileGroups(files, onProgress)) results.push(result);
   return results.length ? results : null;
 }
 
 /** Parse local DICOM files and return the first importable series result. */
 export async function parseDICOMFiles(files, onProgress = () => {}) {
-  const groups = await parseDICOMFileGroups(files, onProgress);
-  return groups?.[0] || null;
+  for await (const result of iterateDICOMFileGroups(files, onProgress)) return result;
+  return null;
 }
 
-/** Convert a grouped DICOM stack into viewer-ready canvases, manifest metadata, and raw voxels. */
+/** Convert a grouped DICOM stack into viewer-ready byte slices, manifest metadata, and raw voxels. */
 export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {}, slug, skippedReasons = [], sourceManifest = null, signal = null) {
   const throwIfAborted = () => {
     if (signal?.aborted) throw new DOMException('DICOM import was cancelled', 'AbortError');
@@ -322,7 +396,7 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
   }
 
   const first = datasets[0].meta;
-  const { rows, columns: cols, voxelsPerSlice } = dicomShape(first);
+  const { rows, columns: cols, voxelsPerSlice } = dicomDimensions(first);
   const pixelRestriction = pixelDataRestrictionReason(first);
   if (pixelRestriction) {
     skippedReasons.push(pixelRestriction);
@@ -347,10 +421,13 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     onProgress('info', `compressed DICOM — loading codecs...`);
   }
 
-  const sliceCanvases = [];
+  const displayVolume = new Uint8Array(dicomDimensions(datasets[0].meta).voxelsPerSlice * datasets.length);
   const acceptedMetas = [];
   const acceptedSourceFiles = [];
   const acceptedSourceFileSet = new Set();
+  const acceptedDesktopPaths = [];
+  const acceptedDesktopPathSet = new Set();
+  const desktopImportIds = new Set();
   const rawVolume = new Float32Array(voxelsPerSlice * datasets.length);
   let rawSliceIdx = 0;
 
@@ -428,34 +505,6 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
         return null;
       }
 
-      let wl = getFloat(meta, 'WindowCenter');
-      let ww = getFloat(meta, 'WindowWidth');
-      // Recompute when WindowWidth is missing/non-positive, or when only
-      // WindowCenter is missing (which would leave `wl` non-finite and render
-      // the slice as NaN → black).
-      if (!(ww > 0) || !Number.isFinite(wl)) {
-        const step = Math.max(1, Math.ceil(validPixelCount / 50000));
-        const samples = [];
-        let validIndex = 0;
-        for (let i = 0; i < count; i++) {
-          const stored = storedPixelValue(pixels[i], bitsStored, pixelRepresentation, bitMask);
-          if (isPaddingValue(stored, padding)) continue;
-          if (validIndex % step === 0) samples.push(stored * slope + intercept);
-          validIndex++;
-        }
-        const auto = autoWindowLevel(samples);
-        wl = auto.wl;
-        ww = auto.ww;
-      }
-      const lo = wl - ww / 2;
-      const range = Math.max(1, ww);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = cols;
-      canvas.height = rows;
-      const ctx = canvas.getContext('2d');
-      const imgData = ctx.createImageData(cols, rows);
-      const d = imgData.data;
       const rawBase = rawSliceIdx * voxelsPerSlice;
 
       for (let i = 0; i < count; i++) {
@@ -464,26 +513,25 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
         const stored = storedPixelValue(pixels[i], bitsStored, pixelRepresentation, bitMask);
         if (isPaddingValue(stored, padding)) {
           rawVolume[rawBase + i] = Number.NaN;
-          d[i * 4] = 0; d[i * 4 + 1] = 0; d[i * 4 + 2] = 0; d[i * 4 + 3] = 255;
+          displayVolume[rawBase + i] = 0;
           continue;
         }
         const raw = stored * slope + intercept;
         rawVolume[rawBase + i] = raw;
-
-        let v = Math.round(((raw - lo) / range) * 255);
-        if (v < 0) v = 0; if (v > 255) v = 255;
-        // MONOCHROME1: invert so bright = dense (standard display)
-        if (isInverted) v = 255 - v;
-        d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
       }
-      ctx.putImageData(imgData, 0, 0);
-      sliceCanvases.push(canvas);
       acceptedMetas.push(meta);
       const sourceFile = sourceFileName(item.file);
       if (sourceFile && !acceptedSourceFileSet.has(sourceFile)) {
         acceptedSourceFileSet.add(sourceFile);
         acceptedSourceFiles.push(sourceFile);
       }
+      const desktopPath = String(item.file?.path || '');
+      if (desktopPath && !acceptedDesktopPathSet.has(desktopPath)) {
+        acceptedDesktopPathSet.add(desktopPath);
+        acceptedDesktopPaths.push(desktopPath);
+      }
+      const desktopImportId = String(item.file?._desktopImportId || '');
+      if (desktopImportId) desktopImportIds.add(desktopImportId);
       rawSliceIdx++;
     } catch (error) {
       if (error?.name === 'AbortError' || signal?.aborted) throw error;
@@ -491,12 +539,12 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     }
   }
 
-  if (!sliceCanvases.length) return null;
+  if (!rawSliceIdx) return null;
 
   // Normalize to [0,1]. CT: fixed HU band (see convert_ct.py); else data min/max.
   const actualVoxels = rawSliceIdx * voxelsPerSlice;
   const hrVoxels = rawSliceIdx < datasets.length
-    ? rawVolume.slice(0, actualVoxels) : rawVolume;
+    ? rawVolume.subarray(0, actualVoxels) : rawVolume;
   const isCT = normalizeModality(modality) === 'CT';
   let normLo, normHi;
   if (isCT) {
@@ -513,6 +561,23 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
   }
   const normRange = normHi - normLo || 1;
   const normInv = 1 / normRange;
+  let defaultLevelRaw = getFloat(first, 'WindowCenter');
+  let defaultWindowRaw = getFloat(first, 'WindowWidth');
+  if (!(defaultWindowRaw > 0) || !Number.isFinite(defaultLevelRaw)) {
+    const step = Math.max(1, Math.ceil(actualVoxels / 50000));
+    const samples = [];
+    for (let i = 0; i < actualVoxels; i += step) {
+      if (Number.isFinite(hrVoxels[i])) samples.push(hrVoxels[i]);
+    }
+    if (samples.length) {
+      const automatic = autoWindowLevel(samples);
+      defaultLevelRaw = automatic.wl;
+      defaultWindowRaw = automatic.ww;
+    } else {
+      defaultLevelRaw = normLo + normRange / 2;
+      defaultWindowRaw = normRange;
+    }
+  }
   for (let i = 0; i < actualVoxels; i++) {
     if ((i & 0xffff) === 0) throwIfAborted();
     const raw = hrVoxels[i];
@@ -522,8 +587,17 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     }
     let v = (raw - normLo) * normInv;
     if (v < 0) v = 0; if (v > 1) v = 1;
+    if (isInverted) v = 1 - v;
     hrVoxels[i] = v;
+    displayVolume[i] = Math.round(v * 255);
   }
+  const sliceBytes = Array.from(
+    { length: rawSliceIdx },
+    (_, index) => displayVolume.subarray(index * voxelsPerSlice, (index + 1) * voxelsPerSlice),
+  );
+  const defaultWindow = Math.max(1, Math.min(512, defaultWindowRaw * normInv * 255));
+  const normalizedDefaultLevel = (defaultLevelRaw - normLo) * normInv * 255;
+  const defaultLevel = Math.max(0, Math.min(255, isInverted ? 255 - normalizedDefaultLevel : normalizedDefaultLevel));
 
   const geometry = geometryFromDicomMetas(acceptedMetas);
   const pixelSpacing = geometry.pixelSpacing || [0, 0];
@@ -533,6 +607,7 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
   const firstIPP = geometry.firstIPP || [0, 0, 0];
   const lastIPP = geometry.lastIPP || firstIPP;
   const reliableVolumeStack = importClassification.kind === 'volume-stack' && geometry.sliceSpacingRegular !== false;
+  const patientFrameTrusted = acceptedMetas.every(meta => isOrthonormalImagePlane(meta.ImageOrientationPatient));
 
   const seriesDesc = getStr(first, 'SeriesDescription') || getStr(first, 'StudyDescription');
   const bodyPart = getStr(first, 'BodyPartExamined');
@@ -547,11 +622,11 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
   if (!name) {
     const parts = [modality];
     if (bodyPart) parts.push(bodyPart);
-    parts.push(`${sliceCanvases.length} slices`);
+    parts.push(`${rawSliceIdx} slices`);
     name = parts.join(' · ');
   }
 
-  let description = `${cols}×${rows} · ${sliceCanvases.length} slices`;
+  let description = `${cols}×${rows} · ${rawSliceIdx} slices`;
   if (pixelSpacing[0] > 0) description += ` · ${pixelSpacing[0].toFixed(2)} mm`;
   if (sliceSpacing > 0) description += ` / ${sliceSpacing.toFixed(1)} mm`;
   description += ' · local import';
@@ -561,7 +636,7 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     name,
     description,
     modality,
-    slices: sliceCanvases.length,
+    slices: rawSliceIdx,
     width: cols,
     height: rows,
     pixelSpacing,
@@ -576,6 +651,7 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     firstIPP,
     lastIPP,
     orientation,
+    patientFrameTrusted,
     frameOfReferenceUIDConsistent: geometry.frameOfReferenceUIDConsistent !== false,
     group: null,
     hasBrain: false,
@@ -599,10 +675,14 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     _bodyPart: bodyPart,
     _studyDate: studyDate,
     _photometric: photometric,
+    _defaultWindow: defaultWindow,
+    _defaultLevel: defaultLevel,
+    _displayDomain: { minimum: normLo, maximum: normHi, polarity: isInverted ? 'MONOCHROME1' : 'MONOCHROME2' },
     _spacingKnown: pixelSpacing[0] > 0,
     _dicomImportClassification: importClassification,
   };
   if (acceptedSourceFiles.length) entry.sourceFiles = acceptedSourceFiles;
+  if (desktopImportIds.size === 1) entry._desktopImportId = [...desktopImportIds][0];
   for (const [key, value] of [
     ['sourceStudyUID', getStr(first, 'StudyInstanceUID')],
     ['sourceSeriesUID', getStr(first, 'SeriesInstanceUID')],
@@ -626,5 +706,10 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     entry.ultrasoundCalibration = importClassification.ultrasound?.calibrationSummary || null;
   }
 
-  return { entry, sliceCanvases, rawVolume: hrVoxels };
+  return {
+    entry,
+    sliceBytes,
+    rawVolume: hrVoxels,
+    desktopSourcePaths: acceptedDesktopPaths,
+  };
 }

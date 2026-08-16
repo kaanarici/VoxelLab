@@ -29,7 +29,12 @@ export async function exportDicomSR(host) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 
-  return { count: bundle.measurements.length, filename: a.download };
+  return {
+    count: bundle.measurements.length,
+    measurementCount: bundle.measurementCount,
+    annotationCount: bundle.annotationCount,
+    filename: a.download,
+  };
 }
 
 export function hasExportableMeasurements(host) {

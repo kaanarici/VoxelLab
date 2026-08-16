@@ -33,10 +33,9 @@ function exportOutcome(ok, message, extras = {}) {
 
 function finishExport(result, opts = {}) {
   if (opts.notify && result.message) {
-    notify(result.message, {
-      id: result.ok ? 'mesh-export-complete' : 'mesh-export-unavailable',
-      duration: result.ok ? 1800 : 4200,
-    });
+    const notification = { id: result.ok ? 'mesh-export-complete' : 'mesh-export-unavailable' };
+    if (!result.ok) notification.kind = 'error';
+    notify(result.message, notification);
   }
   return result;
 }

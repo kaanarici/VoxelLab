@@ -35,7 +35,7 @@ function canBindLocalhostPort() {
 function assertProofMetadata(lane, proofType) {
   assert.equal(lane.proofType, proofType);
   assert.ok(VALID_PROOF_TYPES.has(lane.proofType));
-  assert.equal(typeof lane.claim, 'string');
+  assert.equal(lane.claim?.constructor, String);
   assert.ok(lane.claim.length > 0);
 }
 
@@ -116,9 +116,9 @@ test('lab readiness summary records planned and omitted proof lanes', () => {
   assert.equal(payload.durationMs, 0);
   assert.match(payload.generatedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.match(payload.repo.commit, /^[0-9a-f]{40}$/);
-  assert.equal(typeof payload.repo.branch === 'string' || payload.repo.branch === null, true);
-  assert.equal(typeof payload.repo.dirty, 'boolean');
-  assert.equal(typeof payload.repo.statusShort, 'string');
+  assert.equal(payload.repo.branch?.constructor === String || payload.repo.branch === null, true);
+  assert.equal(payload.repo.dirty?.constructor, Boolean);
+  assert.equal(payload.repo.statusShort?.constructor, String);
   assert.deepEqual(Object.keys(payload.proofTypeTaxonomy), ['static', 'contract', 'runtime', 'oracle']);
   assert.ok(payload.steps.every(step => step.status === 'planned'));
   assert.ok(payload.steps.every(step => VALID_PROOF_TYPES.has(step.proofType)));
@@ -151,10 +151,10 @@ test('lab readiness summary marks unskipped proof as the full gate', () => {
 test('lab readiness repo evidence snapshot records commit and dirty state', () => {
   const snapshot = repoEvidenceSnapshot();
   assert.match(snapshot.commit, /^[0-9a-f]{40}$/);
-  assert.equal(typeof snapshot.branch === 'string' || snapshot.branch === null, true);
-  assert.equal(typeof snapshot.upstream === 'string' || snapshot.upstream === null, true);
-  assert.equal(typeof snapshot.dirty, 'boolean');
-  assert.equal(typeof snapshot.statusShort, 'string');
+  assert.equal(snapshot.branch?.constructor === String || snapshot.branch === null, true);
+  assert.equal(snapshot.upstream?.constructor === String || snapshot.upstream === null, true);
+  assert.equal(snapshot.dirty?.constructor, Boolean);
+  assert.equal(snapshot.statusShort?.constructor, String);
 });
 
 test('lab readiness writes a passed evidence report for focused non-UI lanes', () => {
@@ -190,7 +190,7 @@ test('lab readiness writes a passed evidence report for focused non-UI lanes', (
   assert.equal(Number.isFinite(payload.durationMs), true);
   assert.ok(payload.durationMs >= 0);
   assert.match(payload.repo.commit, /^[0-9a-f]{40}$/);
-  assert.equal(typeof payload.repo.branch === 'string' || payload.repo.branch === null, true);
+  assert.equal(payload.repo.branch?.constructor === String || payload.repo.branch === null, true);
   const expectedOmittedIds = [
     ...(privateLaneSkips.includes('--skip-validation-matrix') ? ['validation-matrix-contract'] : []),
     ...(privateLaneSkips.includes('--skip-public-export') ? ['public-export-contract'] : []),

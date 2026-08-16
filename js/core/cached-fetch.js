@@ -34,7 +34,7 @@ export function absoluteUrl(url) {
 }
 
 function cacheEntryKey(value) {
-  const key = typeof value === 'string' ? value : value?.url;
+  const key = value != null && String(value) === value ? value : value?.url;
   if (!key) return '';
   try {
     return absoluteUrl(key);
@@ -45,7 +45,7 @@ function cacheEntryKey(value) {
 
 export async function trimCacheEntries(cache, maxEntries, protectedKey = '') {
   const limit = Math.max(1, Math.floor(Number(maxEntries) || 0));
-  if (!cache || typeof cache.keys !== 'function' || typeof cache.delete !== 'function') return 0;
+  if (!cache || !(cache.keys instanceof Function) || !(cache.delete instanceof Function)) return 0;
   let keys;
   try {
     keys = await cache.keys();

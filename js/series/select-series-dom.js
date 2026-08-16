@@ -23,6 +23,10 @@ import { getRegistrationQuality, getRegistrationRecord } from '../metadata.js';
 import { canUseMpr3D, capabilityBlockReason, capabilityLabel, geometryKindForSeries } from './series-capabilities.js';
 import { getGroupPeers } from './compare.js';
 
+function isSeriesMetadataRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
 // TR/TE only exist for MR; a CT/other series reports an em-dash rather than a
 // meaningless "0 ms", which metaRowHtml then dims as an empty value.
 function formatMs(value) {
@@ -127,7 +131,7 @@ export function metaRowHtml([k, val, opts = {}]) {
 
 // One delegated listener on the persistent #meta container survives innerHTML
 // re-renders on every series change. Clicking (or Enter/Space on) a [data-copy]
-// value writes the full path/UID to the clipboard and confirms via a toast.
+// value writes the full path/UID to the clipboard.
 export function wireMetaCopy(meta) {
   if (meta.dataset.copyWired === '1') return;
   meta.dataset.copyWired = '1';
@@ -136,9 +140,8 @@ export function wireMetaCopy(meta) {
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      notify('Copied to clipboard', { id: 'meta-copy', duration: 1500 });
     } catch {
-      notify('Copy failed — clipboard unavailable', { id: 'meta-copy', duration: 2500 });
+      notify('Copy failed — clipboard unavailable', { id: 'meta-copy-fail', kind: 'error' });
     }
   };
   meta.addEventListener('click', (e) => {
@@ -337,7 +340,7 @@ function downloadJson(payload, filename) {
 }
 
 function cloudEngineText(series = {}) {
-  const report = series.engineReport && typeof series.engineReport === 'object' ? series.engineReport : null;
+  const report = isSeriesMetadataRecord(series.engineReport) ? series.engineReport : null;
   const parts = [];
   const sourceKind = cloudTokenLabel(series.engineSourceKind, ENGINE_SOURCE_LABELS);
   if (sourceKind) parts.push(sourceKind);
@@ -353,7 +356,7 @@ function cloudEngineText(series = {}) {
 function cloudSourceText(series = {}) {
   const projectionSetId = compactCloudValue(series.sourceProjectionSetId);
   if (projectionSetId) return `projection set ${projectionSetId}`;
-  const calibration = series.ultrasoundCalibration && typeof series.ultrasoundCalibration === 'object'
+  const calibration = isSeriesMetadataRecord(series.ultrasoundCalibration)
     ? series.ultrasoundCalibration
     : null;
   if (!calibration) return '';
@@ -387,7 +390,7 @@ function normalizationWindowText(record = {}) {
 }
 
 function normalizationPartText(label, record = {}) {
-  if (!record || typeof record !== 'object') return '';
+  if (!isSeriesMetadataRecord(record)) return '';
   const method = normalizationMethodLabel(record.method);
   const range = normalizationWindowText(record);
   if (!range) return `${label} ${method}`;
@@ -397,7 +400,7 @@ function normalizationPartText(label, record = {}) {
 function normalizationLosses(normalization = {}) {
   const losses = new Set();
   for (const record of [normalization.previewPng, normalization.rawVolume]) {
-    if (!record || typeof record !== 'object' || !Array.isArray(record.knownLosses)) continue;
+    if (!isSeriesMetadataRecord(record) || !Array.isArray(record.knownLosses)) continue;
     for (const loss of record.knownLosses) {
       const text = String(loss || '').trim();
       if (text) losses.add(text);
@@ -408,7 +411,7 @@ function normalizationLosses(normalization = {}) {
 
 function cloudNormalizationText(series = {}) {
   const normalization = series.engineReport?.normalization;
-  if (!normalization || typeof normalization !== 'object') return '';
+  if (!isSeriesMetadataRecord(normalization)) return '';
   const parts = [
     normalizationPartText('PNG', normalization.previewPng),
     normalizationPartText('raw', normalization.rawVolume),
@@ -419,7 +422,8 @@ function cloudNormalizationText(series = {}) {
 }
 
 function cloudProvenanceRows(series = {}) {
-  const action = series.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : null;
+  if (!hasCloudProvenance(series)) return [];
+  const action = isSeriesMetadataRecord(series.cloudAction) ? series.cloudAction : null;
   const rows = [];
   if (action?.label) {
     const parts = [action.label];
@@ -461,7 +465,7 @@ function cloudProvenanceRows(series = {}) {
 }
 
 function hasCloudProvenance(series = {}) {
-  return !!(series.cloudAction && typeof series.cloudAction === 'object') || !!String(series.sourceJobId || '').trim();
+  return isSeriesMetadataRecord(series.cloudAction) || !!String(series.sourceJobId || '').trim();
 }
 
 function cloudProvenanceActionHtml(series = {}) {
@@ -510,7 +514,7 @@ function publicBaseFromSeriesUrl(value, slug) {
 
 function cloudPublicBaseForSeries(series = {}) {
   const slug = String(series.slug || '').trim();
-  const overlayBases = series.overlayUrlBases && typeof series.overlayUrlBases === 'object'
+  const overlayBases = isSeriesMetadataRecord(series.overlayUrlBases)
     ? Object.values(series.overlayUrlBases)
     : [];
   const candidates = [
@@ -529,7 +533,7 @@ function cloudPublicBaseForSeries(series = {}) {
 }
 
 function cloudJobIdForSeries(series = {}) {
-  const action = series.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : {};
+  const action = isSeriesMetadataRecord(series.cloudAction) ? series.cloudAction : {};
   return String(action.jobId || series.sourceJobId || series.job_id || '').trim();
 }
 
@@ -541,7 +545,7 @@ function cloudResultCompanionUrl(series = {}, filename = '') {
 }
 
 function cloudProcessingModeForSeries(series = {}) {
-  const action = series.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : {};
+  const action = isSeriesMetadataRecord(series.cloudAction) ? series.cloudAction : {};
   return String(action.processingMode || series.processingMode || '').trim();
 }
 
@@ -553,7 +557,7 @@ function hasProjectionCompanion(series = {}) {
 function hasRegistrationCompanion(series = {}) {
   const mode = cloudProcessingModeForSeries(series);
   return mode === 'rigid_registration' || series.engineSourceKind === 'rigid-registration'
-    || !!(series.registration && typeof series.registration === 'object');
+    || isSeriesMetadataRecord(series.registration);
 }
 
 export function cloudSidecarsForSeries(series = {}) {
@@ -623,7 +627,7 @@ function cloudResultPackageAssets(series = {}) {
   } else if (series.hasRaw) {
     assets.push({ kind: 'raw-volume', label: 'Raw volume', expected: true });
   }
-  const overlayBases = series.overlayUrlBases && typeof series.overlayUrlBases === 'object'
+  const overlayBases = isSeriesMetadataRecord(series.overlayUrlBases)
     ? series.overlayUrlBases
     : {};
   if (series.hasSeg) {
@@ -661,7 +665,7 @@ function cloudResultPackageAssets(series = {}) {
 }
 
 export function cloudProvenanceExportPayload(series = {}, manifest = {}) {
-  const action = series.cloudAction && typeof series.cloudAction === 'object' ? series.cloudAction : {};
+  const action = isSeriesMetadataRecord(series.cloudAction) ? series.cloudAction : {};
   return {
     schema: 'voxellab.cloud-provenance.v1',
     exportedAt: new Date().toISOString(),
@@ -721,7 +725,7 @@ export function cloudResultPackagePayload(series = {}, manifest = {}) {
 }
 
 function registrationSeriesRef(series = {}) {
-  if (!series || typeof series !== 'object') return null;
+  if (!isSeriesMetadataRecord(series)) return null;
   return {
     slug: series.slug || '',
     name: series.name || '',
@@ -761,7 +765,7 @@ function wireRegistrationExports(meta, series) {
   meta.querySelector('#registration-evidence-open-compare')?.addEventListener('click', () => {
     const target = registrationCompareTarget(series);
     if (!target) {
-      notify('Fixed image is not loaded for comparison', { id: 'registration-compare-unavailable', duration: 2200 });
+      notify('Fixed image is not loaded for comparison', { id: 'registration-compare-unavailable', kind: 'warning' });
       return;
     }
     window.dispatchEvent(new CustomEvent('voxellab:open-registration-compare', { detail: target }));
@@ -770,7 +774,6 @@ function wireRegistrationExports(meta, series) {
   button?.addEventListener('click', () => {
     const payload = registrationEvidencePayload(series, state.manifest || {});
     downloadJson(payload, `voxellab-registration-evidence-${safeFilenamePart(series.slug)}.json`);
-    notify('Registration evidence JSON exported', { id: 'registration-evidence-export', duration: 1800 });
   });
 }
 
@@ -779,13 +782,11 @@ function wireCloudExports(meta, series) {
   provenanceButton?.addEventListener('click', () => {
     const payload = cloudProvenanceExportPayload(series, state.manifest || {});
     downloadJson(payload, `voxellab-cloud-provenance-${safeFilenamePart(series.slug)}.json`);
-    notify('Cloud provenance JSON exported', { id: 'cloud-provenance-export', duration: 1800 });
   });
   const packageButton = meta.querySelector('#cloud-result-package-json');
   packageButton?.addEventListener('click', () => {
     const payload = cloudResultPackagePayload(series, state.manifest || {});
     downloadJson(payload, `voxellab-cloud-package-${safeFilenamePart(series.slug)}.json`);
-    notify('Cloud result package JSON exported', { id: 'cloud-result-package-export', duration: 1800 });
   });
 }
 
@@ -926,6 +927,11 @@ export function applySelectSeriesDom(i, series, v) {
 
   show('btn-3d', isVolumetric);
   show('btn-mpr', isVolumetric);
+  const mprBlock = isVolumetric && !canUseMpr3D(series) ? capabilityBlockReason(series) : '';
+  const mprBtn = $('btn-mpr');
+  const threeBtn = $('btn-3d');
+  if (mprBtn) mprBtn.setAttribute('data-tip', mprBlock || 'MPR (m)');
+  if (threeBtn) threeBtn.setAttribute('data-tip', mprBlock || '3D (3)');
   if (!isVolumetric && (v.is3dActive() || v.isMprActive())) {
     v.setMode('2d');
   }

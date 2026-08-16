@@ -109,56 +109,6 @@
     min-width: 0;
     width: auto;
   }
-  .cloud-results-list {
-    display: grid;
-    gap: var(--space-xs);
-    min-width: 0;
-  }
-  .cloud-result-row {
-    appearance: none;
-    display: grid;
-    gap: 2px;
-    width: 100%;
-    min-width: 0;
-    padding: var(--space-xs) 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    text-align: left;
-  }
-  .cloud-result-row:hover .cloud-result-name { color: var(--text); }
-  .cloud-result-row:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring);
-  }
-  .cloud-result-row.is-active {
-    cursor: default;
-  }
-  .cloud-result-row.is-active .cloud-result-name {
-    color: var(--rail-stat);
-  }
-  .cloud-result-name,
-  .cloud-result-meta,
-  .cloud-result-detail {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cloud-result-name {
-    color: var(--rail-value);
-    font-size: var(--fs-body);
-    font-weight: var(--fw-semibold);
-  }
-  .cloud-result-meta {
-    color: var(--muted);
-    font-size: var(--fs-caption);
-  }
-  .cloud-result-detail {
-    color: var(--rail-caption);
-    font-size: var(--fs-micro);
-  }
   .mk {
     flex: 0 0 auto; white-space: nowrap;
     color: var(--rail-label); font-weight: var(--fw-regular); font-size: var(--fs-micro);
@@ -1111,6 +1061,13 @@
     box-shadow: var(--focus-ring);
   }
   #panel-3d .preset-btn:active { opacity: 0.85; }
+  #panel-3d #three-turntable { grid-column: 1 / -1; }
+  #panel-3d #three-turntable[aria-pressed="true"] {
+    background: var(--accent-bg);
+    border-color: var(--dim);
+    color: var(--rail-value);
+  }
+  #panel-3d #three-turntable:disabled { cursor: not-allowed; opacity: 0.45; }
 
   /* Region legend rows */
   .legend-row {

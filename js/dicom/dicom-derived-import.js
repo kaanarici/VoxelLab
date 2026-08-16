@@ -249,22 +249,27 @@ export async function importLocalDerivedObjects(files, manifest, onProgress = ()
   const summaries = [];
   for (const dataset of objects) {
     const modality = normalizeModality(dataset?.meta?.Modality);
+    const desktopSourcePath = String(dataset?.file?.path || '');
     if (!isDerivedObjectModality(modality)) continue;
     const result = modality === 'SR'
       ? applyDerivedSr(manifest, dataset.meta)
       : applyDerivedDataset(manifest, dataset);
     if (result.reasonCode === 'source_not_loaded') {
       const queued = queuePendingDerivedObject(dataset);
-      summaries.push({
+      const summary = {
         modality,
         skipped: true,
         pending: queued.accepted,
         reason: queued.accepted
           ? `${localFileLabel(dataset.file)} is waiting for its matching source series in this session`
           : queued.reason,
-      });
+      };
+      if (desktopSourcePath) summary.desktopSourcePath = desktopSourcePath;
+      summaries.push(summary);
     } else {
-      summaries.push({ modality, ...result });
+      const summary = { modality, ...result };
+      if (desktopSourcePath) summary.desktopSourcePath = desktopSourcePath;
+      summaries.push(summary);
     }
   }
   return summaries.concat(skipped);

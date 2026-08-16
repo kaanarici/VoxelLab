@@ -7,10 +7,24 @@ function makeNode() {
   return {
     attrs: {},
     children: [],
-    classList: { remove() {} },
+    dataset: {},
+    isConnected: false,
+    parentNode: null,
+    classList: { add() {}, remove() {}, contains() { return false; } },
     setAttribute(name, value) { this.attrs[name] = value; },
-    appendChild(child) { this.children.push(child); },
+    appendChild(child) {
+      this.children.push(child);
+      child.parentNode = this;
+      child.isConnected = this.isConnected;
+    },
+    prepend(child) {
+      this.children.unshift(child);
+      child.parentNode = this;
+      child.isConnected = this.isConnected;
+    },
     addEventListener() {},
+    querySelector() { return makeNode(); },
+    querySelectorAll() { return []; },
     remove() {},
   };
 }
@@ -28,13 +42,19 @@ const view = {
   },
 };
 
+const body = makeNode();
+body.isConnected = true;
+
 globalThis.document = {
+  body,
+  activeElement: null,
   getElementById(id) {
     if (id === 'view') return view;
     if (id === 'overlay-svg') return overlaySvg;
     return makeNode();
   },
   createElementNS() { return makeNode(); },
+  querySelectorAll() { return []; },
 };
 
 globalThis.localStorage = {
@@ -99,4 +119,26 @@ test('onMeasureClick stores uncalibrated distances as pixels, not millimeters', 
   assert.equal(list[0].mm, 10);
   assert.equal(list[0].unit, 'px');
   assert.equal(list[0].spacingKnown, false);
+});
+
+test('onMeasureClick does not persist a zero-length ruler', () => {
+  document.createElement = () => makeNode();
+  state.manifest = {
+    series: [{ slug: 'zero_length', width: 100, pixelSpacing: [2, 3] }],
+  };
+  state.seriesIdx = 0;
+  state.sliceIdx = 0;
+  state.mode = '2d';
+  state.measureMode = true;
+  state.measurePending = null;
+  state.measurements = {};
+  state.angleMeasurements = {};
+  state.anglePending = null;
+
+  const target = { classList: { contains: () => false } };
+  onMeasureClick({ clientX: 10, clientY: 20, target });
+  onMeasureClick({ clientX: 10, clientY: 20, target });
+
+  assert.deepEqual(measurementEntriesForSlice(state, state.manifest.series[0], 0), []);
+  assert.deepEqual(state.measurePending, { x: 10, y: 20 });
 });

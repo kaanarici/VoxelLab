@@ -32,9 +32,9 @@ let _updateSliceDisplay = () => {};
 const clientToCanvasPx = (cx, cy) => _clientToCanvasPx($('view'), cx, cy);
 
 export function initAnnotations({ drawSlice, drawSparkline, updateSliceDisplay }) {
-  if (typeof drawSlice === 'function') _drawSlice = drawSlice;
-  if (typeof drawSparkline === 'function') _drawSparkline = drawSparkline;
-  if (typeof updateSliceDisplay === 'function') _updateSliceDisplay = updateSliceDisplay;
+  if (drawSlice instanceof Function) _drawSlice = drawSlice;
+  if (drawSparkline instanceof Function) _drawSparkline = drawSparkline;
+  if (updateSliceDisplay instanceof Function) _updateSliceDisplay = updateSliceDisplay;
 }
 
 export function loadAnnotations() {
@@ -139,7 +139,10 @@ function showAnnotDialog({ mode, text, slice }) {
     meta.textContent  = `Slice ${slice + 1}`;
     area.value = text || '';
     deleteBtn.style.display = mode === 'edit' ? '' : 'none';
+    const syncSave = () => { saveBtn.disabled = !area.value.trim(); };
+    syncSave();
 
+    document.querySelector('#toolbox-measure .toolbox-trigger').focus();
     openModal('annot-modal');
     setTimeout(() => { area.focus(); area.setSelectionRange(area.value.length, area.value.length); }, 20);
 
@@ -149,11 +152,15 @@ function showAnnotDialog({ mode, text, slice }) {
       cancelBtn.removeEventListener('click', onCancel);
       deleteBtn.removeEventListener('click', onDelete);
       closeBtn.removeEventListener('click', onCancel);
+      area.removeEventListener('input', syncSave);
       modal.removeEventListener('click', onBackdrop);
       document.removeEventListener('keydown', onKey);
       resolve(result);
     };
-    const onSave = () => cleanup({ action: 'save', text: area.value.trim() });
+    const onSave = () => {
+      if (saveBtn.disabled) return;
+      cleanup({ action: 'save', text: area.value.trim() });
+    };
     const onCancel = () => cleanup(null);
     const onDelete = () => cleanup({ action: 'delete', text: '' });
     const onBackdrop = (e) => { if (e.target === modal) cleanup(null); };
@@ -163,6 +170,7 @@ function showAnnotDialog({ mode, text, slice }) {
     };
 
     saveBtn.addEventListener('click', onSave);
+    area.addEventListener('input', syncSave);
     cancelBtn.addEventListener('click', onCancel);
     deleteBtn.addEventListener('click', onDelete);
     closeBtn.addEventListener('click', onCancel);

@@ -263,6 +263,7 @@ export function buildMicroscopySeriesResults(pages, metadata, fileName, slugBase
     firstIPP: [0, 0, zKnown ? firstZ * zMm : 0],
     lastIPP: [0, 0, zKnown ? lastZ * zMm : 0],
     orientation: [...DEFAULT_IOP],
+    patientFrameTrusted: false,
     group: null,
     hasBrain: false,
     hasSeg: false,

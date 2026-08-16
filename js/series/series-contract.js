@@ -41,6 +41,10 @@ const SERIES_BOOL_FIELDS = [
   'slicePositionsDistinct',
 ];
 
+function isSeriesContractRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
 function projectionKindForModality(modality) {
   if (['CR', 'DX', 'MG', 'XA', 'RF'].includes(modality)) return 'xray';
   return 'unknown';
@@ -65,7 +69,9 @@ function assertSafeProjectionSetId(id) {
 
 function assertSeriesBooleanFields(entry) {
   for (const key of SERIES_BOOL_FIELDS) {
-    if (key in entry && typeof entry[key] !== 'boolean') throw new Error(`Cloud result ${key} must be a boolean`);
+    if (key in entry && entry[key] !== true && entry[key] !== false) {
+      throw new Error(`Cloud result ${key} must be a boolean`);
+    }
   }
 }
 
@@ -221,15 +227,15 @@ function seriesUidValues(series = {}) {
 }
 
 function registrationRecordForEntry(entry = {}) {
-  if (entry.registration && typeof entry.registration === 'object') return entry.registration;
-  const report = entry.engineReport && typeof entry.engineReport === 'object' ? entry.engineReport : {};
-  return report.registration && typeof report.registration === 'object' ? report.registration : null;
+  if (isSeriesContractRecord(entry.registration)) return entry.registration;
+  const report = isSeriesContractRecord(entry.engineReport) ? entry.engineReport : {};
+  return isSeriesContractRecord(report.registration) ? report.registration : null;
 }
 
 function registrationInputForEntry(entry = {}) {
-  if (entry.registrationInput && typeof entry.registrationInput === 'object') return entry.registrationInput;
-  const report = entry.engineReport && typeof entry.engineReport === 'object' ? entry.engineReport : {};
-  return report.registrationInput && typeof report.registrationInput === 'object' ? report.registrationInput : {};
+  if (isSeriesContractRecord(entry.registrationInput)) return entry.registrationInput;
+  const report = isSeriesContractRecord(entry.engineReport) ? entry.engineReport : {};
+  return isSeriesContractRecord(report.registrationInput) ? report.registrationInput : {};
 }
 
 function findRegistrationSourceSeries(manifest = {}, refs = []) {
@@ -302,7 +308,7 @@ export function mergeSeriesIntoManifest(manifest, entry) {
 }
 
 export function normalizeCloudProjectionSetEntry(entry, seriesEntry = null) {
-  if (!entry || typeof entry !== 'object') throw new Error('Cloud result is missing a projection set entry');
+  if (!isSeriesContractRecord(entry)) throw new Error('Cloud result is missing a projection set entry');
   const normalized = { ...entry };
   normalized.id = String(normalized.id || normalized.projectionSetId || '').trim();
   assertSafeProjectionSetId(normalized.id);
@@ -373,7 +379,7 @@ export function attachCloudActionProvenance(entry, status = {}, context = {}) {
 }
 
 export function normalizeCloudSeriesEntry(entry, { publicBase = '' } = {}) {
-  if (!entry || typeof entry !== 'object') throw new Error('Cloud result is missing a series entry');
+  if (!isSeriesContractRecord(entry)) throw new Error('Cloud result is missing a series entry');
   const normalized = applyPublicSeriesUrls({
     hasBrain: false,
     hasSeg: false,

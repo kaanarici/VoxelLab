@@ -445,7 +445,7 @@ test('buildRTStructImport maps CLOSED_PLANAR contours into source-slice ROI poly
   }, sourceSeries());
 
   assert.equal(result.kind, 'rtstruct');
-  assert.equal(result.roisBySlice['0'][0].shape, 'polygon');
+  assert.equal(result.roisBySlice['0'][0]["shape"], 'polygon');
   assert.equal(result.roisBySlice['0'][0].text, 'Lesion');
   assert.equal(result.roisBySlice['0'][0].pts.length, 4);
   assert.ok(result.roisBySlice['0'][0].stats.area_mm2 > 0);

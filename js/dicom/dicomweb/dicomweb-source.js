@@ -65,12 +65,13 @@ function tagValue(instance, tag) {
 
 function tagString(instance, tag, fallback = '') {
   const v = tagValue(instance, tag);
-  return typeof v === 'string' ? v : (v != null ? String(v) : fallback);
+  return v != null ? String(v) : fallback;
 }
 
 function tagNumber(instance, tag, fallback = 0) {
   const v = tagValue(instance, tag);
-  return typeof v === 'number' ? v : (parseFloat(v) || fallback);
+  const number = Number(v);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function tagNumberArray(instance, tag) {
@@ -207,11 +208,10 @@ function rememberNormalizedMetadata(key, value) {
 
 function normalizePersonName(value) {
   if (!value) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object') {
-    for (const key of ['Alphabetic', 'Ideographic', 'Phonetic']) {
-      if (typeof value[key] === 'string' && value[key]) return value[key];
-    }
+  if (value?.trim instanceof Function) return value;
+  for (const key of ['Alphabetic', 'Ideographic', 'Phonetic']) {
+    const component = value?.[key];
+    if (component?.trim instanceof Function && component) return component;
   }
   return String(value);
 }

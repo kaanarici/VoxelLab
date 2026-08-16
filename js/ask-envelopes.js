@@ -7,8 +7,18 @@ export class EnvelopeValidationError extends Error {
   }
 }
 
+function isEnvelopeObject(value) {
+  if (!value || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isTextField(value) {
+  return value?.constructor === String;
+}
+
 function objectValue(value, envelope) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isEnvelopeObject(value)) {
     throw new EnvelopeValidationError(envelope, 'not_object');
   }
   return value;
@@ -23,7 +33,7 @@ function unexpected(payload, allowed, envelope) {
 function stringField(payload, key, envelope, { allowEmpty = false } = {}) {
   if (!Object.hasOwn(payload, key)) throw new EnvelopeValidationError(envelope, `${key}_missing`);
   const value = payload[key];
-  if (typeof value !== 'string') throw new EnvelopeValidationError(envelope, `${key}_not_string`);
+  if (!isTextField(value)) throw new EnvelopeValidationError(envelope, `${key}_not_string`);
   if (!allowEmpty && !value) throw new EnvelopeValidationError(envelope, `${key}_empty`);
   return value;
 }
@@ -31,7 +41,7 @@ function stringField(payload, key, envelope, { allowEmpty = false } = {}) {
 function booleanField(payload, key, envelope) {
   if (!Object.hasOwn(payload, key)) throw new EnvelopeValidationError(envelope, `${key}_missing`);
   const value = payload[key];
-  if (typeof value !== 'boolean') throw new EnvelopeValidationError(envelope, `${key}_not_boolean`);
+  if (value?.constructor !== Boolean) throw new EnvelopeValidationError(envelope, `${key}_not_boolean`);
   return value;
 }
 
@@ -63,12 +73,12 @@ function stepsField(payload, envelope) {
   const value = payload.steps;
   if (!Array.isArray(value)) throw new EnvelopeValidationError(envelope, 'steps_not_array');
   return value.map((item) => {
-    if (!item || typeof item !== 'object') throw new EnvelopeValidationError(envelope, 'step_not_object');
+    if (!isEnvelopeObject(item)) throw new EnvelopeValidationError(envelope, 'step_not_object');
     const detail = item.detail;
-    if (typeof item.kind !== 'string' || typeof item.label !== 'string' || (detail != null && typeof detail !== 'string')) {
+    if (!isTextField(item.kind) || !isTextField(item.label) || (detail != null && !isTextField(detail))) {
       throw new EnvelopeValidationError(envelope, 'step_field_not_string');
     }
-    return { kind: item.kind, label: item.label, detail: typeof detail === 'string' ? detail : '' };
+    return { kind: item.kind, label: item.label, detail: isTextField(detail) ? detail : '' };
   });
 }
 
@@ -81,7 +91,7 @@ function actionsField(payload, envelope) {
   if (value.length > 4) throw new EnvelopeValidationError(envelope, 'actions_too_many');
   const seen = new Set();
   return value.map((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    if (!isEnvelopeObject(item)) {
       throw new EnvelopeValidationError(envelope, 'action_not_object');
     }
     unexpected(item, new Set(['id', 'label', 'detail']), envelope);
@@ -151,7 +161,7 @@ function stringArray(payload, key, envelope) {
   const value = payload[key];
   if (!Array.isArray(value)) throw new EnvelopeValidationError(envelope, `${key}_not_array`);
   return value.map((item, index) => {
-    if (typeof item !== 'string') throw new EnvelopeValidationError(envelope, `${key}_${index}_not_string`);
+    if (!isTextField(item)) throw new EnvelopeValidationError(envelope, `${key}_${index}_not_string`);
     return item;
   });
 }

@@ -1,6 +1,6 @@
 import { state } from '../core/state.js';
 import { $ } from '../dom.js';
-import { notify, dismissNotify } from '../notify.js';
+import { notify } from '../notify.js';
 import { getSegmentationRecommendations, inferSegmentationStudy } from '../segmentation/segmentation-catalog.js';
 import { overlayMask } from './slimsam-overlay.js';
 
@@ -23,7 +23,7 @@ function loadSettings() {
     if (Number.isFinite(stored.opacity)) {
       _settings.opacity = Math.max(0.15, Math.min(0.75, stored.opacity));
     }
-    if (typeof stored.smooth === 'boolean') _settings.smooth = stored.smooth;
+    if (stored.smooth?.constructor === Boolean) _settings.smooth = stored.smooth;
   } catch { /* keep defaults */ }
 }
 
@@ -60,8 +60,8 @@ function syncSlimSAMManifest(mod) {
 
 export function initSlimSAMTool({ drawSlice, beforeActivate, selectSeries } = {}) {
   _drawSlice = drawSlice;
-  _beforeActivate = typeof beforeActivate === 'function' ? beforeActivate : () => {};
-  _selectSeries = typeof selectSeries === 'function' ? selectSeries : null;
+  _beforeActivate = beforeActivate instanceof Function ? beforeActivate : () => {};
+  _selectSeries = selectSeries instanceof Function ? selectSeries : null;
   loadSettings();
   wireSlimSAMMenu();
   syncSlimSAMMenu();
@@ -101,41 +101,37 @@ async function activateFromMenu() {
     return;
   }
   if (state.mode !== '2d') {
-    notify('SlimSAM only runs in the 2D slice view.', { duration: 4000 });
+    notify('SlimSAM only runs in the 2D slice view.', { kind: 'warning', duration: 4000 });
     await updateSlimSAMStatus(false);
     return;
   }
   _beforeActivate();
   const info = await updateSlimSAMStatus(true);
   if (!info?.available) {
-    notify('SlimSAM needs embeddings for this series before it can segment.', { duration: 5000 });
+    notify('SlimSAM needs embeddings for this series before it can segment.', { kind: 'warning' });
     return;
   }
   setSlimSAMMode(true);
-  notify('SlimSAM armed. Click the object boundary or center on the 2D slice.', { duration: 4500 });
+  notify('SlimSAM armed. Click the object boundary or center on the 2D slice.');
 }
 
 export async function onSlimSAMClick(ev, clientToCanvasPx) {
   if (!_active || state.mode !== '2d') return;
 
   const [px, py] = clientToCanvasPx(ev.clientX, ev.clientY);
-  const series = state.manifest.series[state.seriesIdx];
 
   // Check if embeddings exist
   let slimsam;
   try {
     slimsam = await loadSlimSAM();
   } catch {
-    notify('SlimSAM tool could not load.', { duration: 5000 });
+    notify('SlimSAM tool could not load.', { kind: 'error' });
     return;
   }
   const available = await slimsam.isSlimSAMAvailable(state.seriesIdx);
   if (!available) {
     setSlimSAMStatus('missing');
-    notify('No SlimSAM embeddings for this series.', {
-      command: slimsamEmbedCommand(series?.slug),
-      duration: 8000,
-    });
+    notify('No SlimSAM embeddings for this series.', { kind: 'warning' });
     return;
   }
 
@@ -144,8 +140,7 @@ export async function onSlimSAMClick(ev, clientToCanvasPx) {
   try {
     const result = await slimsam.runSlimSAMClick(px, py, state.sliceIdx, state.seriesIdx);
     if (!result || !result.mask) {
-      dismissNotify('slimsam');
-      notify('No mask returned — try a different area', { duration: 3000 });
+      notify('No mask returned — try a different area', { id: 'slimsam', kind: 'warning' });
       return;
     }
 
@@ -153,11 +148,9 @@ export async function onSlimSAMClick(ev, clientToCanvasPx) {
     _drawSlice();
     drawSlimSAMMask();
     syncSlimSAMMenu();
-    dismissNotify('slimsam');
-    notify(`SlimSAM segmented (${result.width}×${result.height})`, { duration: 2000 });
+    notify(`SlimSAM segmented (${result.width}×${result.height})`, { id: 'slimsam' });
   } catch (e) {
-    dismissNotify('slimsam');
-    notify('SlimSAM error: ' + e.message, { duration: 5000 });
+    notify('SlimSAM error: ' + e.message, { id: 'slimsam', kind: 'error' });
   }
 }
 
@@ -391,7 +384,7 @@ function createSegmentationEngineAction(engine) {
 
 async function openSegmentationCloudAction(engine) {
   if (!_selectSeries) {
-    notify('Cloud segmentation needs the upload workflow to be initialized.', { duration: 4000 });
+    notify('Cloud segmentation needs the upload workflow to be initialized.', { kind: 'warning' });
     return;
   }
   setSlimSAMMenuOpen(false);

@@ -1,6 +1,6 @@
 import { state } from '../core/state.js';
+import { notify } from '../notify.js';
 import { effectiveSliceSpacing } from '../mpr/mpr-geometry.js';
-import { setClipRange } from '../core/state/viewer-commands.js';
 import { endPerfTrace, hasPendingPerfTrace } from '../core/perf-trace.js';
 import { initOverlayVolumes } from '../overlay/overlay-volumes.js';
 import {
@@ -12,14 +12,8 @@ import { syncThreeSurfaceState as syncThreeSurfaceReadiness } from '../runtime/t
 import { syncViewerRuntimeSession } from '../runtime/viewer-session.js';
 import { ensureHRVoxels, initHrVoxelsLoading } from './volume-hr-voxels.js';
 import { ensureVoxels, initEnsureVoxels } from './volume-voxels-ensure.js';
-import { computeGradientInWorker } from './volume-worker-client.js';
 import { volumeClipPlane } from './volume-clip-plane.js';
-
-// Cap on the precomputed gradient texture (RGBA8). Volumes whose gradient would
-// exceed this fall back to the in-shader 6-tap gradient + motion step-LOD; ones
-// that fit render at full quality even while orbiting.
-const GRADIENT_BUILD_MAX_BYTES = 96 * 1024 * 1024;
-
+import { raycastStepCount, volumeProjectionSamplingSupport } from './volume-raycast-steps.js';
 let _renderVolumes = () => {};
 let _hideHover = () => {};
 let _is3dActive = () => false;
@@ -37,12 +31,18 @@ function loadThreeModules() {
       import('./volume-three-bootstrap.js'),
       import('./volume-label-overlay.js'),
       import('./volume-raycast-material.js'),
-    ]).then(([THREE, hover, views, bootstrap, label, material]) => {
+      import('./volume-texture-capabilities.js'),
+    ]).then(([THREE, hover, views, bootstrap, label, material, capabilities]) => {
       hover.initVolume3DHover({ hideHover: _hideHover });
       return {
         THREE,
+        MAX_3D_BASE_TEXTURE_BYTES: capabilities.MAX_3D_BASE_TEXTURE_BYTES,
+        rendererMax3DTextureSize: capabilities.rendererMax3DTextureSize,
+        volumeTextureSizeSupport: capabilities.volumeTextureSizeSupport,
         setThreeDView: views.setThreeDView,
         ensureThreeRenderer: bootstrap.ensureThreeRenderer,
+        stopThreeTurntable: bootstrap.stopThreeTurntable,
+        toggleThreeTurntable: bootstrap.toggleThreeTurntable,
         updateLabelTexture: label.updateLabelTexture,
         createVolumeRaycastMaterial: material.createVolumeRaycastMaterial,
       };
@@ -54,17 +54,19 @@ function loadThreeModules() {
   return _threeModules;
 }
 
-export function shouldPrecomputeGradient(volumeData, voxelCount, isFloat, {
-  maxBytes = GRADIENT_BUILD_MAX_BYTES,
-} = {}) {
-  if (isFloat) return false;
-  const sourceBytes = Number(volumeData?.byteLength) || 0;
-  const gradientBytes = Math.max(0, Number(voxelCount) || 0) * 4;
-  return sourceBytes * 2 + gradientBytes <= maxBytes;
-}
-
 function requestThreeRender(reason = 'update', burstMs = 0) {
   getThreeRuntime().requestRender?.(reason, burstMs);
+}
+
+function disposeCurrentVolumeMesh(three) {
+  if (!three.mesh) return;
+  three.scene?.remove?.(three.mesh);
+  three.mesh.geometry?.dispose?.();
+  const material = three.mesh.material;
+  const uniforms = material?.uniforms || {};
+  material?.dispose?.();
+  for (const key of ['uVolume', 'uLabel', 'uLabelLUT']) uniforms[key]?.value?.dispose?.();
+  setThreeRuntimeMesh(null, { seriesIdx: -1, variant: '', dataKey: '' });
 }
 
 export function syncThreeSurfaceState(series = state.manifest?.series?.[state.seriesIdx]) {
@@ -100,23 +102,14 @@ export function initVolume3D(deps) {
 export { ensureVoxels, ensureHRVoxels };
 
 export async function setThreeDView(view) {
-  const { setThreeDView: applyThreeDView } = await loadThreeModules();
+  const { setThreeDView: applyThreeDView, stopThreeTurntable } = await loadThreeModules();
+  stopThreeTurntable();
   applyThreeDView(view);
 }
 
-// When scrubbing in 3D mode, cut the volume at the current slice (Z) so the
-// slider dissects the brain depth-wise. Mirror also moves clipMax[2].
-/** Mirror the 2D slice scrubber onto the 3D clip plane while 3D mode is active. */
-export function sync3DScrubber() {
-  if (!_is3dActive()) return;
-  const series = state.manifest.series[state.seriesIdx];
-  const cz = (state.sliceIdx + 1) / series.slices;
-  setClipRange(state.clipMin, [
-    state.clipMax[0],
-    state.clipMax[1],
-    Math.max(state.clipMin[2] + 0.001, Math.min(1, cz)),
-  ]);
-  requestThreeRender('slice-scrub', 120);
+export async function toggleThreeTurntable() {
+  const { toggleThreeTurntable: applyToggle } = await loadThreeModules();
+  return applyToggle();
 }
 
 /** Push threshold, intensity, clip, and render-mode changes into the live raycast uniforms. */
@@ -147,6 +140,13 @@ export function updateUniforms() {
   }
   if (u.uMode) {
     u.uMode.value = state.renderMode === 'mip' ? 1 : state.renderMode === 'minip' ? 2 : 0;
+    const textureDims = three.mesh.material.userData.textureDims || {};
+    const steps = raycastStepCount({
+      width: textureDims.width || series?.width,
+      height: textureDims.height || series?.height,
+      depth: textureDims.depth || series?.slices,
+    });
+    u.uSteps.value = steps;
   }
   requestThreeRender('uniforms', 120);
 }
@@ -164,45 +164,89 @@ export async function ensureThree() {
 /** Build or reuse the active 3D volume texture from PNG voxels or HR raw data. */
 export async function buildVolume() {
   const threeModules = await loadThreeModules();
-  const { THREE } = threeModules;
+  const {
+    THREE,
+    MAX_3D_BASE_TEXTURE_BYTES,
+    rendererMax3DTextureSize,
+    volumeTextureSizeSupport,
+  } = threeModules;
   const three = getThreeRuntime();
   if (!three.renderer) return;
   const variant = state.useBrain ? 'brain' : 'base';
   const series = state.manifest.series[state.seriesIdx];
   const W = series.width, H = series.height, D = series.slices;
+  const maxTextureSize = rendererMax3DTextureSize(three.renderer);
+  const supportFor = (dims) => {
+    const texture = volumeTextureSizeSupport(dims, maxTextureSize);
+    if (!texture.supported) return texture;
+    const sampling = volumeProjectionSamplingSupport({
+      width: dims.W,
+      height: dims.H,
+      depth: dims.D,
+    });
+    return sampling.supported
+      ? { supported: true, reason: '' }
+      : { supported: false, reason: `volume needs ${sampling.requiredSteps} ray samples, exceeding the ${sampling.maximum}-sample shader limit` };
+  };
+  const fullSupport = supportFor({ W, H, D });
+  let previewMounted = false;
 
   // Optional small preview raw: show first, then replace with full-res from R2.
-  if (series.hasPreview && series.previewDims && !three.previewShown) {
+  if (series.hasPreview && series.previewDims) {
+    const [pw, ph, pd] = series.previewDims;
+    const previewKey = `${variant}|preview:${series.slug}:${pw}x${ph}x${pd}`;
+    previewMounted = Boolean(three.mesh && three.seriesIdx === state.seriesIdx && three.dataKey === previewKey);
     try {
-      const [pw, ph, pd] = series.previewDims;
-      const r = await fetch(`./data/${series.slug}_preview.raw`);
-      if (r.ok) {
-        const buf = await r.arrayBuffer();
-        const preview = new Uint8Array(buf);
-        if (preview.length === pw * ph * pd) {
-          uploadVolumeTexture(preview, THREE.UnsignedByteType, pw, ph, pd, series, '', threeModules);
-          setThreePreviewShown(true);
-          // Continue to load full-res below (don't return)
+      if (!previewMounted && (!three.mesh || three.seriesIdx !== state.seriesIdx)
+        && supportFor({ W: pw, H: ph, D: pd }).supported) {
+        const response = await fetch(`./data/${series.slug}_preview.raw`);
+        if (response.ok) {
+          const preview = new Uint8Array(await response.arrayBuffer());
+          if (preview.length === pw * ph * pd) {
+            uploadVolumeTexture(preview, THREE.UnsignedByteType, pw, ph, pd, series, previewKey, threeModules, {
+              maxTextureSize,
+              preview: true,
+            });
+            setThreePreviewShown(true);
+            previewMounted = true;
+          }
         }
       }
     } catch { /* preview failed — fall through to full-res */ }
   }
 
+  if (!fullSupport.supported) {
+    if (!previewMounted) disposeCurrentVolumeMesh(three);
+    notify(previewMounted
+      ? `Showing the ${series.previewDims.join('×')} 3D preview because ${fullSupport.reason}. MPR remains full resolution.`
+      : `3D rendering unavailable: ${fullSupport.reason}. MPR remains available through the CPU path.`, {
+      id: 'volume-texture-limit',
+      kind: 'warning',
+    });
+    syncThreeSurfaceState(series);
+    return previewMounted;
+  }
+
   if (!ensureVoxels()) {
     syncThreeSurfaceState(series);
-    return;
+    return previewMounted;
   }
 
   let volumeData = state.voxels;
   let textureType = THREE.UnsignedByteType;
   let dataKey = `vox:${state.voxelsKey}`;
 
-  const hr = await ensureHRVoxels();
+  const useFloatTexture = W * H * D * Float32Array.BYTES_PER_ELEMENT <= MAX_3D_BASE_TEXTURE_BYTES;
+  const hr = useFloatTexture ? await ensureHRVoxels() : null;
   if (hr) {
     textureType = THREE.FloatType;
     dataKey = `hr:${state.hrKey}`;
+  } else if (!useFloatTexture) {
+    notify('3D is using the bounded 8-bit display volume; MPR retains full-precision voxel data.', {
+      id: 'volume-texture-precision',
+      kind: 'info',
+    });
   }
-  setThreePreviewShown(false); // full-res loaded, clear preview flag
 
   const nextDataKey = `${variant}|${dataKey}`;
   if (three.dataKey === nextDataKey && three.mesh) {
@@ -210,7 +254,7 @@ export async function buildVolume() {
     syncViewerRuntimeSession(series);
     syncThreeSurfaceState(series);
     requestThreeRender('reuse-volume', 120);
-    return;
+    return true;
   }
 
   if (hr) {
@@ -225,46 +269,24 @@ export async function buildVolume() {
     }
   }
 
-  uploadVolumeTexture(volumeData, textureType, W, H, D, series, nextDataKey, threeModules);
+  if (volumeData.byteLength > MAX_3D_BASE_TEXTURE_BYTES) {
+    notify(`3D rendering unavailable: the ${volumeData.byteLength}-byte texture exceeds the ${MAX_3D_BASE_TEXTURE_BYTES}-byte base-volume budget.`, {
+      id: 'volume-texture-limit',
+      kind: 'warning',
+    });
+    return previewMounted;
+  }
+  uploadVolumeTexture(volumeData, textureType, W, H, D, series, nextDataKey, threeModules, { maxTextureSize });
+  setThreePreviewShown(false);
   syncThreeSurfaceState(series);
-}
-
-/**
- * Decide whether a volume gets the precomputed normal+edge gradient (full
- * quality at all times) or the in-shader 6-tap fallback + motion step-LOD, then
- * compute the gradient off-thread and swap it into the live material when ready.
- */
-function buildGradientTexture(material, volumeData, textureType, W, H, D, THREE) {
-  // Start on the motion step-LOD so orbiting stays smooth while the gradient
-  // bakes (and permanently for volumes too large to bake, or if the worker
-  // fails). A fitting volume drops the LOD only once its baked gradient lands,
-  // after which it renders full quality even in motion. Still frames are always
-  // full quality regardless, since the settle frame never uses the draft path.
-  material.userData.progressive = true;
-  const isFloat = textureType === THREE.FloatType;
-  if (!shouldPrecomputeGradient(volumeData, W * H * D, isFloat)) return;
-  computeGradientInWorker(volumeData, W, H, D, isFloat)
-    .then((rgba) => {
-      // The mesh may have been replaced while the worker ran — drop the result.
-      if (!rgba || getThreeRuntime().mesh?.material !== material) return;
-      const gradTex = new THREE.Data3DTexture(rgba, W, H, D);
-      gradTex.format = THREE.RGBAFormat;
-      gradTex.type = THREE.UnsignedByteType;
-      gradTex.minFilter = THREE.LinearFilter;
-      gradTex.magFilter = THREE.LinearFilter;
-      gradTex.unpackAlignment = 4;
-      gradTex.needsUpdate = true;
-      material.uniforms.uGrad.value?.dispose?.();
-      material.uniforms.uGrad.value = gradTex;
-      material.uniforms.uHasGrad.value = 1;
-      material.userData.progressive = false; // baked gradient → full quality in motion
-      requestThreeRender('gradient-ready', 160);
-    })
-    .catch(() => { /* worker failed: stay on the 6-tap + motion step-LOD fallback */ });
+  return true;
 }
 
 /** Upload a volume array as a 3D texture and create/replace the mesh. */
-function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, threeModules) {
+function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, threeModules, {
+  maxTextureSize = 0,
+  preview = false,
+} = {}) {
   const { THREE, createVolumeRaycastMaterial } = threeModules;
   const texture = new THREE.Data3DTexture(volumeData, W, H, D);
   texture.format = THREE.RedFormat;
@@ -274,9 +296,10 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
   texture.unpackAlignment = 1;
   texture.needsUpdate = true;
 
-  const sx = W * (series.pixelSpacing?.[1] || 1);
-  const sy = H * (series.pixelSpacing?.[0] || 1);
-  const sz = D * effectiveSliceSpacing(series);
+  const sx = series.width * (series.pixelSpacing?.[1] || 1);
+  const sy = series.height * (series.pixelSpacing?.[0] || 1);
+  const sliceSpacing = effectiveSliceSpacing(series);
+  const sz = series.slices * sliceSpacing;
   const m = Math.max(sx, sy, sz);
 
   const dummyLabel = new THREE.Data3DTexture(new Uint8Array(1), 1, 1, 1);
@@ -286,14 +309,6 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
   dummyLabel.magFilter = THREE.NearestFilter;
   dummyLabel.unpackAlignment = 1;
   dummyLabel.needsUpdate = true;
-
-  const dummyGrad = new THREE.Data3DTexture(new Uint8Array(4), 1, 1, 1);
-  dummyGrad.format = THREE.RGBAFormat;
-  dummyGrad.type = THREE.UnsignedByteType;
-  dummyGrad.minFilter = THREE.NearestFilter;
-  dummyGrad.magFilter = THREE.NearestFilter;
-  dummyGrad.unpackAlignment = 4;
-  dummyGrad.needsUpdate = true;
 
   const lutData = new Uint8Array(256 * 4);
   const lutTex = new THREE.DataTexture(
@@ -307,18 +322,25 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
   const material = createVolumeRaycastMaterial({
     texture,
     dummyLabel,
-    dummyGrad,
     lutTex,
     width: W,
     height: H,
     depth: D,
+    gridWidth: series.width,
+    gridHeight: series.height,
+    gridDepth: series.slices,
+    gridSpacing: [
+      series.pixelSpacing?.[1] || 1,
+      series.pixelSpacing?.[0] || 1,
+      sliceSpacing,
+    ],
     lowT: state.lowT,
     highT: state.highT,
     intensity: state.intensity,
     clipMin: state.clipMin,
     clipMax: state.clipMax,
     clipPlane: volumeClipPlane({
-      dims: { W, H, D },
+      dims: { W: series.width, H: series.height, D: series.slices },
       spacing: {
         row: series.pixelSpacing?.[0] || 1,
         col: series.pixelSpacing?.[1] || 1,
@@ -332,18 +354,12 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
     clipPlaneEnabled: state.clipPlaneEnabled,
     renderMode: state.renderMode,
   });
+  material.userData.baseTextureBytes = volumeData.byteLength;
+  material.userData.max3DTextureSize = maxTextureSize;
+  material.userData.preview = preview;
 
   const three = getThreeRuntime();
-  if (three.mesh) {
-    three.scene.remove(three.mesh);
-    three.mesh.geometry.dispose();
-    const oldUni = three.mesh.material.uniforms;
-    three.mesh.material.dispose();
-    if (oldUni.uVolume   && oldUni.uVolume.value)   oldUni.uVolume.value.dispose();
-    if (oldUni.uLabel    && oldUni.uLabel.value)    oldUni.uLabel.value.dispose();
-    if (oldUni.uLabelLUT && oldUni.uLabelLUT.value) oldUni.uLabelLUT.value.dispose();
-    if (oldUni.uGrad     && oldUni.uGrad.value)     oldUni.uGrad.value.dispose();
-  }
+  disposeCurrentVolumeMesh(three);
 
   const geom = new THREE.BoxGeometry(1, 1, 1);
   const mesh = new THREE.Mesh(geom, material);
@@ -354,9 +370,7 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
     variant: state.useBrain ? 'brain' : 'base',
     dataKey,
   });
-  buildGradientTexture(material, volumeData, textureType, W, H, D, THREE);
   syncViewerRuntimeSession(series);
-  sync3DScrubber();
   updateUniforms();
   void updateLabelTexture();
   _updateClipReadouts();

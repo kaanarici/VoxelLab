@@ -4,8 +4,7 @@ import { assertDICOMActualFileBytes, isDICOMResourceLimit } from './dicom-import
 const DERIVED_OBJECT_MODALITIES = new Set(['SEG', 'RTSTRUCT', 'SR', 'RTDOSE']);
 
 function looksLikeSourceManifest(payload) {
-  return payload && typeof payload === 'object'
-    && (payload.sourceKind === 'projection' || payload.sourceKind === 'ultrasound');
+  return payload?.['sourceKind'] === 'projection' || payload?.['sourceKind'] === 'ultrasound';
 }
 
 export async function parseSourceManifests(files = [], { onActualFileBytes = null } = {}) {
@@ -18,8 +17,8 @@ export async function parseSourceManifests(files = [], { onActualFileBytes = nul
       onActualFileBytes?.(bytes.byteLength, file, index);
       const payload = JSON.parse(new TextDecoder().decode(bytes));
       if (!looksLikeSourceManifest(payload)) continue;
-      const key = String(payload.seriesUID || '');
-      if (key) bySeriesUID.set(key, payload);
+      const key = String(payload['seriesUID'] || '');
+      if (key) bySeriesUID.set(key, { payload, file });
     } catch (error) {
       if (isDICOMResourceLimit(error)) throw error;
       // Ignore non-source JSON attachments.

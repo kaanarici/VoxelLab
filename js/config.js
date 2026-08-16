@@ -53,10 +53,10 @@ const DEFAULTS = {
 
 async function desktopCloudConfig() {
   const bridge = globalThis.voxellabDesktop;
-  if (typeof bridge?.getCloudSettings !== 'function') return null;
+  if (!(bridge?.getCloudSettings instanceof Function)) return null;
   try {
     const settings = await bridge.getCloudSettings();
-    if (!settings || typeof settings !== 'object') return null;
+    if (!settings || Array.isArray(settings) || Object.getPrototypeOf(settings) !== Object.prototype) return null;
     const enabled = settings.cloudProcessing !== false;
     const modalWebhookBase = enabled && settings.modalWebhookBase && settings.hasModalAuthToken ? '/api/cloud' : '';
     return {
@@ -90,7 +90,7 @@ export async function loadConfig() {
   const localApiTokenPromise = probeLocalApi
     ? fetch('/api/local-token', { method: 'POST' })
       .then(response => response.ok ? response.json() : null)
-      .then(payload => typeof payload?.localApiToken === 'string' ? payload.localApiToken : '')
+      .then(payload => payload?.localApiToken?.constructor === String ? payload.localApiToken : '')
       .catch(() => '')
     : null;
   const configPaths = probeLocalApi

@@ -20,12 +20,13 @@ import {
   drawMPRInteractive,
   drawMPRZScrub,
   clearMprCellCache,
+  releaseMprGpuVolumes,
 } from './slice-view.js';
 import { drawCompare } from './series/compare.js';
 import { drawSparkline } from './sparkline.js';
 import { drawMeasurements } from './roi/measure.js';
 import { is3dActive, isMprActive } from './core/mode-flags.js';
-import { sync3DScrubber, updateUniforms, updateLabelTexture, syncThreeSurfaceState } from './volume/volume-3d.js';
+import { updateUniforms, updateLabelTexture, syncThreeSurfaceState } from './volume/volume-3d.js';
 import { updateClipReadouts } from './clip-readouts.js';
 import { syncPanelRangeFills } from './panel-range-fills.js';
 import { getThreeRuntime } from './runtime/viewer-runtime.js';
@@ -75,8 +76,8 @@ function scheduleRedraw({ fullMpr = false, interactiveMpr = false, force = false
   if (force) _rafForced = true;
   if (_rafScheduled) return;
   _rafScheduled = true;
-  const raf = typeof requestAnimationFrame === 'function'
-    ? requestAnimationFrame
+  const raf = globalThis.requestAnimationFrame instanceof Function
+    ? globalThis.requestAnimationFrame
     : ((fn) => setTimeout(fn, 16));
   raf(() => {
     _rafScheduled = false;
@@ -95,13 +96,12 @@ function scheduleRedraw({ fullMpr = false, interactiveMpr = false, force = false
   });
 }
 
-/** Volume panel Z scrubber: same slice index as main scrubber (drives 3D Z clip via sync3DScrubber). */
 export function syncZScrubberSlider(series = state.manifest?.series?.[state.seriesIdx]) {
   const el = $('s-zscrub');
   if (!el || !series) return;
   const max0 = Math.max(0, (series.slices | 0) - 1);
   el.max = String(max0);
-  el.value = String(Math.min(max0, Math.max(0, state.sliceIdx | 0)));
+  el.value = String(Math.min(max0, Math.max(0, Math.ceil(state.clipMax[2] * series.slices) - 1)));
   el.disabled = max0 <= 0;
   syncPanelRangeFills();
 }
@@ -113,7 +113,6 @@ function syncSliceUI({ scrub = true } = {}) {
   updateSliceDisplay(state.sliceIdx + 1);
   drawSparkline();
   drawMeasurements();
-  sync3DScrubber();
   syncZScrubberSlider();
 }
 
@@ -201,7 +200,10 @@ export function initReactiveSync({
   for (const key of ['window', 'level', 'colormap', 'invertDisplay', 'imgs', 'loaded']) {
     subscribe(key, () => {
       if (key === 'window' || key === 'level') syncMrPresetActiveState();
-      if (key === 'imgs') clearMprCellCache();
+      if (key === 'imgs') {
+        clearMprCellCache();
+        releaseMprGpuVolumes();
+      }
       syncViewerRuntimeSession();
       scheduleRedraw({ fullMpr: true });
     });
@@ -283,12 +285,14 @@ export function initReactiveSync({
   }
 
   subscribe('mprGpuEnabled', () => {
+    if (!state.mprGpuEnabled) releaseMprGpuVolumes();
     if (isMprActive()) scheduleRedraw({ fullMpr: true, force: true });
   });
 
   for (const key of ['lowT', 'highT', 'intensity', 'clipMin', 'clipMax', 'clipPlaneEnabled', 'clipPlaneDepth', 'clipPlaneInvert', 'renderMode']) {
     subscribe(key, () => {
       updateClipReadouts();
+      if (key === 'clipMax') syncZScrubberSlider();
       updateUniforms();
     });
   }
@@ -313,4 +317,5 @@ export function syncSlice({ scrub = true, fullMpr = false } = {}) {
  */
 export function syncOverlays() {
   redrawActiveViews({ fullMpr: true });
+  if (is3dActive()) getThreeRuntime().requestRender?.('overlay-sync', 160);
 }

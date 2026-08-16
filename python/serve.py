@@ -1,5 +1,5 @@
 """
-Tiny dev server for the MRI viewer.
+Tiny local helper server for VoxelLab.
 
 Runs exactly like `python3 -m http.server 8000` for static files, but adds a
 small JSON API so the Generate Analysis button in the viewer can actually
@@ -9,6 +9,7 @@ Endpoints:
     POST /api/analyze?slug=<slug>    start analyze.py for one series
     GET  /api/analyze/result          read one source-keyed result without a noisy static 404
     GET  /api/analyze/status          per-slug terminal job state + last line
+    GET  /api/ai/models               Claude Code + Codex models from the local CLIs
     POST /api/ask                     body: {slug, slice, question, x, y} or {slug, slice, question, region:{x0,y0,x1,y1}}
                                       point-and-ask the configured local AI
                                       provider about a crop of a specific
@@ -561,7 +562,7 @@ def main() -> bool:
     except OSError as e:
         print(f"ERROR: could not bind {args.bind}:{args.port}: {e}", file=sys.stderr)
         return False
-    print(f"MRI viewer → http://{args.bind}:{args.port}")
+    print(f"VoxelLab → http://{args.bind}:{args.port}")
     print(f"Serving:    {ROOT}")
     print("API:        POST /api/analyze?slug=<slug>  +  GET /api/analyze/status")
     print("Local API:  private helper routes require a same-origin browser context; proxy/status/consult also require the runtime token from /api/local-token")

@@ -22,6 +22,7 @@ const {
   beginMprInteraction,
   beginObliqueInteraction,
   clearMprCellCache,
+  releaseMprGpuVolumes,
   getMprCellCacheStats,
   getMprVolumeReadiness,
   __setMprGpuApiForTests,
@@ -207,9 +208,9 @@ test('drawMPR sizes the axial pane and crosshair from physical row/column spacin
   const ax = globalThis.document.getElementById('mpr-ax');
   const overlay = globalThis.document.getElementById('mpr-ax-cross');
   assert.equal(ax.width, 8);
-  assert.equal(ax.height, 16, 'axial pane height should expand to preserve physical aspect');
+  assert.equal(ax.height, 11, 'axial pane height should preserve center-to-center physical aspect');
   assert.equal(overlay.style['--x'], `${(4 / 7) * 100}%`);
-  assert.equal(overlay.style['--y'], `${(9 / 15) * 100}%`);
+  assert.equal(overlay.style['--y'], `${(6 / 10) * 100}%`);
 });
 
 test('drawMPR fits orthogonal panes inside parent cells without display distortion', () => {
@@ -371,6 +372,20 @@ test('drawMPR sends a changed display LUT key through the GPU path', () => {
   state.mprGpuEnabled = true;
   state.invertDisplay = false;
   state.colormap = 'grayscale';
+});
+
+test('GPU MPR volume textures have an explicit release lifecycle', () => {
+  let releases = 0;
+  __setMprGpuApiForTests({
+    canUseGpuMpr: () => true,
+    drawGpuMprSlice: () => true,
+    releaseGpuMprVolumeTextures: () => { releases += 1; },
+  });
+
+  releaseMprGpuVolumes();
+
+  assert.equal(releases, 1);
+  __setMprGpuApiForTests(null);
 });
 
 test('MPR cache bookkeeping: reuse, invalidation, and byte-budget bound', () => {

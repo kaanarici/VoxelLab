@@ -30,16 +30,14 @@ export {
   showFolderContextMenu,
   showSidebarContextMenu,
 } from './projects-sidebar-context-menus.js';
-export { showRenameDialog } from './projects-sidebar-rename-dialog.js';
-
-export function initProjects({ onUpdate, selectSeries }) {
-  setSidebarCallbacks({ onUpdate, selectSeries });
+export function initProjects({ onUpdate, selectSeries, refreshActiveView }) {
+  setSidebarCallbacks({ onUpdate, selectSeries, refreshActiveView });
 }
 
 function warnProjectsUnavailable() {
   notify('Folder organization is temporarily unavailable; series remain openable.', {
     id: 'projects-storage-warning',
-    duration: 6000,
+    kind: 'warning',
   });
 }
 

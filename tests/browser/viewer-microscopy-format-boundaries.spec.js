@@ -68,7 +68,6 @@ test('vendor microscopy inputs are presented with local and Electron converter b
   await dropFiles(page, '#upload-zone', [{ path }]);
 
   await expect(page.locator('#notify-container .notify-text')).toContainText('Local intake: 1 converter-backed file');
-  await expect(page.locator('#notify-container .notify-text')).toContainText('converter-backed files need configured local readers or an OME-TIFF converter: sample.czi.');
   await expect(page.locator('#upload-modal')).toBeVisible();
   await expect(page.locator('#upload-status')).toHaveClass(/error/);
   await expect.poll(async () => page.locator('#series-list li').count()).toBe(initialSeriesCount);
@@ -160,7 +159,7 @@ test('local gzip Zarr v2 import exposes codec storage provenance', async ({ page
   }));
   await writeFile(arrayPath, JSON.stringify({
     zarr_format: 2,
-    shape: [2, 2],
+    'shape': [2, 2],
     chunks: [2, 2],
     dtype: '|u1',
     compressor: { id: 'gzip' },

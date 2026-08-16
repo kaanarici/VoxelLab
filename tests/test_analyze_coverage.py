@@ -248,6 +248,8 @@ def test_build_analysis_prompt_marks_context_as_approximate() -> None:
     assert "Approximate derived context" in prompt
     assert "display_uint8" in prompt
     assert "pipeline-derived" in prompt
+    assert "Do not classify anatomy as normal or abnormal" in prompt
+    assert "infer restricted diffusion" in prompt
     assert labels == {3}
     assert fingerprint
 

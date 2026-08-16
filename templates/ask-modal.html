@@ -1,9 +1,9 @@
 <div id="ask-modal">
-  <div class="ask-card">
+  <div class="ask-card" role="dialog" aria-modal="true" aria-labelledby="ask-title">
     <div class="ask-header">
-      <div class="ask-title">Ask AI</div>
+      <div class="ask-title" id="ask-title">Ask AI</div>
       <div class="ask-badge">Educational · not diagnostic</div>
-      <button class="ask-close" id="ask-close" aria-label="Close (Esc)">×</button>
+      <button class="ask-close" id="ask-close" aria-label="Close (Esc)"><svg aria-hidden="true"><use href="icons.svg#i-x"/></svg></button>
     </div>
     <div class="ask-body-wrap" id="ask-body"></div>
   </div>

@@ -136,7 +136,6 @@ test('worker errors settle every in-flight request and recreate the worker', asy
   installWorker(t, FailingWorker, { offscreen: true });
 
   const {
-    computeGradientInWorker,
     flattenImageBitmapsInWorker,
     parseDicomFilesInWorker,
     runVolumeWorker,
@@ -144,14 +143,12 @@ test('worker errors settle every in-flight request and recreate the worker', asy
   const volume = runVolumeWorker(new ArrayBuffer(2), false, 1);
   const dicom = parseDicomFilesInWorker([]);
   const flatten = flattenImageBitmapsInWorker({ bitmaps: [{}], w: 1, h: 1, d: 1 });
-  const gradient = computeGradientInWorker(new Float32Array([1]), 1, 1, 1, true);
 
   workers[0].onerror({ message: 'worker crashed', preventDefault() {} });
 
-  assert.deepEqual(await Promise.allSettled([volume, dicom, flatten, gradient]), [
+  assert.deepEqual(await Promise.allSettled([volume, dicom, flatten]), [
     { status: 'fulfilled', value: null },
     { status: 'fulfilled', value: null },
-    { status: 'rejected', reason: new Error('worker crashed') },
     { status: 'rejected', reason: new Error('worker crashed') },
   ]);
   assert.equal(workers[0].terminated, true);

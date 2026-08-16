@@ -27,10 +27,10 @@ const CZYX_AXES = [
   { name: 'x', type: 'space', unit: 'micrometer' },
 ];
 
-function arrayMeta({ width, height, shape = [1, 1, height, width], compressor = BLOSC }) {
+function arrayMeta({ width, height, 'shape': dimensions = [1, 1, height, width], compressor = BLOSC }) {
   return {
     zarr_format: 2,
-    shape,
+    'shape': dimensions,
     chunks: [1, 1, height, width],
     dtype: '<u2',
     compressor,
@@ -63,17 +63,17 @@ function rootAttrs() {
 
 // Map a zarr relative path to a mock proxy response. `coarsestCompressor` lets the fail-closed
 // case swap the chosen level's codec to an unsupported one.
-function zarrRouteBody(relPath, { coarsestShape, coarsestCompressor = BLOSC, fixtureBytes }) {
+function zarrRouteBody(relPath, { coarsestDimensions, coarsestCompressor = BLOSC, fixtureBytes }) {
   if (relPath === '.zattrs') return { json: rootAttrs() };
   if (relPath === '.zgroup') return { json: { zarr_format: 2 } };
   if (relPath === '0/.zarray') return { json: arrayMeta({ width: PLANE_WIDTH * 4, height: PLANE_HEIGHT * 4 }) };
   if (relPath === '1/.zarray') return { json: arrayMeta({ width: PLANE_WIDTH * 2, height: PLANE_HEIGHT * 2 }) };
-  if (relPath === '2/.zarray') return { json: arrayMeta({ width: PLANE_WIDTH, height: PLANE_HEIGHT, shape: coarsestShape, compressor: coarsestCompressor }) };
+  if (relPath === '2/.zarray') return { json: arrayMeta({ width: PLANE_WIDTH, height: PLANE_HEIGHT, 'shape': coarsestDimensions, compressor: coarsestCompressor }) };
   if (relPath === '2/0/0/0/0') return { bytes: fixtureBytes };
   return null;
 }
 
-async function mockZarrProxy(page, { coarsestShape, coarsestCompressor = BLOSC, requestedPaths = [] } = {}) {
+async function mockZarrProxy(page, { coarsestDimensions, coarsestCompressor = BLOSC, requestedPaths = [] } = {}) {
   const fixtureBytes = await readFile(FIXTURE_PATH);
   // The browser streams a user-provided OME-Zarr URL directly (anonymous CORS),
   // so intercept the source host itself rather than the same-origin asset proxy.
@@ -85,7 +85,7 @@ async function mockZarrProxy(page, { coarsestShape, coarsestCompressor = BLOSC, 
     }
     const relPath = target.slice(ZARR_BASE.length).replace(/^\/+/, '');
     requestedPaths.push(relPath);
-    const body = zarrRouteBody(relPath, { coarsestShape, coarsestCompressor, fixtureBytes });
+    const body = zarrRouteBody(relPath, { coarsestDimensions, coarsestCompressor, fixtureBytes });
     if (!body) {
       await route.fulfill({ status: 404, body: '' });
       return;
@@ -161,7 +161,7 @@ test('fails closed before chunk fetches when streamed planes exceed the allocati
   await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
   const requestedPaths = [];
   await mockZarrProxy(page, {
-    coarsestShape: [1, 300, PLANE_HEIGHT, PLANE_WIDTH],
+    coarsestDimensions: [1, 300, PLANE_HEIGHT, PLANE_WIDTH],
     requestedPaths,
   });
   await openUploadModal(page);

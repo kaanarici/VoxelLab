@@ -4,29 +4,31 @@ import { test } from 'node:test';
 import { parseZarrArrayMeta, zarrScalarArrayType } from '../js/microscopy/zarr/zarr-array-meta.js';
 
 function v2(dtype, fillValue) {
-  return {
+  const metadata = {
     zarr_format: 2,
-    shape: [1],
+    'shape': [1],
     chunks: [1],
     dtype,
     compressor: null,
     filters: null,
     order: 'C',
-    ...(fillValue !== undefined ? { fill_value: fillValue } : {}),
   };
+  if (fillValue !== undefined) metadata.fill_value = fillValue;
+  return metadata;
 }
 
 function v3(dataType, fillValue) {
-  return {
+  const metadata = {
     zarr_format: 3,
     node_type: 'array',
-    shape: [1],
+    'shape': [1],
     data_type: dataType,
-    chunk_grid: { name: 'regular', configuration: { chunk_shape: [1] } },
+    chunk_grid: { name: 'regular', configuration: { 'chunk_shape': [1] } },
     chunk_key_encoding: { name: 'default', configuration: { separator: '/' } },
     codecs: [{ name: 'bytes', configuration: { endian: 'little' } }],
-    ...(fillValue !== undefined ? { fill_value: fillValue } : {}),
   };
+  if (fillValue !== undefined) metadata.fill_value = fillValue;
+  return metadata;
 }
 
 test('Zarr arrays distinguish concrete zero fill from null or omitted fill', () => {

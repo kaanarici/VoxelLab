@@ -2,7 +2,7 @@
 import { state, HAS_LOCAL_BACKEND } from '../core/state.js';
 import { $, escapeHtml, openModal, closeModal } from '../dom.js';
 import { cloudActionWorkflowRecords } from '../cloud-actions.js';
-import { cloudResultRecords } from '../cloud-results.js';
+import { cloudResultRecords, openCloudResultAtIndex } from '../cloud-results.js';
 import { ensureTemplate } from '../template-loader.js';
 import {
   collectDroppedFiles,
@@ -25,6 +25,7 @@ import {
   localImportErrorMessage,
   localImportFailedContext,
   localImportIntakeContext,
+  localIntakeToastText,
   localIntakeStatusText,
   mixedNativeImportBoundaryText,
   NO_LOCAL_INTAKE_MATCH_ADVICE,
@@ -45,6 +46,7 @@ import {
   importImageJRoiSidecarsForActiveSeries,
   importRoiSidecarsForActiveSeries,
   microscopySidecarRecords,
+  notifyLocalImportOutcome,
   sidecarSkipDetailsText,
   skippedDerivedObjectsText,
   splitMicroscopySidecars,
@@ -82,6 +84,51 @@ export function renderIntakeTriage(statusEl, intake, tone) {
     ? ''
     : `<p class="upload-triage-advice">${escapeHtml(NO_LOCAL_INTAKE_MATCH_ADVICE)}</p>`;
   statusEl.innerHTML = html + advice;
+}
+
+function desktopPathsForImportResult(result, files, { onlyResult = false, associatedPaths = [] } = {}) {
+  const explicit = Array.from(result?.desktopSourcePaths || []).map(String).filter(Boolean);
+  const associated = Array.from(associatedPaths || []).map(String).filter(Boolean);
+  if (explicit.length || associated.length) return [...new Set([...explicit, ...associated])];
+  const desktopFiles = Array.from(files || []).filter(file => file?.path);
+  const declaredSources = result?.entry?.sourceFiles;
+  const sourceFiles = new Set((Array.isArray(declaredSources) ? declaredSources : declaredSources ? [declaredSources] : [])
+    .map(value => String(value).replaceAll('\\', '/')));
+  const matched = desktopFiles.filter((file) => {
+    const relative = localFilePath(file);
+    return sourceFiles.has(relative) || sourceFiles.has(file.name) || [...sourceFiles].some(source => relative.endsWith(`/${source}`));
+  });
+  if (matched.length) return matched.map(file => file.path);
+  return onlyResult ? desktopFiles.map(file => file.path) : [];
+}
+
+async function persistDesktopImportResult(result, files, opts = {}) {
+  const desktop = globalThis.voxellabDesktop;
+  if (!desktop?.saveImportedSeries || !result?.entry) return;
+  const paths = desktopPathsForImportResult(result, files, opts);
+  if (!paths.length) return;
+  try {
+    const saved = await desktop.saveImportedSeries(paths);
+    if (saved?.id) result.entry._desktopImportId = saved.id;
+  } catch (error) {
+    notify(`Opened ${result.entry.name || 'the series'} for this session, but could not save it for restart: ${error?.message || error}`, {
+      id: 'desktop-import-persistence',
+      kind: 'warning',
+    });
+  }
+}
+
+export async function openDesktopOrBrowserFilePicker({ isDesktopHost, desktop, input, onError = () => {} }) {
+  if (isDesktopHost && desktop?.openFiles instanceof Function) {
+    try {
+      await desktop.openFiles();
+    } catch (error) {
+      onError(error);
+    }
+    return 'desktop';
+  }
+  input?.click();
+  return 'browser';
 }
 
 function cloudJobStageLabel(stage) {
@@ -280,11 +327,12 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
   const isModalSessionActive = () => isModalSessionCurrent() && modal.classList.contains('visible');
 
   const desktop = globalThis.voxellabDesktop;
-  // Desktop swaps the web <input webkitdirectory> for the native dialog, which
-  // can multi-select sibling series folders and reads slices by range instead of
-  // buffering every file in memory. The payload returns through the desktop
-  // bridge's onOpenPaths → handleLocalImport, so the import path stays shared.
-  const isDesktopHost = typeof desktop?.openFolder === 'function';
+  // The primary click opens a folder. Desktop swaps the web directory picker
+  // for the native dialog, which can multi-select sibling series folders and
+  // reads slices by range instead of buffering every file in memory. The
+  // payload returns through the desktop bridge's onOpenPaths → handleLocalImport,
+  // so the import path stays shared.
+  const isDesktopHost = desktop?.openFolder instanceof Function;
   const cloudSettingsWritable = HAS_LOCAL_BACKEND || !!(desktop?.getCloudSettings && desktop?.saveCloudSettings);
   const cloudStatus = cloudRuntimeStatus();
   const cloudAvail = cloudStatus.available;
@@ -300,18 +348,41 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
     String(options.contextTitle || '').trim()
     || String(options.contextBody || '').trim()
   );
+  const cloudWorkflowHtml = `
+    ${cloudAvail ? `
+      <div class="upload-actions upload-copy-spaced">
+        <button class="btn upload-action" id="upload-cloud-btn">Process CT/MR on cloud GPU</button>
+      </div>
+      <div class="upload-copy upload-copy-tight" id="upload-cloud-action-state" hidden></div>
+      <div class="upload-copy upload-copy-tight">
+        <b>Cloud GPU</b>: ${escapeHtml(cloudStatus.message)} Uploads supported CT/MR stacks for segmentation, two-series registration/alignment, or DICOM projection/ultrasound sources with voxellab.source.json for reconstruction/scan conversion.<br>
+        Projection and ultrasound sources stay 2D until a calibrated engine emits a derived volume.
+      </div>
+    ` : `
+      ${cloudSettingsWritable ? `
+        <div class="upload-actions upload-copy-spaced">
+          <button class="btn upload-action" id="upload-cloud-settings-btn" type="button">Cloud settings</button>
+        </div>
+      ` : ''}
+      <div class="upload-copy upload-copy-spaced">
+        <b>Cloud GPU</b>: ${escapeHtml(cloudStatus.message)} ${escapeHtml(cloudSetupGuidance)} Projection and ultrasound sources stay 2D until a calibrated engine emits a derived volume.
+      </div>
+    `}
+    ${cloudActionCatalogHtml(cloudStatus, cloudWorkflowContext)}
+    ${cloudResultHistoryHtml()}
+  `;
   body.innerHTML = `
     <div class="ask-a">
-      <label class="upload-zone" id="upload-zone" aria-label="Open study files">
+      <label class="upload-zone" id="upload-zone" aria-label="Open study folder">
+        <input type="file" id="upload-folder-input" multiple webkitdirectory class="upload-file-input" />
         <input type="file" id="upload-file-input" multiple
           accept=".dcm,.sr,.nii,.nii.gz,.tif,.tiff,.ome.tif,.ome.tiff,${LOCAL_VENDOR_MICROSCOPY_ACCEPT},.zattrs,.zarray,.zgroup,.zmetadata,.json,.roi,.zip,application/dicom,image/tiff,application/json" class="upload-file-input" />
-        <input type="file" id="upload-folder-input" multiple webkitdirectory class="upload-file-input" />
         <svg class="upload-zone-icon"><use href="icons.svg#i-upload"/></svg>
         <span class="upload-zone-title">Drop study files or folders here</span>
-        <span class="upload-zone-subtitle">or click to open files</span>
+        <span class="upload-zone-subtitle">or click to open a study folder</span>
       </label>
       <div class="upload-actions upload-copy-spaced">
-        <button class="btn upload-action" id="upload-folder-btn" type="button">${isDesktopHost ? 'Open study folders' : 'Open study folder'}</button>
+        <button class="btn upload-action" id="upload-files-btn" type="button">Choose individual files</button>
       </div>
       <div class="upload-copy upload-copy-tight">
         Open a whole study folder: each sub-folder (e.g. Series 1, Series 2…) imports as its own series under one study.${isDesktopHost ? ' Select multiple sibling folders at once.' : ' Drag several sibling folders together, or pick the parent folder.'}
@@ -334,6 +405,7 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
         <div class="upload-advanced-body">
           ${uploadContextHintHtml(options)}
           <div id="upload-cloud-job-card" class="upload-cloud-job-card" hidden></div>
+          ${showAdvancedByDefault ? cloudWorkflowHtml : ''}
           <div class="upload-section">
             <div class="upload-section-title">Open from DICOMweb (WADO-RS)</div>
             <div class="upload-grid">
@@ -362,37 +434,21 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
               </div>
             </div>
           </div>
-          ${cloudAvail ? `
-            <div class="upload-actions upload-copy-spaced">
-              <button class="btn upload-action" id="upload-cloud-btn">Process CT/MR on cloud GPU</button>
-            </div>
-            <div class="upload-copy upload-copy-tight" id="upload-cloud-action-state" hidden></div>
-            <div class="upload-copy upload-copy-tight">
-              <b>Cloud GPU</b>: ${escapeHtml(cloudStatus.message)} Uploads supported CT/MR stacks for segmentation, two-series registration/alignment, or DICOM projection/ultrasound sources with voxellab.source.json for reconstruction/scan conversion.<br>
-              Projection and ultrasound sources stay 2D until a calibrated engine emits a derived volume.
-            </div>
-          ` : `
-            ${cloudSettingsWritable ? `
-              <div class="upload-actions upload-copy-spaced">
-                <button class="btn upload-action" id="upload-cloud-settings-btn" type="button">Cloud settings</button>
-              </div>
-            ` : ''}
-            <div class="upload-copy upload-copy-spaced">
-              <b>Cloud GPU</b>: ${escapeHtml(cloudStatus.message)} ${escapeHtml(cloudSetupGuidance)} Projection and ultrasound sources stay 2D until a calibrated engine emits a derived volume.
-            </div>
-          `}
-          ${cloudActionCatalogHtml(cloudStatus, cloudWorkflowContext)}
-          ${cloudResultHistoryHtml()}
+          ${showAdvancedByDefault ? '' : cloudWorkflowHtml}
           ${renderFormatCapabilityMatrix()}
         </div>
       </details>
     </div>
   `;
+  body.scrollTop = 0;
+  if (showAdvancedByDefault) {
+    requestAnimationFrame(() => $('upload-context-hint')?.scrollIntoView({ block: 'start', inline: 'nearest' }));
+  }
 
   const zone = $('upload-zone');
   const input = $('upload-file-input');
   const folderInput = $('upload-folder-input');
-  const folderBtn = $('upload-folder-btn');
+  const filesBtn = $('upload-files-btn');
   const statusEl = $('upload-status');
   const dicomwebState = { sessionId: '', studies: [], series: [] };
   let selectedFiles = null;
@@ -444,7 +500,7 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
     zone.style.pointerEvents = nextBusy ? 'none' : '';
     if (input) input.disabled = nextBusy;
     if (folderInput) folderInput.disabled = nextBusy;
-    if (folderBtn) folderBtn.disabled = nextBusy;
+    if (filesBtn) filesBtn.disabled = nextBusy;
     if (localBtn) localBtn.disabled = nextBusy;
     syncCloudActionState();
     if (dicomwebBtn) dicomwebBtn.disabled = nextBusy;
@@ -455,26 +511,26 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
 
   zone.addEventListener('click', (e) => {
     if (busy) return;
-    if (e.target === input) return;
-    if (isDesktopHost && typeof desktop.openFiles === 'function') {
-      void desktop.openFiles().catch((error) => {
-        setUploadStatus(statusEl, `Error: ${escapeHtml(error?.message || 'File open failed')}`, 'error', { html: true });
+    if (e.target === folderInput || e.target === input) return;
+    e.preventDefault();
+    if (isDesktopHost && desktop.openFolder instanceof Function) {
+      void desktop.openFolder().catch((error) => {
+        setUploadStatus(statusEl, `Error: ${escapeHtml(error?.message || 'Folder open failed')}`, 'error', { html: true });
       });
       return;
     }
-    input.click();
-  });
-  folderBtn?.addEventListener('click', async () => {
-    if (busy) return;
-    if (isDesktopHost) {
-      try {
-        await desktop.openFolder();
-      } catch (error) {
-        setUploadStatus(statusEl, `Error: ${escapeHtml(error?.message || 'Folder open failed')}`, 'error', { html: true });
-      }
-      return;
-    }
     folderInput?.click();
+  });
+  filesBtn?.addEventListener('click', async () => {
+    if (busy) return;
+    await openDesktopOrBrowserFilePicker({
+      isDesktopHost,
+      desktop,
+      input,
+      onError(error) {
+        setUploadStatus(statusEl, `Error: ${escapeHtml(error?.message || 'File open failed')}`, 'error', { html: true });
+      },
+    });
   });
   const beginSelection = () => {
     const selectionSeq = ++uploadSelectionSeq;
@@ -503,7 +559,8 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
       selectedCloudManifest = nextManifest;
       selectedCloudPreflight = nextPreflight;
       isSelectedFilesCurrent = isCurrent;
-      if (intake.message) notify(intake.message, { id: 'local-intake', duration: 9000 });
+      const intakeToast = localIntakeToastText(intake);
+      if (intakeToast) notify(intakeToast, { id: 'local-intake', kind: 'info' });
     } catch (error) {
       if (isStaleSelection()) return;
       selectedFiles = null;
@@ -574,7 +631,7 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
     const index = (state.manifest?.series || []).findIndex(series => series.slug === slug);
     if (index < 0) return;
     closeModal('upload-modal');
-    await selectSeries(index);
+    await openCloudResultAtIndex(index);
   });
   const dicomwebBtn = $('upload-dicomweb-btn');
   const findStudiesBtn = $('dicomweb-find-studies-btn');
@@ -643,11 +700,14 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
     omeZarrBtn.onclick = () => handleOmeZarrStreamImport(statusEl, modal, selectSeries, setBusy);
   }
   syncCloudActionState();
+  if (options.initialFiles?.length) {
+    await useSelectedFiles(options.initialFiles, beginSelection());
+  }
   return isModalSessionActive;
 }
 
 export async function handleLocalImport(files, statusEl, modal, selectSeries, setBusy = () => {}, opts = {}) {
-  const isActive = typeof opts.isActive === 'function' ? opts.isActive : () => true;
+  const isActive = opts.isActive instanceof Function ? opts.isActive : () => true;
   const updateStatus = (...args) => {
     if (isActive()) setUploadStatus(statusEl, ...args);
   };
@@ -692,6 +752,11 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
         throw new Error(`No sidecars matched the active microscopy series${reason}`);
       }
       closeModal('upload-modal');
+      notifyLocalImportOutcome([
+        ...(imageJResult.messages || []),
+        ...(recipeResult.messages || []),
+        ...(roiResult.messages || []),
+      ]);
       return;
     }
     const imageJRoiSidecarsForImport = imageJRoiSidecars.concat(imageJRoiSidecarErrors.map(sidecar => ({ name: sidecar.name || 'imagej.roi', reason: sidecar.reason || 'unsupported or malformed ImageJ ROI sidecar', skipped: true })));
@@ -699,10 +764,11 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
     // microscopy path. Requires the local backend plus optional readers or a converter.
     const vendorFiles = fileList.filter(isVendorMicroscopyFile);
     let parseConvertedMicroscopyIndividually = false;
+    const importOutcome = [];
     if (vendorFiles.length && vendorFiles.length !== fileList.length) {
       fileList = fileList.filter(file => !isVendorMicroscopyFile(file));
       const samples = fileSampleNames(vendorFiles);
-      notify(`Skipped ${vendorFiles.length} converter-backed file${vendorFiles.length === 1 ? '' : 's'}${samples ? `: ${samples}` : ''}; open them separately with configured local readers or an OME-TIFF converter after loading supported files.`);
+      importOutcome.push(`Skipped ${vendorFiles.length} converter-backed file${vendorFiles.length === 1 ? '' : 's'}${samples ? `: ${samples}` : ''}; open them separately with configured local readers or an OME-TIFF converter after loading supported files.`);
     } else if (vendorFiles.length) {
       if (!HAS_LOCAL_BACKEND) {
         throw new Error(`Converter-backed ${LOCAL_VENDOR_MICROSCOPY_LABEL} need the local VoxelLab backend (run "npm start") with optional microscopy readers or VOXELLAB_BFCONVERT set to an OME-TIFF converter.`);
@@ -715,7 +781,7 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
         convertedFiles.push(...convertedParts);
         for (const part of convertedParts) {
           for (const warning of part._voxellabConvertWarnings || []) {
-            notify(`${original.name}: ${warning}`, { duration: 9000 });
+            importOutcome.push(`${original.name}: ${warning}`);
           }
         }
       }
@@ -726,6 +792,9 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
     const microscopyFiles = fileList.filter(isMicroscopyTiffFile);
     const omeZarrFiles = fileList.filter(isOmeZarrFile);
     let results;
+    const streamedIndexes = [];
+    const streamedDesktopImports = [];
+    let streamedProjectionSetCount = 0;
     if (microscopyFiles.length) {
       const blockedJsonSidecars = blockingMicroscopyJsonSidecars(opts.intake);
       if (blockedJsonSidecars.length) throw new Error(blockingMicroscopyJsonSidecarText(blockedJsonSidecars));
@@ -789,24 +858,53 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
       if (!isActive()) return;
     } else {
       updateStatus('Parsing DICOM...', 'active');
-      const { parseDICOMFileGroups } = await import('../dicom/dicom-import.js');
+      const { injectLocalSeries, iterateDICOMFileGroups } = await import('../dicom/dicom-import.js');
       if (!isActive()) return;
-      results = await parseDICOMFileGroups(fileList, (stage, detail) => {
+      const groups = iterateDICOMFileGroups(fileList, (stage, detail) => {
         updateStatus(`${stage}: ${detail}`, 'active');
       });
-      if (!isActive()) return;
+      for await (const result of groups) {
+        if (!isActive()) return;
+        updateStatus(`Loading ${result.entry?.name || 'DICOM series'} into viewer...`, 'active');
+        const importedIndex = injectLocalSeries(
+          state.manifest,
+          result.entry,
+          result.sliceBytes,
+          result.rawVolume,
+        );
+        streamedIndexes.push(importedIndex);
+        streamedDesktopImports.push({
+          entry: result.entry,
+          desktopSourcePaths: Array.from(result.desktopSourcePaths || []),
+          importedIndex,
+        });
+        if (result.entry?.isProjectionSet) streamedProjectionSetCount += 1;
+      }
     }
 
     const imageResults = results || [];
-    updateStatus(imageResults.length ? 'Loading into viewer...' : 'Applying derived objects...', 'active');
-    const projectionSetCount = imageResults.filter(result => result.entry?.isProjectionSet).length;
-    let indexes = [];
+    updateStatus(imageResults.length || streamedIndexes.length ? 'Loading into viewer...' : 'Applying derived objects...', 'active');
+    const projectionSetCount = streamedProjectionSetCount
+      + imageResults.filter(result => result.entry?.isProjectionSet).length;
+    const indexes = streamedIndexes;
     if (imageResults.length) {
       const { injectLocalSeries } = await import('../dicom/dicom-import.js');
       if (!isActive()) return;
-      indexes = imageResults.map(result =>
-        injectLocalSeries(state.manifest, result.entry, result.sliceCanvases, result.rawVolume, result.localStacks, result.rawPlanes)
-      );
+      for (const result of imageResults) {
+        const importedIndex = injectLocalSeries(
+          state.manifest,
+          result.entry,
+          result.sliceBytes || result.sliceCanvases,
+          result.rawVolume,
+          result.localStacks,
+          result.rawPlanes,
+        );
+        indexes.push(importedIndex);
+        await persistDesktopImportResult(result, fileList, { onlyResult: imageResults.length === 1 });
+        if (result.entry?._desktopImportId && state.manifest.series[importedIndex]) {
+          state.manifest.series[importedIndex]._desktopImportId = result.entry._desktopImportId;
+        }
+      }
     }
     let derived = [];
     if (!isNifti && !isMicroscopy) {
@@ -816,6 +914,21 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
         updateStatus(`${stage}: ${detail}`, 'active');
       });
       if (!isActive()) return;
+    }
+    const sidecarPathsBySlug = new Map();
+    for (const item of derived) {
+      if (item.skipped || !item.sourceSlug || !item.desktopSourcePath) continue;
+      const paths = sidecarPathsBySlug.get(item.sourceSlug) || [];
+      paths.push(item.desktopSourcePath);
+      sidecarPathsBySlug.set(item.sourceSlug, paths);
+    }
+    for (const record of streamedDesktopImports) {
+      await persistDesktopImportResult(record, fileList, {
+        associatedPaths: sidecarPathsBySlug.get(record.entry.slug) || [],
+      });
+      if (record.entry._desktopImportId && state.manifest.series[record.importedIndex]) {
+        state.manifest.series[record.importedIndex]._desktopImportId = record.entry._desktopImportId;
+      }
     }
     const affectedSlug = derived.find((item) => item.sourceSlug)?.sourceSlug || null;
     const affectedIndex = affectedSlug
@@ -839,15 +952,16 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
       enableRegionsIfAvailable(selectedSeries);
       await selectSeries(selectedIndex);
       if (!isSelectedSeriesActive()) return;
-      await importImageJRoiSidecarsForActiveSeries(imageJRoiSidecarsForImport, { isActive: isSelectedSeriesActive });
+      const imageJResult = await importImageJRoiSidecarsForActiveSeries(imageJRoiSidecarsForImport, { isActive: isSelectedSeriesActive });
       if (!isSelectedSeriesActive()) return;
-      await applyRecipeSidecarsForActiveSeries(recipeSidecars, { isActive: isSelectedSeriesActive });
+      const recipeResult = await applyRecipeSidecarsForActiveSeries(recipeSidecars, { isActive: isSelectedSeriesActive });
       if (!isSelectedSeriesActive()) return;
-      await importRoiSidecarsForActiveSeries(roiSidecars, { isActive: isSelectedSeriesActive });
+      const roiResult = await importRoiSidecarsForActiveSeries(roiSidecars, { isActive: isSelectedSeriesActive });
       if (!isSelectedSeriesActive()) return;
+      importOutcome.push(...(imageJResult.messages || []), ...(recipeResult.messages || []), ...(roiResult.messages || []));
     }
     if (projectionSetCount > 0) {
-      notify(`${projectionSetCount} projection set${projectionSetCount > 1 ? 's' : ''} registered for calibrated reconstruction; source images stay 2D until a derived volume exists.`);
+      importOutcome.push(`${projectionSetCount} projection set${projectionSetCount > 1 ? 's' : ''} registered for calibrated reconstruction; source images stay 2D until a derived volume exists.`);
     }
     const imported = derived.filter((item) => !item.skipped);
     if (imported.length) {
@@ -859,15 +973,16 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
       if (byKind.seg) parts.push(`${byKind.seg} SEG overlay${byKind.seg > 1 ? 's' : ''}`);
       if (byKind.rtstruct) parts.push(`${byKind.rtstruct} RTSTRUCT import${byKind.rtstruct > 1 ? 's' : ''}`);
       if (byKind.sr) parts.push(`${byKind.sr} SR note set${byKind.sr > 1 ? 's' : ''}`);
-      notify(`Imported ${parts.join(', ')} onto the referenced source series.`);
+      importOutcome.push(`Imported ${parts.join(', ')} onto the referenced source series.`);
     }
     if (pendingDerived.length) {
-      notify(`Holding ${pendingDerived.length} derived object${pendingDerived.length === 1 ? '' : 's'} in this session. They will attach automatically when the matching source series is loaded.`);
+      importOutcome.push(`Holding ${pendingDerived.length} derived object${pendingDerived.length === 1 ? '' : 's'} in this session. They will attach automatically when the matching source series is loaded.`);
     }
     const skippedDerived = derived.filter((item) => item.skipped && !item.pending);
     if (skippedDerived.length) {
-      notify(skippedDerivedObjectsText(skippedDerived));
+      importOutcome.push(skippedDerivedObjectsText(skippedDerived));
     }
+    notifyLocalImportOutcome(importOutcome);
   } catch (e) {
     if (!isActive()) return;
     updateStatus(`Error: ${escapeHtml(localImportErrorMessage(e, files, opts.intake))}`, 'error', { html: true });
@@ -878,7 +993,7 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
 }
 
 async function handleCloudUpload(files, statusEl, selectSeries, setBusy = () => {}, processing = {}, lifecycle = {}) {
-  const isActive = typeof lifecycle.isActive === 'function' ? lifecycle.isActive : () => true;
+  const isActive = lifecycle.isActive instanceof Function ? lifecycle.isActive : () => true;
   const updateStatus = (...args) => {
     if (isActive()) setUploadStatus(statusEl, ...args);
   };

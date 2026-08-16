@@ -726,6 +726,23 @@ test('drawCompare adds registration verdicts to peer labels when sidecar data is
   assert.equal(rendered, 2);
   assert.equal(cells[0].label.textContent, 'Primary');
   assert.equal(cells[1].label.textContent, 'Peer · slightly off · 3.25 mm');
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      reference: 'different_primary',
+      pairs: {
+        peer_reg: {
+          translation_magnitude_mm: 1.714,
+          verdict: 'slightly off',
+        },
+      },
+    }),
+  });
+  await loadRegistrationData();
+  globalThis.fetch = previousFetch;
+  drawCompare();
+  assert.equal(cells[1].label.textContent, 'Peer');
 });
 
 test('drawCompare marks peers out of range instead of clamping to the wrong anatomy', () => {
@@ -858,4 +875,74 @@ test('drawCompare marks peers out of range instead of clamping to the wrong anat
   assert.equal(rendered, 1, 'only the primary slice should render when the peer has no nearby plane');
   assert.equal(cells[1].label.textContent, 'Peer · out of range');
   assert.equal(peerClasses.has('out-of-range'), true);
+});
+
+test('drawCompare does not refetch a failed compare stack in a loop', async () => {
+  const cells = [];
+  const host = {
+    innerHTML: '',
+    querySelectorAll(selector) {
+      if (selector === '.cmp-cell') return cells;
+      if (selector === '.cmp-cell canvas') return cells.map((cell) => cell.canvas);
+      return [];
+    },
+    appendChild(node) { cells.push(node); },
+  };
+  globalThis.document = {
+    createElement(tag) {
+      if (tag === 'canvas') {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ clearRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray(4) }) }),
+        };
+      }
+      return {
+        className: '',
+        dataset: {},
+        innerHTML: '',
+        addEventListener() {},
+        canvas: { style: {}, width: 0, height: 0, addEventListener() {}, getContext: () => ({ createImageData: () => ({ data: new Uint8ClampedArray(4) }), putImageData() {} }) },
+        querySelector(selector) {
+          if (selector === 'canvas') return this.canvas;
+          if (selector === '.cmp-lbl') return this.label || (this.label = { textContent: '' });
+          return null;
+        },
+      };
+    },
+    getElementById(id) {
+      if (id === 'cmp-grid') return host;
+      return null;
+    },
+  };
+
+  let ensureCalls = 0;
+  const failedStack = () => {
+    const stack = [{ complete: true, naturalWidth: 0 }];
+    stack.ensureIndex = async () => {
+      ensureCalls += 1;
+      return null;
+    };
+    return stack;
+  };
+
+  state.manifest = {
+    series: [
+      { slug: 'cmp_a', name: 'A', group: 'cmp', slices: 1, width: 1, height: 1, pixelSpacing: [1, 1], hasBrain: false, hasSeg: false, hasSym: false, hasRegions: false },
+      { slug: 'cmp_b', name: 'B', group: 'cmp', slices: 1, width: 1, height: 1, pixelSpacing: [1, 1], hasBrain: false, hasSeg: false, hasSym: false, hasRegions: false },
+    ],
+  };
+  state.seriesIdx = 0;
+  state.sliceIdx = 0;
+  state.mode = 'cmp';
+  state.compare = { viewport: { zoom: 1, tx: 0, ty: 0 } };
+  state.cmpStacks = { cmp_a: failedStack(), cmp_b: failedStack() };
+
+  buildCompareGrid();
+  drawCompare();
+  drawCompare();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(ensureCalls, 0);
 });

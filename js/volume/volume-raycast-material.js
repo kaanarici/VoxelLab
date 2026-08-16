@@ -14,11 +14,14 @@ export function createVolumeRaycastMaterial(opts) {
   const {
     texture,
     dummyLabel,
-    dummyGrad,
     lutTex,
     width: W,
     height: H,
     depth: D,
+    gridWidth = W,
+    gridHeight = H,
+    gridDepth = D,
+    gridSpacing = [1, 1, 1],
     lowT,
     highT,
     intensity,
@@ -30,6 +33,8 @@ export function createVolumeRaycastMaterial(opts) {
   } = opts;
 
   const uMode = renderMode === 'mip' ? 1 : renderMode === 'minip' ? 2 : 0;
+  const spacing = gridSpacing.map(value => Number(value) > 0 ? Number(value) : 1);
+  const densityUnit = Math.min(...spacing);
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -47,17 +52,12 @@ export function createVolumeRaycastMaterial(opts) {
       uClipPlane:  { value: new THREE.Vector4().fromArray(clipPlane) },
       uClipPlaneEnabled: { value: clipPlaneEnabled ? 1 : 0 },
       uMode:       { value: uMode },
-      uVolSize:    { value: new THREE.Vector3(W, H, D) },
-      uLightDir:   { value: new THREE.Vector3(0.5, 0.5, 0.7).normalize() },
-      uAmbient:    { value: 0.48 },
-      uSpecular:   { value: 0.08 },
-      uShininess:  { value: 40.0 },
-      uGradBoost:  { value: 1.15 },
-      uEdgeBoost:  { value: 0.18 },
-      uDither:     { value: 0.006 },
+      uVolSize:    { value: new THREE.Vector3(
+        gridWidth * spacing[0] / densityUnit,
+        gridHeight * spacing[1] / densityUnit,
+        gridDepth * spacing[2] / densityUnit,
+      ) },
       uIsolate:    { value: 0 },
-      uGrad:       { value: dummyGrad },
-      uHasGrad:    { value: 0 },
     },
     vertexShader: VOLUME_RAYCAST_VERTEX_SHADER,
     fragmentShader: VOLUME_RAYCAST_FRAGMENT_SHADER,
@@ -65,8 +65,6 @@ export function createVolumeRaycastMaterial(opts) {
     side: THREE.BackSide,
   });
 
-  // Full-quality step budget. The render loop lowers uSteps to a cheap draft
-  // count while the camera is moving and restores this on the settling frame.
-  material.userData.fullSteps = material.uniforms.uSteps.value;
+  material.userData.textureDims = { width: W, height: H, depth: D };
   return material;
 }

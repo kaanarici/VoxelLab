@@ -32,15 +32,15 @@ function stemAndSuffix(fileName) {
 }
 
 function asInputRecord(entry, sourceIndex) {
-  if (typeof entry === 'string') {
+  if (entry?.constructor === String) {
     const name = basename(entry);
     return { name, path: entry, sourceIndex };
   }
-  if (!entry || typeof entry !== 'object') {
+  if (entry == null || Object(entry) !== entry || entry instanceof Function) {
     throw new Error('Microscopy sequence input must be path strings or File-like objects with a name.');
   }
-  const path = typeof entry.path === 'string' ? entry.path : '';
-  const name = typeof entry.name === 'string' && entry.name ? entry.name : basename(path);
+  const path = entry.path?.constructor === String ? entry.path : '';
+  const name = entry.name?.constructor === String && entry.name ? entry.name : basename(path);
   if (!name) {
     throw new Error('Microscopy sequence input entries require a non-empty file name.');
   }

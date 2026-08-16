@@ -337,7 +337,14 @@ test('desktop converter artifacts are session-scoped and only release terminal j
 test('Electron main uses OS Trash for real converter sessions but not temporary smoke profiles', async () => {
   const mainSource = await fs.readFile(new URL('../electron/main/index.js', import.meta.url), 'utf8');
   assert.match(mainSource, /new ConverterJobManager\(\{\s*userDataPath: \(\) => app\.getPath\('userData'\),[\s\S]*?releaseJobDir: IS_SMOKE \? async \(\) => false : jobDir => shell\.trashItem\(jobDir\),/s);
-  assert.match(mainSource, /app\.whenReady\(\)\.then\(async \(\) => \{\s*recentDocuments = await readRecentDocuments\(app\);\s*\/\/ Converted data is session-scoped\.[\s\S]*?await converterJobs\.releaseStaleArtifacts\(\);/);
+  const readyStart = mainSource.indexOf('app.whenReady().then(async () => {');
+  const readyEnd = mainSource.indexOf("\n  app.on('window-all-closed'", readyStart);
+  assert.notEqual(readyStart, -1);
+  assert.notEqual(readyEnd, -1);
+  const readyBlock = mainSource.slice(readyStart, readyEnd);
+  assert.match(readyBlock, /recentDocuments = await readRecentDocuments\(app\);/);
+  assert.match(readyBlock, /savedImports = await readSavedImports\(app\);/);
+  assert.match(readyBlock, /\/\/ Converted data is session-scoped\.[\s\S]*?await converterJobs\.releaseStaleArtifacts\(\);/);
   assert.match(mainSource, /app\.on\('before-quit', \(event\) => \{\s*if \(converterArtifactsReleasedForQuit\) return;\s*event\.preventDefault\(\);\s*if \(releasingConverterArtifactsBeforeQuit\) return;\s*releasingConverterArtifactsBeforeQuit = true;\s*void converterJobs\.shutdown\(\)\s*\.then\(\(\) => converterJobs\.releaseTerminalArtifacts\(\)\)[\s\S]*?converterArtifactsReleasedForQuit = true;\s*app\.quit\(\);/s);
 });
 

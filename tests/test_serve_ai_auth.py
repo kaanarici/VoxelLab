@@ -1035,7 +1035,15 @@ def test_analysis_status_history_is_bounded_without_evicting_live_jobs() -> None
 
 
 def test_do_get_consult_returns_cached_consult(monkeypatch, tmp_path: Path) -> None:
-    _ = (tmp_path / "consult.json").write_text(json.dumps({"impression": "Stable.", "ask_radiologist": [], "limitations": "None."}))
+    consult = {
+        "disclaimer": "Research use only.",
+        "provider": "claude",
+        "model": "opus",
+        "impression": "Stable.",
+        "ask_radiologist": [],
+        "limitations": "None.",
+    }
+    _ = (tmp_path / "consult.json").write_text(json.dumps(consult))
     handler, captured = make_handler(
         "/api/consult",
         headers={
@@ -1049,8 +1057,46 @@ def test_do_get_consult_returns_cached_consult(monkeypatch, tmp_path: Path) -> N
 
     assert captured == {
         "code": 200,
-        "body": {"cached": True, "impression": "Stable.", "ask_radiologist": [], "limitations": "None."},
+        "body": {"cached": True, **consult},
     }
+
+
+def test_do_get_ai_models_returns_cli_catalog(monkeypatch) -> None:
+    catalog = {
+        "models": [{"key": "claude:opus", "provider": "claude", "model": "opus", "label": "Opus", "group": "Claude Code"}],
+        "providers": [{
+            "provider": "claude",
+            "ready": True,
+            "issues": [],
+            "catalog": {
+                "status": "ready",
+                "source": "claude_help",
+                "issues": [],
+                "model_count": 1,
+                "timeout_seconds": 8,
+            },
+        }],
+    }
+    handler, captured = make_handler(
+        "/api/ai/models",
+        headers={
+            "Sec-Fetch-Site": "same-origin",
+            "X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN,
+        },
+    )
+    monkeypatch.setattr(ai_routes, "list_cli_models", lambda: catalog)
+
+    serve.Handler.do_GET(handler)
+
+    assert captured == {"code": 200, "body": catalog}
+
+
+def test_do_get_ai_models_requires_local_token() -> None:
+    handler, captured = make_handler("/api/ai/models", headers={"Sec-Fetch-Site": "same-origin"})
+
+    serve.Handler.do_GET(handler)
+
+    assert captured == {"code": 403, "body": {"error": "missing or invalid local api token"}}
 
 
 def test_do_get_consult_returns_named_error_on_invalid_cache(monkeypatch, tmp_path: Path) -> None:

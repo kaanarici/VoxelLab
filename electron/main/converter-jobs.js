@@ -624,7 +624,7 @@ export class ConverterJobManager extends EventEmitter {
   }
 
   storageRoot() {
-    return typeof this.userDataPath === 'function' ? this.userDataPath() : this.userDataPath;
+    return this.userDataPath instanceof Function ? this.userDataPath() : this.userDataPath;
   }
 
   async releaseArtifactDirectory(jobDir) {

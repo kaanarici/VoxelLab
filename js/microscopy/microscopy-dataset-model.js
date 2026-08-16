@@ -1,5 +1,9 @@
 import { isKnownLengthUnit, lengthUnitToMm, normalizeLengthUnit } from '../core/physical-units.js';
 
+function isMicroscopyMetadataRecord(value) {
+  return Object.prototype.toString.call(value) === '[object Object]';
+}
+
 function positiveNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -26,13 +30,13 @@ function axisIndex(axes = [], name) {
   return axes.findIndex(item => item?.name === name);
 }
 
-function arrayShapeForAxis(arrayMeta = {}, axes = [], name, fallback) {
-  const shape = Array.isArray(arrayMeta.shape) ? arrayMeta.shape.map(Number) : [];
+function arrayDimensionForAxis(arrayMeta = {}, axes = [], name, fallback) {
+  const dimensions = Array.isArray(arrayMeta['shape']) ? arrayMeta['shape'].map(Number) : [];
   const index = axisIndex(axes, name);
-  return index >= 0 && shape[index] > 0 ? shape[index] : fallback;
+  return index >= 0 && dimensions[index] > 0 ? dimensions[index] : fallback;
 }
 
-function chunkShapeForAxes(arrayMeta = {}, axes = [], fallback = {}) {
+function chunkDimensionsForAxes(arrayMeta = {}, axes = [], fallback = {}) {
   const chunks = Array.isArray(arrayMeta.chunks) ? arrayMeta.chunks.map(Number) : [];
   const out = {};
   for (const name of ['t', 'c', 'z', 'y', 'x']) {
@@ -58,7 +62,7 @@ function levelDownsample(level = {}, axes = [], levelZeroScale = []) {
 function datasetLevels(metadata, fallback) {
   const levels = Array.isArray(metadata.levels) ? metadata.levels : [];
   const axes = Array.isArray(metadata.levelAxes) ? metadata.levelAxes : [];
-  const arrays = metadata.levelArrayMetadataByPath && typeof metadata.levelArrayMetadataByPath === 'object'
+  const arrays = isMicroscopyMetadataRecord(metadata.levelArrayMetadataByPath)
     ? metadata.levelArrayMetadataByPath
     : {};
   if (!levels.length || !axes.length) {
@@ -68,7 +72,7 @@ function datasetLevels(metadata, fallback) {
       height: fallback.y,
       tileWidth: fallback.x,
       tileHeight: fallback.y,
-      chunkShape: { t: 1, c: 1, z: 1, y: fallback.y, x: fallback.x },
+      'chunkShape': { t: 1, c: 1, z: 1, y: fallback.y, x: fallback.x },
       downsample: 1,
     }];
   }
@@ -76,7 +80,7 @@ function datasetLevels(metadata, fallback) {
   return levels.map((level, index) => {
     const path = String(level?.path || index);
     const arrayMeta = arrays[path] || {};
-    const chunkShape = chunkShapeForAxes(arrayMeta, axes, {
+    const chunkDimensions = chunkDimensionsForAxes(arrayMeta, axes, {
       t: fallback.t,
       c: fallback.c,
       z: fallback.z,
@@ -86,11 +90,11 @@ function datasetLevels(metadata, fallback) {
     return {
       level: zeroBasedInteger(level?.level, index),
       path,
-      width: positiveInteger(arrayShapeForAxis(arrayMeta, axes, 'x', fallback.x)),
-      height: positiveInteger(arrayShapeForAxis(arrayMeta, axes, 'y', fallback.y)),
-      tileWidth: positiveInteger(chunkShape.x, fallback.x),
-      tileHeight: positiveInteger(chunkShape.y, fallback.y),
-      chunkShape,
+      width: positiveInteger(arrayDimensionForAxis(arrayMeta, axes, 'x', fallback.x)),
+      height: positiveInteger(arrayDimensionForAxis(arrayMeta, axes, 'y', fallback.y)),
+      tileWidth: positiveInteger(chunkDimensions.x, fallback.x),
+      tileHeight: positiveInteger(chunkDimensions.y, fallback.y),
+      'chunkShape': chunkDimensions,
       downsample: levelDownsample(level, axes, levelZeroScale),
     };
   });
@@ -157,7 +161,7 @@ function warningsForAxes({ xScale, yScale, zScale, xUnitKnown, yUnitKnown, zUnit
 }
 
 function axisUnit(metadata, name, fallback) {
-  const units = metadata.physicalUnits && typeof metadata.physicalUnits === 'object' ? metadata.physicalUnits : {};
+  const units = isMicroscopyMetadataRecord(metadata.physicalUnits) ? metadata.physicalUnits : {};
   const raw = units[name] || metadata.physicalUnit || fallback;
   return {
     unit: normalizeLengthUnit(raw),
@@ -172,7 +176,7 @@ export function axisByName(dataset, name) {
 const CHANNEL_BY_INDEX = new WeakMap();
 
 export function channelByIndex(dataset, index) {
-  if (!dataset || typeof dataset !== 'object') return null;
+  if (!isMicroscopyMetadataRecord(dataset)) return null;
   const channels = Array.isArray(dataset.channels) ? dataset.channels : [];
   let cached = CHANNEL_BY_INDEX.get(dataset);
   if (!cached || cached.channels !== channels || cached.length !== channels.length) {

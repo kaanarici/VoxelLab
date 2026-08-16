@@ -75,7 +75,7 @@ async function verifyCalibratedRoiCsv(entry, expected) {
   state.sliceIdx = 0;
   setRoiEntriesForSlice(entry.slug, 0, [{
     id: 1,
-    shape: 'polygon',
+    'shape': 'polygon',
     pts: [[1, 1], [9, 1], [9, 6], [1, 6]],
     microscopy: {
       channelIndex: 0,

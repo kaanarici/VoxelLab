@@ -12,7 +12,11 @@ export function updateClipReadouts() {
   // Sync slider positions with state (e.g. after preset changes)
   const sLow = $('s-low'); if (sLow) sLow.value = state.lowT;
   const sHigh = $('s-high'); if (sHigh) sHigh.value = state.highT;
-  const sGain = $('s-gain'); if (sGain) sGain.value = state.intensity;
+  const sGain = $('s-gain');
+  if (sGain) {
+    sGain.value = state.intensity;
+    sGain.disabled = state.renderMode !== 'alpha';
+  }
   $('readout-clipx').textContent = rng(state.clipMin[0], state.clipMax[0]);
   $('readout-clipy').textContent = rng(state.clipMin[1], state.clipMax[1]);
   $('readout-clipz').textContent = rng(state.clipMin[2], state.clipMax[2]);

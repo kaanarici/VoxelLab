@@ -22,6 +22,7 @@ export const thumbCache = new Map();
 export const sidebar = {
   onUpdate: () => {},
   selectSeries: () => {},
+  refreshActiveView: () => {},
   lastClickedSlug: null,
   // Flat top-to-bottom order of rendered series slugs, used for shift-range select.
   flatOrder: [],
@@ -33,9 +34,10 @@ export const sidebar = {
   structureSig: null,
 };
 
-export function setSidebarCallbacks({ onUpdate, selectSeries }) {
+export function setSidebarCallbacks({ onUpdate, selectSeries, refreshActiveView }) {
   if (onUpdate) sidebar.onUpdate = onUpdate;
   if (selectSeries) sidebar.selectSeries = selectSeries;
+  if (refreshActiveView) sidebar.refreshActiveView = refreshActiveView;
 }
 
 export async function createProject(name) {

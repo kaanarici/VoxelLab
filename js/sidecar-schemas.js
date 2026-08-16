@@ -33,7 +33,9 @@ function compactSchemaText(schema) {
 }
 
 export function sidecarUnsupportedDescription(itemOrReason) {
-  const item = typeof itemOrReason === 'object' && itemOrReason ? itemOrReason : null;
+  const item = itemOrReason && !Array.isArray(itemOrReason) && Object.getPrototypeOf(itemOrReason) === Object.prototype
+    ? itemOrReason
+    : null;
   const reason = item ? item.reason || item.skipReason : itemOrReason;
   const label = sidecarUnsupportedReasonLabel(reason);
   const schema = item && reason === UNRECOGNIZED_JSON_SIDECAR_REASON

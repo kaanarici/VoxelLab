@@ -694,8 +694,8 @@
   /* Compare series picker */
   #cmp-dropdown { height: auto; }
   #cmp-dropdown .dd-menu {
-    min-width: 196px;
-    width: 196px;
+    min-width: 232px;
+    width: 232px;
     max-width: calc(100vw - var(--space-md));
     padding: 5px;
     border: 0;
@@ -722,12 +722,23 @@
   #cmp-menu .ui-checkbox-toggle {
     padding: 0;
   }
-  #cmp-menu .cmp-pick > span:last-child {
+  #cmp-menu .cmp-pick-copy {
     flex: 1 1 auto;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  #cmp-menu .cmp-pick-name,
+  #cmp-menu .cmp-pick-detail {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  #cmp-menu .cmp-pick-detail {
+    color: var(--muted);
+    font-size: var(--fs-micro);
+    font-variant-numeric: tabular-nums;
   }
   .custom-dropdown #cmp-menu .dd-item.cmp-pick:hover {
     background: var(--hover);
@@ -745,6 +756,14 @@
     letter-spacing: var(--tracking-wide);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     z-index: var(--z-base);
+  }
+  #cmp-menu .cmp-menu-section {
+    padding: var(--space-xs) var(--space-10) var(--space-2xs);
+    color: var(--rail-title);
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
   }
   #cmp-menu .cmp-stop {
     position: sticky;

@@ -146,7 +146,7 @@ export function initScrubberMarkers() {
     scrubber.addEventListener('pointerleave', clearHover);
   }
 
-  if (typeof ResizeObserver !== 'undefined') {
+  if (globalThis.ResizeObserver) {
     new ResizeObserver(refreshGeom).observe(scrub);
   }
   window.addEventListener('resize', refreshGeom);

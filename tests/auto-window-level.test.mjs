@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { autoWindowLevelFromRgba } = await import('../js/auto-window-level.js');
+const { autoWindowLevelFromBytes, autoWindowLevelFromRgba } = await import('../js/auto-window-level.js');
 
 function rgbaFromValues(values) {
   const data = new Uint8ClampedArray(values.length * 4);
@@ -40,4 +40,17 @@ test('autoWindowLevelFromRgba refuses tiny foreground samples', () => {
   ];
 
   assert.equal(autoWindowLevelFromRgba(rgbaFromValues(values)), null);
+});
+
+test('autoWindowLevelFromBytes matches the RGBA display-space calculation', () => {
+  const values = Uint8Array.from([
+    ...Array(80).fill(0),
+    ...Array(100).fill(40),
+    ...Array(100).fill(90),
+    ...Array(100).fill(140),
+    ...Array(100).fill(210),
+    ...Array(20).fill(255),
+  ]);
+
+  assert.deepEqual(autoWindowLevelFromBytes(values), autoWindowLevelFromRgba(rgbaFromValues(values)));
 });

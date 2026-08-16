@@ -3,7 +3,7 @@
      secondary — findings + shortcuts). Left sidebar (series list)
      goes at very narrow widths (mobile). */
   @media (max-width: 1100px) {
-    .app { grid-template-columns: 208px 1fr; }
+    .app { grid-template-columns: var(--rail-left-min) 1fr; }
   }
   @media (max-width: 640px) {
     .app {

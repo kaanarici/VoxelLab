@@ -40,7 +40,7 @@ function csvCell(value) {
   if (value == null || value === '—') return '';
   const raw = String(value);
   const firstMeaningful = raw.trimStart().charAt(0);
-  const text = typeof value === 'string' && firstMeaningful && '=+-@'.includes(firstMeaningful) ? `'${raw}` : raw;
+  const text = value?.constructor === String && firstMeaningful && '=+-@'.includes(firstMeaningful) ? `'${raw}` : raw;
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 

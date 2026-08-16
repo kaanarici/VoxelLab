@@ -9,6 +9,7 @@ const {
   localImportIntakeContext,
   localIntakeNotice,
   localIntakeStatusText,
+  localIntakeToastText,
   microscopyConversionErrorText,
   mixedNativeImportBoundaryText,
 } = await import('../js/projects/local-intake-text.js');
@@ -31,6 +32,20 @@ test('microscopyConversionErrorText maps stable converter reasons without server
 test('localFilePath normalizes browser and desktop paths', () => {
   assert.equal(localFilePath({ webkitRelativePath: 'folder\\scan.dcm', name: 'scan.dcm' }), 'folder/scan.dcm');
   assert.equal(localFilePath({ path: '/study/cells.ome.tiff', name: 'cells.ome.tiff' }), '/study/cells.ome.tiff');
+});
+
+test('localIntakeToastText keeps counts and drops skipped-file samples', () => {
+  assert.equal(
+    localIntakeToastText({
+      files: [{ name: 'brain.nii' }],
+      skipped: [{ name: 'metadata.json', skipReason: 'unrecognized_json_sidecar' }],
+      skippedCount: 1,
+      counts: { openable: 1, convertible: 0, sidecar: 0 },
+      formatItems: { openable: [{ name: 'brain.nii' }], convertible: [], sidecar: [] },
+      checkedFiles: 3,
+    }),
+    'Local intake: 1 openable file (NIfTI) selected after checking 3 files; skipped 1 unsupported file.',
+  );
 });
 
 test('localIntakeNotice preserves selected format labels and skipped samples', () => {

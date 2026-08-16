@@ -37,7 +37,35 @@ function majorAxisLabel(x, y, z) {
 
 /** True when the series has a real patient frame, so anatomical labels are meaningful. */
 export function hasPatientFrame(series) {
-  return !!series && series.orientation?.length >= 6 && series.imageDomain !== 'microscopy';
+  if (!series || series.imageDomain === 'microscopy') return false;
+  if (series.patientFrameTrusted === true || series.patientFrameTrusted === false) return series.patientFrameTrusted;
+  if (Object.hasOwn(series, '_niftiSpatialAffineLps')) return Array.isArray(series._niftiSpatialAffineLps);
+  return series.orientation?.length >= 6;
+}
+
+function anatomicalPlaneForNormal(normal) {
+  const absolute = normal.map(Math.abs);
+  const maximum = Math.max(...absolute);
+  if (!(maximum > 0) || maximum < 0.87) return 'Oblique';
+  return ['Sagittal', 'Coronal', 'Axial'][absolute.indexOf(maximum)];
+}
+
+export function mprPaneLabels(series) {
+  if (!hasPatientFrame(series)) {
+    return {
+      ax: 'Acquisition XY',
+      co: 'Acquisition XZ',
+      sa: 'Acquisition YZ',
+      ob: 'Oblique · acquisition grid',
+    };
+  }
+  const { row, col, sliceDir } = geometryFromSeries(series);
+  return {
+    ax: anatomicalPlaneForNormal(sliceDir),
+    co: anatomicalPlaneForNormal(col),
+    sa: anatomicalPlaneForNormal(row),
+    ob: 'Oblique · acquisition grid',
+  };
 }
 
 /**
@@ -68,11 +96,7 @@ export function acquisitionPlane(series) {
   if (!hasPatientFrame(series)) return null;
   const { sliceDir } = geometryFromSeries(series);
   if (!sliceDir) return null;
-  const a = sliceDir.map(Math.abs);
-  const max = Math.max(a[0], a[1], a[2]);
-  if (!(max > 0)) return null;
-  if (max < 0.87) return 'Oblique';
-  return ['Sagittal', 'Coronal', 'Axial'][a.indexOf(max)];
+  return anatomicalPlaneForNormal(sliceDir);
 }
 
 // Neutral labels when there is no patient frame — view-axis directions only, no

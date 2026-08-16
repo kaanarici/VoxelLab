@@ -71,14 +71,16 @@
     left: 0;
     right: 0;
     bottom: 100%;
-    margin-bottom: calc(-1 * var(--space-lg));
+    /* Midline of the 48px pill. Extra bottom padding is the height; the tuck
+       spends it downward so the thread is taller and sits behind the bar. */
+    margin-bottom: -24px;
     z-index: var(--z-base);
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
     max-height: 60vh;
     overflow: hidden;
-    padding: var(--space-md) var(--space-md) 26px;
+    padding: var(--space-md) var(--space-md) 52px;
     background: var(--elev);
     border: var(--border-w) solid var(--border);
     border-bottom: none;
@@ -151,38 +153,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .ask-scope-action {
-    flex-shrink: 0;
-    align-self: flex-start;
-    height: 26px;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2xs);
-    padding: 0 var(--space-sm);
-    border: var(--border-w) solid var(--border);
-    border-radius: var(--radius-lg);
-    background: transparent;
-    color: var(--text);
-    font-size: var(--fs-caption);
-    font-weight: var(--fw-medium);
-    cursor: pointer;
-    transition: background var(--dur-quick) var(--ease-swap), border-color var(--dur-quick) var(--ease-swap);
-  }
-  .ask-scope-action svg {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-    color: var(--muted);
-  }
-  .ask-scope-action:hover { background: var(--hover-strong); border-color: var(--dim); }
-  @media (max-width: 720px) {
-    .ask-scope-action {
-      width: 26px;
-      padding: 0;
-      justify-content: center;
-    }
-    .ask-scope-action span { display: none; }
   }
   /* Pinned to the drawer's top-right with even inset (matches the 12px drawer
      padding on top and right). Radius follows outer = inner + padding: the 14px
@@ -517,10 +487,6 @@
     transition: height var(--resize-dur) var(--resize-ease);
   }
   .ask-bar-input::placeholder { color: var(--muted); opacity: 0.85; }
-  .ask-composer:has(.ask-drawer) .ask-bar,
-  .ask-composer:has(.ask-drawer) .ask-bar:focus-within {
-    border-top-color: transparent;
-  }
   @media (prefers-reduced-motion: reduce) {
     .ask-bar, .ask-bar-input { transition: none; }
   }
@@ -542,6 +508,14 @@
   }
   .ask-bar-send:hover:not(:disabled) { opacity: 0.85; }
   .ask-bar-send:disabled { opacity: var(--opacity-disabled); cursor: default; }
+  .ask-bar-slot {
+    position: relative;
+    flex-shrink: 0;
+    display: block;
+    width: max-content;
+    line-height: 0;
+  }
+  .ask-bar-slot--model { margin-left: auto; }
   /* "+" at the bar's left end — a ghost circle concentric with the bar (16+8=24). */
   .ask-bar-plus {
     flex-shrink: 0;
@@ -603,7 +577,6 @@
   /* Model selector pill — send-button height, fully rounded, left of send. */
   .ask-bar-model {
     flex-shrink: 0;
-    margin-left: auto;
     height: 32px;
     display: inline-flex;
     align-items: center;
@@ -615,42 +588,85 @@
     color: var(--text);
     font: inherit;
     font-size: var(--fs-body-lg);
+    white-space: nowrap;
     cursor: pointer;
     transition: background var(--dur-quick) var(--ease-swap);
   }
   .ask-bar-model:hover,
   .ask-bar-model[aria-expanded="true"] { background: var(--hover-strong); }
+  .ask-bar-model[hidden] { display: none; }
   .ask-model-caret { color: var(--muted); flex-shrink: 0; }
   .ask-model-menu {
     position: absolute;
-    right: var(--space-sm);
+    right: 0;
     bottom: calc(100% + var(--space-sm));
     z-index: 5;
-    min-width: 136px;
-    padding: 5px;
-    background: var(--elev);
-    border: var(--border-w) solid var(--border);
+    min-width: 228px;
+    max-width: min(280px, calc(100vw - 32px));
+    max-height: min(360px, 52vh);
+    overflow-y: auto;
+    padding: var(--space-2sm);
+    background: var(--panel);
+    border: var(--border-w) solid rgba(255, 255, 255, 0.14);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-modal);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2xs);
+    gap: 1px;
+    line-height: var(--lh-tight);
+    transform-origin: 100% 100%;
     animation: ask-pop-in var(--dropdown-open-dur) var(--ease-smooth);
   }
   .ask-model-menu[hidden] { display: none; }
+  .ask-model-group {
+    padding: var(--space-sm) var(--space-sm) var(--space-2xs);
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ask-model-group:first-child { padding-top: var(--space-2xs); }
+  .ask-model-sep {
+    height: var(--border-w);
+    margin: var(--space-2xs) var(--space-sm);
+    background: rgba(255, 255, 255, 0.1);
+  }
   .ask-model-opt {
-    padding: 7px var(--space-10);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    min-height: 28px;
+    padding: 0 var(--space-sm);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: transparent;
     color: var(--text);
     font: inherit;
     font-size: var(--fs-body-lg);
+    font-weight: var(--fw-medium);
     text-align: left;
     cursor: pointer;
-    transition: background var(--dur-quick) var(--ease-swap);
+    transition: background var(--dur-quick) var(--ease-swap), transform 160ms ease-out;
   }
-  .ask-model-opt:hover { background: var(--hover-strong); }
+  .ask-model-opt-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ask-model-check {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--text);
+    opacity: 0;
+  }
+  .ask-model-opt[aria-selected="true"] .ask-model-check { opacity: 1; }
+  .ask-model-opt:active { transform: scale(0.96); }
+  @media (hover: hover) and (pointer: fine) {
+    .ask-model-opt:hover { background: var(--hover-strong); }
+  }
   @media (prefers-reduced-motion: reduce) {
     .ask-bar-pop, .ask-model-menu { animation: none; }
   }

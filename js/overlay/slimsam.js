@@ -90,13 +90,13 @@ export function validateSlimSAMMeta(meta, series) {
     height: Number(meta.height || 0),
     slices: Number(meta.slices || 0),
   };
-  const shapeOk = Number(meta.embed_dim) > 0 &&
+  const dimensionsValid = Number(meta.embed_dim) > 0 &&
     Number(meta.embed_h) > 0 &&
     Number(meta.embed_w) > 0 &&
     actual.width > 0 &&
     actual.height > 0 &&
     actual.slices > 0;
-  if (!shapeOk) return { valid: false, reason: 'invalid_meta_shape', expected };
+  if (!dimensionsValid) return { valid: false, reason: 'invalid_meta_shape', expected };
   if (expected.width && actual.width !== expected.width) return { valid: false, reason: 'geometry_mismatch', expected };
   if (expected.height && actual.height !== expected.height) return { valid: false, reason: 'geometry_mismatch', expected };
   if (expected.slices && actual.slices !== expected.slices) return { valid: false, reason: 'geometry_mismatch', expected };

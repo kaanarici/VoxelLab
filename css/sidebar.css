@@ -1,5 +1,5 @@
   aside { background: var(--panel); display: flex; flex-direction: column; overflow: visible; }
-  aside.left  { border-right: var(--border-w) solid var(--border); }
+  aside.left  { position: relative; border-right: var(--border-w) solid var(--border); }
   /* Scroll lives in .right-panel-scroll so headers stay fixed like the left sidebar. */
   aside.right { border-left:  var(--border-w) solid var(--border); overflow: visible; }
   .right-panel-scroll {
@@ -70,11 +70,15 @@
   }
   .sidebar-shortcut kbd {
     display: inline-flex; align-items: center; justify-content: center;
-    min-width: 16px; height: 16px; padding: 0 3px;
+    min-width: 20px; height: 20px; padding: 0 5px;
     border-radius: var(--radius);
-    background: var(--elev); border: var(--border-w) solid var(--border);
-    font: inherit; font-size: var(--fs-micro); color: var(--dim);
+    background: var(--elev);
+    box-shadow: 0 0 0 1px var(--border);
+    font: inherit; font-size: var(--fs-body-lg); font-weight: var(--fw-medium);
+    line-height: 1; color: var(--icon-idle);
+    font-variant-numeric: tabular-nums;
   }
+  .sidebar-row:hover .sidebar-shortcut kbd { color: var(--text); }
 
   /* Section header — inline label + action buttons */
   .section-header {
@@ -328,14 +332,21 @@
     max-width: 360px;
     padding: var(--space-14) var(--space-lg);
     background: var(--panel);
-    border: var(--border-w) solid var(--border);
+    border: 0;
     border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
   }
   .project-rename-title {
     margin-bottom: var(--space-10);
     font-size: var(--fs-title);
     font-weight: var(--fw-medium);
     color: var(--text);
+  }
+  .project-rename-label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    color: var(--muted);
+    font-size: var(--fs-body);
   }
   .project-rename-dialog-input {
     width: 100%;
@@ -348,6 +359,12 @@
     font: inherit;
     font-size: var(--fs-title);
     outline: none;
+  }
+  .project-rename-error {
+    min-height: 1.4em;
+    margin-top: var(--space-xs);
+    color: var(--danger);
+    font-size: var(--fs-body);
   }
   .project-rename-actions {
     display: flex;
@@ -380,4 +397,40 @@
   .project-folder.drag-over {
     background: var(--accent-bg);
     box-shadow: inset 2px 0 0 var(--text);
+  }
+
+  .sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    z-index: var(--z-header);
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: var(--border-w);
+    transform: translateX(-50%);
+    background: transparent;
+  }
+  .sidebar-resize-handle:hover::after,
+  html.is-left-resizing .sidebar-resize-handle::after {
+    background: var(--muted);
+  }
+  html.is-left-resizing,
+  html.is-left-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+  }
+  @media (min-width: 1101px) {
+    .app.left-collapsed .sidebar-resize-handle { display: none; }
+  }
+  @media (max-width: 1100px) {
+    .sidebar-resize-handle { display: none; }
   }

@@ -54,7 +54,7 @@ test('OME-Zarr resource budgets include padded bytes in full declared chunk shap
     chunkWidth: 1,
     chunkHeight: 1,
     axes: [{ name: 'y' }, { name: 'x' }],
-    shape: [1, 1],
+    'shape': [1, 1],
     chunks: [1, 33_554_433],
     bytesPerElement: 1,
   });

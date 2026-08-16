@@ -4,6 +4,7 @@ import { test } from 'node:test';
 const {
   clampSlabThicknessMm,
   createMprProjection,
+  maximumAccurateSlabThicknessMm,
   normalizeMprProjectionMode,
   projectDiscreteSlabLabel,
   projectVolumeSample,
@@ -25,9 +26,42 @@ test('createMprProjection derives slab sampling from plane normal and spacing', 
   );
 
   assert.equal(projection.mode, 'avg');
-  assert.ok(projection.sampleCount > 1);
+  assert.equal(projection.sampleCount % 2, 1, 'slab sampling must include the selected plane center');
   assert.deepEqual(projection.slabStep, [0, 0, 0.5]);
   assert.equal(projectionCacheToken(projection), `avg:6:${projection.sampleCount}`);
+});
+
+test('thick-slab MIP includes a one-voxel maximum at the selected plane center', () => {
+  const dims = { W: 1, H: 1, D: 81 };
+  const vox = new Float32Array(dims.D);
+  vox[40] = 1;
+  const projection = createMprProjection(
+    { mode: 'mip', slabThicknessMm: 40 },
+    { row: 0.5, col: 0.5, slice: 0.5 },
+    { axisU: [1, 0, 0], axisV: [0, 1, 0] },
+  );
+  const sampler = (volume, _x, _y, z) => volume[Math.max(0, Math.min(dims.D - 1, Math.round(z)))];
+
+  assert.equal(projection.sampleCount % 2, 1);
+  assert.equal(projectVolumeSample(vox, 0, 0, 40, dims, sampler, projection), 1);
+});
+
+test('slab AVG excludes out-of-volume support instead of repeating edge voxels', () => {
+  const dims = { W: 1, H: 1, D: 3 };
+  const vox = Float32Array.from([10, 20, 30]);
+  const sampler = (volume, _x, _y, z) => volume[Math.round(z)];
+  const projection = { mode: 'avg', sampleCount: 3, slabStep: [0, 0, 1] };
+
+  assert.equal(projectVolumeSample(vox, 0, 0, 0, dims, sampler, projection), 15);
+});
+
+test('accurate slab limit scales down for microscopic calibration instead of undersampling', () => {
+  const medical = maximumAccurateSlabThicknessMm({ row: 0.5, col: 0.5, slice: 0.5 });
+  const microscopy = maximumAccurateSlabThicknessMm({ row: 0.0005, col: 0.0005, slice: 0.001 });
+
+  assert.ok(medical > 40);
+  assert.ok(microscopy > 0 && microscopy < 1);
+  assert.equal(clampSlabThicknessMm(40, { row: 0.0005, col: 0.0005, slice: 0.001 }), microscopy);
 });
 
 test('createMprProjection uses physical-space plane normal for anisotropic voxels', () => {

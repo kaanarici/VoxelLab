@@ -126,7 +126,7 @@ function frame() {
   _raf = 0;
   if (!_enabled) return;
   render();
-  _raf = (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 33))(frame);
+  _raf = (globalThis.requestAnimationFrame instanceof Function ? globalThis.requestAnimationFrame : (fn) => setTimeout(fn, 33))(frame);
 }
 
 export function setAtlas2DActive(on) {
@@ -137,9 +137,9 @@ export function setAtlas2DActive(on) {
   if (on) {
     _sig = '';
     if (svg) installSelectionUI(svg, { is3d: false });
-    if (!_raf) _raf = (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 33))(frame);
+    if (!_raf) _raf = (globalThis.requestAnimationFrame instanceof Function ? globalThis.requestAnimationFrame : (fn) => setTimeout(fn, 33))(frame);
   } else {
-    if (_raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(_raf);
+    if (_raf && globalThis.cancelAnimationFrame instanceof Function) globalThis.cancelAnimationFrame(_raf);
     _raf = 0;
     if (svg) { teardownSelectionUI(svg); clearAtlasPills(svg); }
   }

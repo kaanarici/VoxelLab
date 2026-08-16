@@ -3,7 +3,7 @@
 // local-backend UI gating: js/local-backend-mode.js; auto W/L: js/auto-window-level.js.
 
 import { state } from './js/core/state.js';
-import { $, clientToCanvasPx as _clientToCanvasPx } from './js/dom.js';
+import { $, clientToCanvasPx as _clientToCanvasPx, closeModal, openModal } from './js/dom.js';
 import { updateClipReadouts } from './js/clip-readouts.js';
 import { renderVolumes } from './js/volume/volumes-panel.js';
 import {
@@ -20,7 +20,13 @@ import { initRoiResultsPanel, renderRoiResults } from './js/roi/roi-results.js';
 import { drawHistogram, drawSparkline, initSparkline } from './js/sparkline.js';
 import { updateScrubFill as _updateScrubFill } from './js/cine.js';
 import { drawMeasurements } from './js/roi/measure.js';
-import { initCompare, drawCompare as _drawCompare } from './js/series/compare.js';
+import {
+  buildCompareGrid,
+  getGroupPeers,
+  initCompare,
+  loadComparePeers,
+  drawCompare as _drawCompare,
+} from './js/series/compare.js';
 import {
   initAnnotations,
   getAnnotatedSlices,
@@ -54,7 +60,6 @@ import {
 } from './js/core/state/session-persistence.js';
 import {
   initVolume3D,
-  sync3DScrubber,
   updateUniforms,
   ensureVoxels,
   ensureThree,
@@ -72,7 +77,7 @@ import { applyLocalBackendMode } from './js/local-backend-mode.js';
 import { autoWindowLevel } from './js/auto-window-level.js';
 import { wireControls } from './js/wire-controls.js';
 import { registerCommands } from './js/command-palette.js';
-import { initCloudResultsPanel } from './js/cloud-results.js';
+import { initCloudResults } from './js/cloud-results.js';
 import { ensureTemplate } from './js/template-loader.js';
 import { getRawSliceData } from './js/raw-slice-data.js';
 import { notify } from './js/notify.js';
@@ -147,7 +152,6 @@ initOverlayStack({
 });
 initAnalysisFindings({
   drawSlice,
-  sync3DScrubber,
   renderScrubTicks,
 });
 
@@ -216,8 +220,9 @@ async function init() {
   initProjects({
     onUpdate: (currentSeriesIdx = state.seriesIdx) => renderProjectsSidebar(state.manifest, currentSeriesIdx),
     selectSeries,
+    refreshActiveView: refreshActiveViewAfterSeriesRemoval,
   });
-  initCloudResultsPanel({ selectSeries });
+  initCloudResults({ selectSeries });
 
   wireControls({
     selectSeries,
@@ -362,7 +367,7 @@ async function init() {
       keywords: 'capture tiff tif rendered snapshot microscopy',
       action: async () => {
         const { takeScreenshot } = await import('./js/screenshot.js');
-        if (!await takeScreenshot('tiff')) notify('Rendered TIFF snapshots are available for 2D, MPR, and compare views.');
+        if (!await takeScreenshot('tiff')) notify('Rendered TIFF snapshots are available for 2D, MPR, and compare views.', { kind: 'warning' });
       },
     },
     { id: 'dicom-sr',  label: 'DICOM SR export',  icon: 'i-download',section: 'Export',                  keywords: 'structured',      action: () => $('btn-sr').click() },
@@ -462,25 +467,38 @@ function initOfflineSupport() {
     }
   }
   window.addEventListener('offline', () => {
-    notify('Offline — working from cache', { duration: 5000 });
+    notify('Offline — working from cache', { kind: 'info' });
   });
 }
 
 async function toggleHelp() {
   await ensureTemplate('./templates/help-modal.html', 'modal-root', 'help-modal');
   applyLocalBackendMode();
-  $('help-shortcuts-open')?.addEventListener('click', async () => {
-    // Preload the shortcuts module before touching the DOM so the two
-    // identical overlays cross-fade in the same frame — no async gap that
-    // would flash the backdrop while one dialog tears down before the next.
-    const shortcuts = await import('./js/shortcuts-modal.js');
-    shortcuts.openShortcutsModal();
-    $('help-modal')?.classList.remove('visible');
-  }, { once: true });
+  const versionLabel = $('help-version');
+  if (versionLabel && !versionLabel.dataset.loaded) {
+    versionLabel.dataset.loaded = 'true';
+    try {
+      const desktopInfo = await globalThis.voxellabDesktop?.getAppInfo?.();
+      let version = String(desktopInfo?.version || '').trim();
+      if (!version) version = String(document.querySelector('meta[name="application-version"]')?.content || '').trim();
+      versionLabel.textContent = version ? `Version ${version}` : 'Manual updates';
+    } catch {
+      versionLabel.textContent = 'Manual updates';
+    }
+  }
+  const shortcutsButton = $('help-shortcuts-open');
+  if (shortcutsButton && shortcutsButton.dataset.wired !== 'true') {
+    shortcutsButton.dataset.wired = 'true';
+    shortcutsButton.addEventListener('click', async () => {
+      closeModal('help-modal');
+      const shortcuts = await import('./js/shortcuts-modal.js');
+      shortcuts.openShortcutsModal();
+    });
+  }
   const willShow = !$('help-modal').classList.contains('visible');
-  // Warm the shortcuts chunk while help is open so the hand-off is instant.
   if (willShow) import('./js/shortcuts-modal.js').catch(() => {});
-  $('help-modal').classList.toggle('visible');
+  if (willShow) openModal('help-modal');
+  else closeModal('help-modal');
 }
 
 // Theme toggle — instant, no transition (initial glyph sync: bootstrap.js + end of init())
@@ -553,7 +571,6 @@ const viewerBridge = {
   syncToolbarReadyState,
   drawSlice,
   drawMeasurements,
-  sync3DScrubber,
   applyThreeDPresetForSeries,
   renderMicroscopyHyperstackControls,
   buildVolume,
@@ -567,6 +584,17 @@ const viewerBridge = {
 };
 
 let seriesSelectionSeq = 0;
+
+async function refreshActiveViewAfterSeriesRemoval() {
+  if (state.mode !== 'cmp') return;
+  if (getGroupPeers().length < 2) {
+    setMode('2d');
+    return;
+  }
+  buildCompareGrid();
+  await loadComparePeers();
+  _drawCompare();
+}
 
 async function selectSeries(i, opts) {
   const selectionSeq = ++seriesSelectionSeq;

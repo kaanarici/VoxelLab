@@ -196,10 +196,6 @@ export function buildSRDataset(bundle) {
     CompletionFlag: 'COMPLETE',
     VerificationFlag: 'UNVERIFIED',
 
-    ...(sourceSeriesUID ? {
-      ReferencedSeriesSequence: [{ SeriesInstanceUID: sourceSeriesUID }],
-    } : {}),
-
     ContentSequence: [
       {
         RelationshipType: 'HAS CONCEPT MOD',
@@ -222,6 +218,8 @@ export function buildSRDataset(bundle) {
       },
     ],
   };
+
+  if (sourceSeriesUID) dataset.ReferencedSeriesSequence = [{ SeriesInstanceUID: sourceSeriesUID }];
 
   return dataset;
 }

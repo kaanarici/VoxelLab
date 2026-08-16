@@ -88,13 +88,14 @@ function proofMetadata(claim, proofType) {
 }
 
 function proofStep({ id, command, args, claim, proofType, evidence }) {
-  return {
+  const step = {
     id,
     command,
     args,
     ...proofMetadata(claim, proofType),
-    ...(evidence ? { evidence } : {}),
   };
+  if (evidence) step.evidence = evidence;
+  return step;
 }
 
 function omittedProofLane(id, reason, claim, proofType) {
@@ -353,18 +354,21 @@ export function repoEvidenceSnapshot() {
 
 export function labReadinessSummary(options = {}, results = []) {
   const resultById = new Map(results.map(result => [result.id, result]));
-  const steps = labReadinessSteps(options).map(({ id, command, args, claim, proofType, evidence }) => ({
-    id,
-    command,
-    args,
-    commandLine: commandLine({ command, args }),
-    claim,
-    proofType,
-    status: resultById.get(id)?.status ?? (options.dryRun ? 'planned' : 'pending'),
-    exitCode: resultById.get(id)?.exitCode,
-    durationMs: resultById.get(id)?.durationMs,
-    ...(evidence ? { evidence } : {}),
-  }));
+  const steps = labReadinessSteps(options).map(({ id, command, args, claim, proofType, evidence }) => {
+    const step = {
+      id,
+      command,
+      args,
+      commandLine: commandLine({ command, args }),
+      claim,
+      proofType,
+      status: resultById.get(id)?.status ?? (options.dryRun ? 'planned' : 'pending'),
+      exitCode: resultById.get(id)?.exitCode,
+      durationMs: resultById.get(id)?.durationMs,
+    };
+    if (evidence) step.evidence = evidence;
+    return step;
+  });
   const omitted = omittedProofLanes(options);
   const totalLaneCount = labReadinessSteps().length;
   const failed = steps.find(step => step.status === 'failed');

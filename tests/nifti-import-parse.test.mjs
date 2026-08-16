@@ -515,7 +515,7 @@ test('parseNIfTI generates distinct slugs for same-tick imports', async () => {
 test('parseNIfTI uses native gzip streams and the bounded Pako fallback', async () => {
   await withDocumentStub(async () => {
     const nativeDecompressionStream = globalThis.DecompressionStream;
-    assert.equal(typeof nativeDecompressionStream, 'function');
+    assert.equal(nativeDecompressionStream instanceof Function, true);
     const formats = [];
     globalThis.DecompressionStream = class CountingDecompressionStream {
       constructor(format) {

@@ -40,28 +40,6 @@ function withDocumentStub(fn) {
   });
 }
 
-function withCanvasCapture(fn) {
-  const previousDocument = globalThis.document;
-  const images = [];
-  globalThis.document = {
-    createElement(tag) {
-      if (tag !== 'canvas') throw new Error(`unexpected element: ${tag}`);
-      const context = {
-        createImageData(width, height) {
-          return { width, height, data: new Uint8ClampedArray(width * height * 4) };
-        },
-        putImageData(imageData) {
-          images.push(new Uint8ClampedArray(imageData.data));
-        },
-      };
-      return { width: 0, height: 0, getContext: () => context };
-    },
-  };
-  return Promise.resolve(fn(images)).finally(() => {
-    globalThis.document = previousDocument;
-  });
-}
-
 function grayscaleMeta(overrides = {}) {
   return {
     Modality: 'MR',
@@ -286,6 +264,26 @@ test('classifyDICOMImport rejects mixed in-plane calibration for one volume grid
 
   assert.equal(result.kind, 'image-stack');
   assert.equal(result.isReconstructedVolumeStack, false);
+  assert.equal(result.hasVolumeStackGeometry, false);
+});
+
+test('classifyDICOMImport rejects physically material inter-slice orientation drift', () => {
+  const radians = 2 * Math.PI / 180;
+  const rotated = [
+    Math.cos(radians), Math.sin(radians), 0,
+    -Math.sin(radians), Math.cos(radians), 0,
+  ];
+  const result = classifyDICOMImport([0, 1].map((z, index) => ({
+    Modality: 'MR',
+    Rows: 512,
+    Columns: 512,
+    InstanceNumber: index + 1,
+    PixelSpacing: [1, 1],
+    ImageOrientationPatient: index ? rotated : [1, 0, 0, 0, 1, 0],
+    ImagePositionPatient: [0, 0, z],
+  })));
+
+  assert.equal(result.kind, 'image-stack');
   assert.equal(result.hasVolumeStackGeometry, false);
 });
 
@@ -691,6 +689,30 @@ test('buildDICOMSeriesResult preserves unknown DICOM spacing instead of inventin
   }
 });
 
+test('buildDICOMSeriesResult uses one MONOCHROME1 intensity field for native slices and MPR', async () => {
+  await withDocumentStub(async () => {
+    const result = await buildDICOMSeriesResult([0, 1].map((z, index) => ({
+      meta: grayscaleMeta({
+        Rows: 1,
+        Columns: 2,
+        PhotometricInterpretation: 'MONOCHROME1',
+        WindowCenter: 100,
+        WindowWidth: 100,
+        ImagePositionPatient: [0, 0, z],
+        InstanceNumber: index + 1,
+      }),
+      pixels: new Uint8Array([0, 200]),
+    })), () => {}, 'local_monochrome1_volume');
+
+    assert.equal(result.entry.patientFrameTrusted, true);
+    assert.deepEqual(Array.from(result.rawVolume), [1, 0, 1, 0]);
+    assert.deepEqual(result.sliceBytes.map(bytes => Array.from(bytes)), [[255, 0], [255, 0]]);
+    assert.equal(result.entry._displayDomain.polarity, 'MONOCHROME1');
+    assert.ok(Math.abs(result.entry._defaultWindow - 127.5) < 1e-6);
+    assert.ok(Math.abs(result.entry._defaultLevel - 127.5) < 1e-6);
+  });
+});
+
 test('buildDICOMSeriesResult preserves mixed frame and duplicate-position fail-closed metadata', async () => {
   await withDocumentStub(async () => {
     const mixed = await buildDICOMSeriesResult([0, 1, 2].map((z, index) => ({
@@ -798,35 +820,23 @@ test('buildDICOMSeriesResult fails closed on invalid BitsStored values', async (
 });
 
 test('buildDICOMSeriesResult renders a single Pixel Padding Value as background and excludes it from auto-windowing', async () => {
-  await withCanvasCapture(async (images) => {
-    const result = await buildDICOMSeriesResult([{
-      meta: grayscaleMeta({ PixelPaddingValue: 255 }),
-      pixels: new Uint8Array([255, 10, 20]),
-    }], () => {}, 'local_padding_value');
+  const result = await buildDICOMSeriesResult([{
+    meta: grayscaleMeta({ PixelPaddingValue: 255 }),
+    pixels: new Uint8Array([255, 10, 20]),
+  }], () => {}, 'local_padding_value');
 
-    assert.deepEqual(Array.from(result.rawVolume), [0, 0, 1]);
-    assert.deepEqual(Array.from(images[0]), [
-      0, 0, 0, 255,
-      0, 0, 0, 255,
-      255, 255, 255, 255,
-    ]);
-  });
+  assert.deepEqual(Array.from(result.rawVolume), [0, 0, 1]);
+  assert.deepEqual(Array.from(result.sliceBytes[0]), [0, 0, 255]);
 });
 
 test('buildDICOMSeriesResult suppresses the inclusive Pixel Padding range', async () => {
-  await withCanvasCapture(async (images) => {
-    const result = await buildDICOMSeriesResult([{
-      meta: grayscaleMeta({ Columns: 5, PixelPaddingValue: 0, PixelPaddingRangeLimit: 2 }),
-      pixels: new Uint8Array([0, 1, 2, 10, 20]),
-    }], () => {}, 'local_padding_range');
+  const result = await buildDICOMSeriesResult([{
+    meta: grayscaleMeta({ Columns: 5, PixelPaddingValue: 0, PixelPaddingRangeLimit: 2 }),
+    pixels: new Uint8Array([0, 1, 2, 10, 20]),
+  }], () => {}, 'local_padding_range');
 
-    assert.deepEqual(Array.from(result.rawVolume), [0, 0, 0, 0, 1]);
-    assert.deepEqual(Array.from(images[0].slice(0, 12)), [
-      0, 0, 0, 255,
-      0, 0, 0, 255,
-      0, 0, 0, 255,
-    ]);
-  });
+  assert.deepEqual(Array.from(result.rawVolume), [0, 0, 0, 0, 1]);
+  assert.deepEqual(Array.from(result.sliceBytes[0].slice(0, 3)), [0, 0, 0]);
 });
 
 test('buildDICOMSeriesResult recognizes signed packed 12-bit Pixel Padding Values in stored-value space', async () => {
@@ -883,23 +893,18 @@ test('buildDICOMSeriesResult keeps untagged pixel values in auto-windowing and n
 });
 
 test('buildDICOMSeriesResult accepts a correctly ordered MONOCHROME1 Pixel Padding range', async () => {
-  await withCanvasCapture(async (images) => {
-    const result = await buildDICOMSeriesResult([{
-      meta: grayscaleMeta({
-        Columns: 4,
-        PhotometricInterpretation: 'MONOCHROME1',
-        PixelPaddingValue: 255,
-        PixelPaddingRangeLimit: 254,
-      }),
-      pixels: new Uint8Array([255, 254, 20, 10]),
-    }], () => {}, 'local_padding_monochrome1');
+  const result = await buildDICOMSeriesResult([{
+    meta: grayscaleMeta({
+      Columns: 4,
+      PhotometricInterpretation: 'MONOCHROME1',
+      PixelPaddingValue: 255,
+      PixelPaddingRangeLimit: 254,
+    }),
+    pixels: new Uint8Array([255, 254, 20, 10]),
+  }], () => {}, 'local_padding_monochrome1');
 
-    assert.ok(result);
-    assert.deepEqual(Array.from(images[0].slice(0, 8)), [
-      0, 0, 0, 255,
-      0, 0, 0, 255,
-    ]);
-  });
+  assert.ok(result);
+  assert.deepEqual(Array.from(result.sliceBytes[0].slice(0, 2)), [0, 0]);
 });
 
 test('buildDICOMSeriesResult rejects malformed or reversed Pixel Padding metadata', async () => {

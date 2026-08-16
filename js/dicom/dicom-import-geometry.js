@@ -6,13 +6,10 @@ import {
   projectionAlongNormal,
   sliceNormalFromIOP,
 } from '../core/geometry.js';
+import { getFloatArray } from './dicom-meta.js';
 
 function numberArray(meta, key) {
-  const value = meta?.[key];
-  if (!value) return null;
-  if (Array.isArray(value)) return value.map(Number);
-  if (typeof value === 'string') return value.split('\\').map(Number);
-  return null;
+  return getFloatArray(meta, key);
 }
 
 function positiveSpacing(meta) {
@@ -23,6 +20,20 @@ function positiveSpacing(meta) {
 function sameSpacing(a, b) {
   return Math.abs(a[0] - b[0]) <= Math.max(0.001, a[0] * 0.001)
     && Math.abs(a[1] - b[1]) <= Math.max(0.001, a[1] * 0.001);
+}
+
+function orientationCornerDriftMm(base, current, meta, spacing) {
+  const columns = Math.max(1, Number(meta?.Columns) || 1);
+  const rows = Math.max(1, Number(meta?.Rows) || 1);
+  const rowAxisSpan = (columns - 1) * spacing[1];
+  const colAxisSpan = (rows - 1) * spacing[0];
+  const rowDelta = base.row.map((value, index) => (current.row[index] - value) * rowAxisSpan);
+  const colDelta = base.col.map((value, index) => (current.col[index] - value) * colAxisSpan);
+  return Math.max(
+    norm3(rowDelta),
+    norm3(colDelta),
+    norm3(rowDelta.map((value, index) => value + colDelta[index])),
+  );
 }
 
 export function hasVolumeStackGeometry(metas = []) {
@@ -47,7 +58,8 @@ export function hasVolumeStackGeometry(metas = []) {
     if (!orientation || !isOrthonormalImagePlane(iop) || !ipp?.every(Number.isFinite) || !spacing) return false;
     // DICOM Image Plane orientation values are row/column direction cosines.
     // https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html
-    if (dot3(baseOrientation.row, orientation.row) <= 0.999 || dot3(baseOrientation.col, orientation.col) <= 0.999) return false;
+    if (dot3(baseOrientation.row, orientation.row) <= 0 || dot3(baseOrientation.col, orientation.col) <= 0) return false;
+    if (orientationCornerDriftMm(baseOrientation, orientation, meta, baseSpacing) > 0.25) return false;
     if (!sameSpacing(baseSpacing, spacing)) return false;
 
     const projection = projectionAlongNormal(meta, normal);

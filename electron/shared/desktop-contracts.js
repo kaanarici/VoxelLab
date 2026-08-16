@@ -4,6 +4,7 @@ export const DESKTOP_API_VERSION = 1;
 export const APP_SCHEME = 'voxellab';
 export const APP_HOST = 'app';
 export const APP_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
+export const WINDOWS_APP_USER_MODEL_ID = 'com.squirrel.VoxelLab.VoxelLab';
 
 export const IPC = Object.freeze({
   appInfo: 'desktop:app-info',
@@ -16,6 +17,8 @@ export const IPC = Object.freeze({
   openRecentPath: 'desktop:open-recent-path',
   clearRecentDocuments: 'desktop:clear-recent-documents',
   recentDocumentsChanged: 'desktop:recent-documents-changed',
+  saveImportedSeries: 'desktop:save-imported-series',
+  removeImportedSeries: 'desktop:remove-imported-series',
   readFileRange: 'desktop:read-file-range',
   getConverterCapabilities: 'desktop:get-converter-capabilities',
   startConversionJob: 'desktop:start-conversion-job',
@@ -191,18 +194,20 @@ export function openPathRecord(filePath, opts = {}) {
   if (Number.isFinite(opts.size) && opts.size >= 0) record.size = opts.size;
   if (Number.isFinite(opts.lastModified)) record.lastModified = opts.lastModified;
   if (opts.relativePath) record.relativePath = String(opts.relativePath).replaceAll('\\', '/');
+  if (opts.savedImportId) record.savedImportId = String(opts.savedImportId);
   if (opts.schema && !record.supported && !record.conversionRequired) record.schema = String(opts.schema);
   return record;
 }
 
 export function openPathsPayload(paths = [], opts = {}) {
   const records = paths.map(item => (
-    typeof item === 'string'
+    String(item) === item
       ? openPathRecord(item, opts)
       : openPathRecord(item.path, {
         isDirectory: item.isDirectory,
         reason: item.reason,
         relativePath: item.relativePath,
+        savedImportId: item.savedImportId,
         size: item.size,
         lastModified: item.lastModified,
         formatLabel: item.formatLabel,

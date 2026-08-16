@@ -63,7 +63,7 @@ function axisSpacingMm(axis) {
 
 function arraySummary(arrayMeta = {}) {
   return {
-    shape: Array.isArray(arrayMeta.shape) ? arrayMeta.shape.map(Number) : [],
+    'shape': Array.isArray(arrayMeta['shape']) ? arrayMeta['shape'].map(Number) : [],
     chunks: Array.isArray(arrayMeta.chunks) ? arrayMeta.chunks.map(Number) : [],
     dtype: arrayMeta.dtype || '',
     order: arrayMeta.order || '',
@@ -133,8 +133,8 @@ async function main() {
     const parsed = await parseOmeZarrFiles(files);
     assert.equal(parsed.status.includes('OME-Zarr metadata recognized'), true, parsed.status);
     assert.equal(parsed.results.length, 1, 'public OME-Zarr sample should load one bounded local series');
-    assert.equal(parsed.results[0].entry.width, contract.level_arrays.at(-1)?.shape?.[3]);
-    assert.equal(parsed.results[0].entry.height, contract.level_arrays.at(-1)?.shape?.[2]);
+    assert.equal(parsed.results[0].entry.width, contract.level_arrays.at(-1)?.['shape']?.[3]);
+    assert.equal(parsed.results[0].entry.height, contract.level_arrays.at(-1)?.['shape']?.[2]);
     assert.match(parsed.status, /Loaded Local Zarr v2 · level 3\/3 · ×4 downsample · blosc\(lz4, byte-shuffle\)\./);
     assert.match(parsed.results[0].entry.microscopy?.storageProvenance || '', /Local Zarr v2 · level 3\/3 · ×4 downsample · blosc\(lz4, byte-shuffle\)/);
 

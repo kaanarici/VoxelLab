@@ -28,7 +28,7 @@ export function bytesFromValue(value) {
   if (ArrayBuffer.isView(value)) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   }
-  if (typeof value === 'string') return decodeBase64Bytes(value);
+  if (value?.charCodeAt instanceof Function) return decodeBase64Bytes(value);
   return null;
 }
 

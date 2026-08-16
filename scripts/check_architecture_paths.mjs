@@ -2,7 +2,7 @@
 /* global console, process */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_DOC = path.join(ROOT, 'ARCHITECTURE.md');
@@ -66,14 +66,14 @@ function addLocalPathTokens(markdown, paths) {
   }
 }
 
-function collectArchitecturePaths(markdown) {
+export function collectArchitecturePaths(markdown) {
   const paths = new Set();
   addLinkPaths(markdown, paths);
   addLocalPathTokens(markdown, paths);
   return [...paths].sort((a, b) => a.localeCompare(b, 'en'));
 }
 
-function collectBarePythonModules(markdown) {
+export function collectBarePythonModules(markdown) {
   const names = readdirSync(path.join(ROOT, 'python'))
     .filter((name) => name.endsWith('.py'))
     .sort((a, b) => a.localeCompare(b, 'en'));
@@ -89,12 +89,18 @@ function collectBarePythonModules(markdown) {
   return [...misses];
 }
 
-function main() {
-  const docPath = process.argv[2] ? path.resolve(process.cwd(), process.argv[2]) : DEFAULT_DOC;
+export function checkDocumentPaths(docPath) {
   const markdown = readFileSync(docPath, 'utf8');
   const paths = collectArchitecturePaths(markdown);
   const missing = paths.filter((relPath) => !existsSync(path.join(ROOT, relPath)));
   const barePython = collectBarePythonModules(markdown);
+
+  return { barePython, missing, paths };
+}
+
+function main() {
+  const docPath = process.argv[2] ? path.resolve(process.cwd(), process.argv[2]) : DEFAULT_DOC;
+  const { barePython, missing, paths } = checkDocumentPaths(docPath);
 
   for (const relPath of missing) {
     console.error(`missing: ${relPath}`);
@@ -111,4 +117,4 @@ function main() {
   console.log(`all ${paths.length} ${displayDocPath(docPath)} paths exist`);
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
