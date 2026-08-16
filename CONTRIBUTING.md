@@ -142,8 +142,8 @@ maintenance does not create a version.
 
 From protected `main`, the manual `Release` workflow verifies the requested
 version, runs the canonical and runtime gates, builds both installers, and pauses
-for approval before creating one immutable tag and GitHub Release. For new
-releases, public downloads are limited to the versioned macOS DMG, versioned
+for approval before creating one immutable tag and GitHub Release. Starting with
+v1.2.0, public downloads are limited to the versioned macOS DMG, versioned
 Windows EXE, and `SHA256SUMS`. Lab-readiness reports, ZIPs, NuGet packages, and
 Squirrel metadata are CI artifacts, not user downloads. The retained v1.1.2
 release predates this policy; published tags, assets, and releases are never

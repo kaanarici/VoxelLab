@@ -6,17 +6,15 @@ import { fileURLToPath, URL } from 'node:url';
 const readmeUrl = new URL('../README.md', import.meta.url);
 const readme = readFileSync(fileURLToPath(readmeUrl), 'utf8');
 
-test('README distinguishes current legacy downloads from the next-release asset policy', () => {
-  assert.match(readme, /GitHub Releases.*releases\/latest/);
-  assert.match(readme, /manual updates.*Help → Check for Updates/);
-  assert.match(readme, /macOS on Apple Silicon \| `VoxelLab\.dmg`/);
+test('README documents the current curated release and manual updates', () => {
+  assert.match(readme, /VoxelLab v1\.2\.0.*releases\/latest/);
+  assert.match(readme, /Updates are manual:\s+open \*\*Help → Check for Updates\*\*/);
+  assert.match(readme, /macOS on Apple Silicon \| `VoxelLab-1\.2\.0-macOS-arm64\.dmg`/);
   assert.match(readme, /not notarized/);
-  assert.match(readme, /Windows \| `VoxelLab-1\.1\.2-Setup\.exe`/);
+  assert.match(readme, /Windows 10 or 11 on x64 \| `VoxelLab-1\.2\.0-Windows-x64\.exe`/);
   assert.match(readme, /installer is unsigned/);
-  assert.match(readme, /v1\.1\.2 release predates the curated asset policy/);
-  assert.match(readme, /next release[\s\S]*`VoxelLab-<version>-macOS-arm64\.dmg`/);
-  assert.match(readme, /next release[\s\S]*`VoxelLab-<version>-Windows-x64\.exe`/);
-  assert.match(readme, /exactly[\s\S]*`SHA256SUMS`/);
+  assert.match(readme, /Use `SHA256SUMS` from the release/);
+  assert.doesNotMatch(readme, /v1\.1\.2|next release|legacy packaging/i);
 });
 
 test('README offers a short source and demo path without internal release narration', () => {
@@ -24,7 +22,7 @@ test('README offers a short source and demo path without internal release narrat
   const startIndex = readme.indexOf('npm start', demoIndex);
   assert.ok(demoIndex > 0);
   assert.ok(startIndex > demoIndex);
-  assert.match(readme, /44 MB lite\ndemo/);
+  assert.match(readme, /44 MB lite demo/);
   assert.match(readme, /Node\.js 22\.12\.0/);
   assert.match(readme, /Open <http:\/\/localhost:8000>/);
   assert.doesNotMatch(readme, /check:lab|lab-readiness|lab-readiness-report/);
@@ -33,8 +31,8 @@ test('README offers a short source and demo path without internal release narrat
 test('README states the local privacy boundary and explicit cloud exception', () => {
   assert.match(readme, /does not require a VoxelLab account or a hosted backend/);
   assert.match(readme, /default browser and desktop import paths process those files locally/);
-  assert.match(readme, /Files leave your machine only after you\nconfigure Modal and Cloudflare R2 and explicitly start a cloud workflow/);
-  assert.match(readme, /Never\nput patient data, credentials, or private workspace URLs/);
+  assert.match(readme, /Files leave your machine only after you configure Modal and Cloudflare R2 and\s+explicitly start a cloud workflow/);
+  assert.match(readme, /Never put patient data, credentials, or\s+private workspace URLs/);
 });
 
 test('README has a real JPEG screenshot', () => {
@@ -43,4 +41,9 @@ test('README has a real JPEG screenshot', () => {
   assert.equal(existsSync(screenshot), true);
   assert.ok(statSync(screenshot).size > 0);
   assert.deepEqual([...readFileSync(screenshot).subarray(0, 3)], [0xff, 0xd8, 0xff]);
+});
+
+test('README keeps the license section minimal', () => {
+  assert.match(readme, /## License\n\n\[MIT\]\(LICENSE\)\n$/);
+  assert.doesNotMatch(readme, /img\.shields\.io\/badge\/License/);
 });
