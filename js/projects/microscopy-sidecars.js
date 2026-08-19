@@ -142,9 +142,12 @@ export async function importRoiSidecarsForActiveSeries(roiSidecars = [], { isAct
     }
   }
   if (importedRows > 0) {
+    renderRoiResults(state);
     await activateRoiResultRow(roiResultRows(state)[0], state, { isActive });
     if (!isActive()) return { applied: importedRows, skipped, stale: true };
     renderRoiResults(state);
+    drawMeasurements();
+    syncOverlays();
     const partial = hasPartialImport ? '; skipped incompatible rows' : '';
     messages.push(`Imported ${importedRows} ROI result row${importedRows === 1 ? '' : 's'}${partial} from VoxelLab sidecar${roiSidecars.length === 1 ? '' : 's'}.`);
   }

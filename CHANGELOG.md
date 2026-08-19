@@ -20,6 +20,8 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   turned off.
 - Overlay toggles, fusion, and isolated recipe replay no longer write the
   wrong display or invent overlay stack names.
+- Imported ROI results appear in the table immediately, without waiting for a
+  redundant channel or time-point switch.
 
 ### Known Limitations
 

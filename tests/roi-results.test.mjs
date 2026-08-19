@@ -1408,3 +1408,33 @@ test('activateRoiResultRow writes isolated slice index only through isolatedHost
   assert.equal(await activateRoiResultRow({ sliceIdx: 2 }, host, { writes: isolatedHostWrites() }), true);
   assert.equal(host.sliceIdx, 2);
 });
+
+test('activateRoiResultRow does not rebuild a microscopy stack already on that plane', async () => {
+  const series = {
+    slug: 'iso_roi_plane',
+    imageDomain: 'microscopy',
+    microscopy: { channelIndex: 0, timeIndex: 0, volumeEligible: false },
+  };
+  const host = {
+    imgs: ['plane'],
+    sliceIdx: 0,
+    seriesIdx: 0,
+    manifest: { series: [series] },
+    _localMicroscopyStacks: { iso_roi_plane: { '0|0': ['plane'] } },
+  };
+  let patched = 0;
+  const writes = isolatedHostWrites();
+  const patchSeries = writes.patchSeries;
+  writes.patchSeries = (...args) => {
+    patched += 1;
+    return patchSeries(...args);
+  };
+
+  assert.equal(await activateRoiResultRow({
+    sliceIdx: 0,
+    channelZeroIndex: 0,
+    timeZeroIndex: 0,
+  }, host, { writes }), true);
+  assert.equal(patched, 0);
+  assert.equal(host.sliceIdx, 0);
+});
