@@ -5,13 +5,15 @@ import { fileURLToPath, URL } from 'node:url';
 
 const readmeUrl = new URL('../README.md', import.meta.url);
 const readme = readFileSync(fileURLToPath(readmeUrl), 'utf8');
+const { version } = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
+const versionPattern = version.replaceAll('.', '\\.');
 
 test('README documents the current curated release and manual updates', () => {
-  assert.match(readme, /VoxelLab v1\.2\.0.*releases\/latest/);
+  assert.match(readme, new RegExp(`VoxelLab v${versionPattern}.*releases/latest`));
   assert.match(readme, /Updates are manual:\s+open \*\*Help → Check for Updates\*\*/);
-  assert.match(readme, /macOS on Apple Silicon \| `VoxelLab-1\.2\.0-macOS-arm64\.dmg`/);
+  assert.match(readme, new RegExp(`macOS on Apple Silicon \\| \`VoxelLab-${versionPattern}-macOS-arm64\\.dmg\``));
   assert.match(readme, /not notarized/);
-  assert.match(readme, /Windows 10 or 11 on x64 \| `VoxelLab-1\.2\.0-Windows-x64\.exe`/);
+  assert.match(readme, new RegExp(`Windows 10 or 11 on x64 \\| \`VoxelLab-${versionPattern}-Windows-x64\\.exe\``));
   assert.match(readme, /installer is unsigned/);
   assert.match(readme, /Use `SHA256SUMS` from the release/);
   assert.doesNotMatch(readme, /v1\.1\.2|next release|legacy packaging/i);

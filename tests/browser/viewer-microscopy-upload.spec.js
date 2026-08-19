@@ -15,6 +15,7 @@ import {
   drawEllipseRoi,
   dropFiles,
   expectScaleBarFits,
+  isolatedFixturePath,
   openUploadModal,
   parseCsvRows,
   routeConfig,
@@ -1260,7 +1261,7 @@ test('active microscopy ROI results sidecar-only import explains calibration mis
   await waitForCanvasPaint(page, '#view');
   const persistenceKey = await page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
-    const { seriesPersistenceKey } = await import('/js/series/series-identity.js');
+    const { seriesPersistenceKey } = await import('/js/core/series-identity.js');
     return seriesPersistenceKey(state.manifest.series[state.seriesIdx], state.manifest);
   });
   const mismatchBundle = JSON.parse(await readFile(roiResultsPath, 'utf8'));
@@ -1275,12 +1276,12 @@ test('active microscopy ROI results sidecar-only import explains calibration mis
 });
 
 test('co-dropped compressed ImageJ ROI Manager ZIP imports supported ROI sidecars', async ({ page }, testInfo) => {
-  const omeTiffPath = testInfo.outputPath('compressed-roi-cells.ome.tiff');
-  const roiPath = testInfo.outputPath('compressed-cell.roi');
-  const linePath = testInfo.outputPath('compressed-line.roi');
-  const anglePath = testInfo.outputPath('compressed-angle.roi');
-  const unsupportedRoiPath = testInfo.outputPath('compressed-unsupported.roi');
-  const zipPath = testInfo.outputPath('compressed-rois.zip');
+  const omeTiffPath = await isolatedFixturePath(testInfo, 'compressed-roi-cells.ome.tiff');
+  const roiPath = await isolatedFixturePath(testInfo, 'compressed-cell.roi');
+  const linePath = await isolatedFixturePath(testInfo, 'compressed-line.roi');
+  const anglePath = await isolatedFixturePath(testInfo, 'compressed-angle.roi');
+  const unsupportedRoiPath = await isolatedFixturePath(testInfo, 'compressed-unsupported.roi');
+  const zipPath = await isolatedFixturePath(testInfo, 'compressed-rois.zip');
   const anglePoints = [[6, 4], [2, 4], [6, 8]];
   await writeCalibratedOmeTiff(omeTiffPath);
   await writeImageJOvalRoi(roiPath, { left: 4, top: 5, right: 13, bottom: 15 });
@@ -2076,7 +2077,7 @@ test('uncalibrated microscopy ROI sidecar imports geometry without trusting phys
 
   const target = await page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
-    const { seriesPersistenceKey } = await import('/js/series/series-identity.js');
+    const { seriesPersistenceKey } = await import('/js/core/series-identity.js');
     const series = state.manifest.series[state.seriesIdx];
     return {
       slug: series.slug,

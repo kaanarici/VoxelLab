@@ -1,45 +1,38 @@
 import { stopCine } from '../cine.js';
-import { state } from '../core/state.js';
+import { deletePassthroughRootEntry, state } from '../core/state.js';
 import { $ } from '../dom.js';
 import { clearLocalRawVolume } from '../local-raw-volume-cache.js';
 import { removeSeriesSlugsFromProjects } from '../projects/projects-store.js';
-import { clearFusionRuntime, clearRuntimeSelectionCaches } from '../runtime/viewer-runtime.js';
-import { seriesIdentityKey, seriesPersistenceKey } from './series-identity.js';
-
-const LOCAL_SERIES_MAPS = [
-  '_localStacks',
-  '_localMicroscopyStacks',
-  '_localMicroscopyPlanes',
-  '_localRegionMetaBySlug',
-  '_localRegionLabelSlicesBySlug',
-  '_localDerivedObjects',
-  '_localRtDoseBySlug',
-  'cmpStacks',
-];
+import {
+  clearFusionRuntime,
+  clearRuntimeImageStacks,
+  clearRuntimeSelectionCaches,
+  dropRuntimeVolumeCachesForSlugs,
+  forgetLocalSeriesRuntime,
+} from '../runtime/viewer-runtime.js';
+import { seriesIdentityKey } from '../core/series-identity.js';
+import {
+  bumpSelectRequest,
+  emptyViewer,
+  forgetSeriesViewMemory,
+  setComparePeers,
+  setFusionSelection,
+  setManifestCollections,
+  setSeriesIndex,
+} from '../core/state/viewer-commands.js';
 
 function clearSeriesRuntime(series, manifest) {
-  const slug = series.slug;
-  for (const key of LOCAL_SERIES_MAPS) {
-    if (state[key]) delete state[key][slug];
-  }
-  clearLocalRawVolume(slug);
-  const viewKey = seriesIdentityKey(series, manifest);
-  if (viewKey && state.seriesViewMemory) delete state.seriesViewMemory[viewKey];
-  const analysisKey = seriesPersistenceKey(series, manifest);
-  if (analysisKey) {
-    if (state._microscopyAnalysisLog) delete state._microscopyAnalysisLog[analysisKey];
-    if (state._microscopyAnalysisResults) delete state._microscopyAnalysisResults[analysisKey];
-  }
+  forgetLocalSeriesRuntime(series, manifest);
+  deletePassthroughRootEntry('cmpStacks', series.slug);
+  clearLocalRawVolume(series.slug);
+  forgetSeriesViewMemory(seriesIdentityKey(series, manifest));
 }
 
 function showEmptyViewer() {
   stopCine();
   state.threeRuntime?.stopLoop?.();
-  state.seriesIdx = -1;
-  state.sliceIdx = 0;
-  state.mode = '2d';
-  state.loaded = false;
-  state.imgs = [];
+  emptyViewer();
+  clearRuntimeImageStacks();
   clearRuntimeSelectionCaches();
   $('canvas-wrap')?.classList.add('no-series');
   const seriesName = $('series-name');
@@ -78,27 +71,28 @@ export async function removeSeriesFromViewer(slugOrSlugs, {
     console.warn('[projects] Series removal cleanup failed:', error);
   }
 
-  state.selectRequestId += 1;
+  bumpSelectRequest();
   for (const series of removed) clearSeriesRuntime(series, manifest);
-  state._seriesVolumeCacheEntries = (state._seriesVolumeCacheEntries || [])
-    .filter(entry => !requested.has(entry?.slug));
+  dropRuntimeVolumeCachesForSlugs(requested);
   if (Array.isArray(state.cmpManualSlugs)) {
     const next = state.cmpManualSlugs.filter(slug => !requested.has(slug));
-    state.cmpManualSlugs = next.length ? next : null;
+    setComparePeers(next);
   }
-  if (requested.has(state.fusionSlug)) {
-    state.fusionSlug = null;
+  if (requested.has(state.overlays.fusionSlug)) {
+    setFusionSelection(null);
     clearFusionRuntime();
   }
 
-  manifest.series = remaining;
   const referencedProjectionSets = new Set(remaining.map(series => series?.sourceProjectionSetId).filter(Boolean));
   const removedProjectionSets = new Set(removed.map(series => series?.sourceProjectionSetId).filter(Boolean));
-  if (Array.isArray(manifest.projectionSets) && removedProjectionSets.size) {
-    manifest.projectionSets = manifest.projectionSets.filter(record => (
-      !removedProjectionSets.has(record?.id) || referencedProjectionSets.has(record?.id)
-    ));
-  }
+  setManifestCollections({
+    series: remaining,
+    projectionSets: Array.isArray(manifest.projectionSets) && removedProjectionSets.size
+      ? manifest.projectionSets.filter(record => (
+        !removedProjectionSets.has(record?.id) || referencedProjectionSets.has(record?.id)
+      ))
+      : undefined,
+  });
 
   if (!remaining.length) {
     showEmptyViewer();
@@ -113,12 +107,12 @@ export async function removeSeriesFromViewer(slugOrSlugs, {
 
   const retainedActiveIndex = remaining.findIndex(series => series.slug === activeSlug);
   if (retainedActiveIndex >= 0) {
-    state.seriesIdx = retainedActiveIndex;
+    setSeriesIndex(retainedActiveIndex);
     await refreshActiveView?.(retainedActiveIndex);
     await onUpdate?.(retainedActiveIndex);
   } else {
     const nextIndex = Math.min(Math.max(0, state.seriesIdx), remaining.length - 1);
-    state.seriesIdx = -1;
+    setSeriesIndex(-1);
     await selectSeries?.(nextIndex);
   }
   const result = {

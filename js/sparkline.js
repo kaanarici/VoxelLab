@@ -1,6 +1,6 @@
 // Sparkline (per-slice symmetry bar chart) + histogram (intensity
 // distribution for the current slice). Both live in the bottom bar
-// under the main canvas. They read from state.stats and state.imgs
+// under the main canvas. They read from state.overlays.stats and state.imgs
 // and don't write to anything — pure renderers.
 
 import { $ } from './dom.js';
@@ -61,7 +61,7 @@ export function drawSparkline() {
   if (!c) return;
 
   // Hide entirely when there's no data to show
-  const scores = state.stats?.symmetryScores;
+  const scores = state.overlays.stats?.symmetryScores;
   const hasData = scores && scores.length > 0;
   c.hidden = !hasData;
   if (!hasData) return;

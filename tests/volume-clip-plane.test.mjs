@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { clampClipPlaneDepth } from '../js/core/view-limits.js';
 import {
-  clampClipPlaneDepth,
   clipPlaneContainsPoint,
   volumeClipPlane,
 } from '../js/volume/volume-clip-plane.js';
-import { VOLUME_RAYCAST_FRAGMENT_SHADER } from '../js/volume/volume-raycast-shaders.js';
+import {
+  VOLUME_RAYCAST_FRAGMENT_SHADER,
+  VOLUME_RAYCAST_VERTEX_SHADER,
+} from '../js/volume/volume-raycast-shaders.js';
 
 const unitVolume = {
   dims: { W: 11, H: 11, D: 11 },
@@ -15,9 +18,9 @@ const unitVolume = {
 
 test('volumeClipPlane moves an axial plane through the normalized volume', () => {
   const plane = volumeClipPlane({ ...unitVolume, yaw: 45, pitch: 0, depth: 0.36 });
-  assert.equal(clipPlaneContainsPoint(plane, [0.5, 0.5, 0.35]), false);
+  assert.equal(clipPlaneContainsPoint(plane, [0.5, 0.5, 0.35]), true);
   assert.equal(clipPlaneContainsPoint(plane, [0.5, 0.5, 0.36]), true);
-  assert.equal(clipPlaneContainsPoint(plane, [0.5, 0.5, 1]), true);
+  assert.equal(clipPlaneContainsPoint(plane, [0.5, 0.5, 1]), false);
 });
 
 test('volumeClipPlane honors physical anisotropy for arbitrary orientations', () => {
@@ -51,10 +54,10 @@ test('volumeClipPlane matches the rendered physical box for shallow volumes', ()
 test('volumeClipPlane inversion retains the opposite half-space', () => {
   const normal = volumeClipPlane({ ...unitVolume, yaw: 0, pitch: 0, depth: 0.5 });
   const inverted = volumeClipPlane({ ...unitVolume, yaw: 0, pitch: 0, depth: 0.5, invert: true });
-  assert.equal(clipPlaneContainsPoint(normal, [0.5, 0.5, 0.75]), true);
-  assert.equal(clipPlaneContainsPoint(normal, [0.5, 0.5, 0.25]), false);
-  assert.equal(clipPlaneContainsPoint(inverted, [0.5, 0.5, 0.75]), false);
-  assert.equal(clipPlaneContainsPoint(inverted, [0.5, 0.5, 0.25]), true);
+  assert.equal(clipPlaneContainsPoint(normal, [0.5, 0.5, 0.75]), false);
+  assert.equal(clipPlaneContainsPoint(normal, [0.5, 0.5, 0.25]), true);
+  assert.equal(clipPlaneContainsPoint(inverted, [0.5, 0.5, 0.75]), true);
+  assert.equal(clipPlaneContainsPoint(inverted, [0.5, 0.5, 0.25]), false);
 });
 
 test('clip plane depth clamps invalid and out-of-range values', () => {
@@ -67,4 +70,10 @@ test('every volume raycast mode applies the arbitrary plane predicate', () => {
   assert.match(VOLUME_RAYCAST_FRAGMENT_SHADER, /uniform vec4\s+uClipPlane/);
   assert.match(VOLUME_RAYCAST_FRAGMENT_SHADER, /uniform int\s+uClipPlaneEnabled/);
   assert.equal((VOLUME_RAYCAST_FRAGMENT_SHADER.match(/clippedByObliquePlane\(p\)/g) || []).length, 3);
+});
+
+test('volume raycast uses parallel rays matching the orthographic camera', () => {
+  assert.match(VOLUME_RAYCAST_VERTEX_SHADER, /inverse\(modelViewMatrix\)/);
+  assert.match(VOLUME_RAYCAST_VERTEX_SHADER, /vec4\(0\.0,\s*0\.0,\s*-1\.0,\s*0\.0\)/);
+  assert.equal(VOLUME_RAYCAST_VERTEX_SHADER.includes('cameraPosition'), false);
 });

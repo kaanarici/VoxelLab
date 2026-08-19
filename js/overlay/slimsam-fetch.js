@@ -1,7 +1,7 @@
 // SAM embedding + metadata fetch for the SlimSAM browser tool.
 
 import { FZSTD_ESM_URL } from '../core/dependencies.js';
-import { cachedFetchJson, cachedFetchResponse } from '../core/cached-fetch.js';
+import { cachedFetchJson, cachedFetchResponse } from '../cached-fetch.js';
 import { assetUrlForBrowser } from '../series/series-image-stack.js';
 
 let _manifest = null;

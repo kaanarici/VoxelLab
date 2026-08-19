@@ -8,8 +8,8 @@ const {
   mergeSeriesIntoManifest,
   normalizeCloudSeriesEntry,
   normalizeCloudProjectionSetEntry,
-  normalizeCloudUploadResult,
 } = await import('../js/series/series-contract.js');
+const { normalizeCloudUploadResult } = await import('../js/cloud.js');
 
 function validCloudSeries(overrides = {}) {
   return {
@@ -145,4 +145,11 @@ test('normalizeCloudSeriesEntry defaults preview/context flags and rejects strin
     () => normalizeCloudSeriesEntry(validCloudSeries({ hasStats: true, statsUrl: 'https://evil.example/cloud_job123_stats.json' }), { publicBase: 'https://r2.example/' }),
     /stats origin/i,
   );
+});
+
+test('normalizeCloudSeriesEntry uses modalRequiredUrlFields and skips rawUrl without hasRaw', () => {
+  const entry = normalizeCloudSeriesEntry(validCloudSeries({ hasRaw: false }), { publicBase: 'https://r2.example/' });
+
+  assert.equal(entry.sliceUrlBase, 'https://r2.example/data/cloud_job123');
+  assert.equal(entry.rawUrl, undefined);
 });

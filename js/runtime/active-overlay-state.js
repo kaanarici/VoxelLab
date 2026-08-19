@@ -1,47 +1,34 @@
 import { COLORMAPS } from '../colormap-registry.js';
 import { SEG_PALETTE } from '../core/constants.js';
 import { state } from '../core/state.js';
-import { overlayKindsForSeries } from './overlay-kinds.js';
+import { OVERLAY_CACHE_BY_KIND } from './overlay-cache-keys.js';
+import { overlayAvailabilityForKind } from './overlay-kinds.js';
 
 // Shape: { available: true, enabled: false, ready: false, voxels: Uint8Array(...) }.
-function describeOverlayKind(kind, base = {}) {
-  if (kind === 'tissue') {
+function describeOverlayKind(cache, base = {}) {
+  const kind = cache.kind;
+  const imgs = state[cache.imgs];
+  const voxels = state[cache.voxels];
+  if (cache.peerSlugField) {
+    const bound = !!state.overlays[cache.peerSlugField];
     return {
-      available: !!base.available,
-      enabled: !!base.available && !!state.useSeg,
-      ready: !!base.available && !!state.segVoxels,
-      voxels: state.segVoxels,
-      imgs: state.segImgs,
+      available: bound,
+      enabled: bound,
+      ready: !!voxels,
+      voxels,
+      imgs,
       meta: null,
     };
   }
-  if (kind === 'labels') {
-    return {
-      available: !!base.available,
-      enabled: !!base.available && !!state.useRegions,
-      ready: !!base.available && !!state.regionVoxels && !!state.regionMeta,
-      voxels: state.regionVoxels,
-      imgs: state.regionImgs,
-      meta: state.regionMeta,
-    };
-  }
-  if (kind === 'heatmap') {
-    return {
-      available: !!base.available,
-      enabled: !!base.available && !!state.useSym,
-      ready: !!base.available && !!state.symVoxels,
-      voxels: state.symVoxels,
-      imgs: state.symImgs,
-      meta: null,
-    };
-  }
+  const available = !!base.available;
+  const meta = cache.needsRegionMeta ? state.overlays.regionMeta : null;
   return {
-    available: !!state.fusionSlug,
-    enabled: !!state.fusionSlug,
-    ready: !!state.fusionVoxels,
-    voxels: state.fusionVoxels,
-    imgs: state.fusionImgs,
-    meta: null,
+    available,
+    enabled: available && !!state.overlays[kind],
+    ready: available && !!voxels && (!cache.needsRegionMeta || !!meta),
+    voxels,
+    imgs,
+    meta,
   };
 }
 
@@ -77,13 +64,13 @@ function getHotLutColors() {
 
 // Shape: { tissue: { available: true }, labels: { available: false } }.
 export function activeOverlayStateForSeries(series = state.manifest?.series?.[state.seriesIdx]) {
-  const described = overlayKindsForSeries(series).byKind;
-  return {
-    tissue: describeOverlayKind('tissue', described.tissue),
-    labels: describeOverlayKind('labels', described.labels),
-    heatmap: describeOverlayKind('heatmap', described.heatmap),
-    fusion: describeOverlayKind('fusion', described.fusion),
-  };
+  const overlays = {};
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    overlays[cache.kind] = describeOverlayKind(cache, {
+      available: overlayAvailabilityForKind(series, cache.kind),
+    });
+  }
+  return overlays;
 }
 
 // Shape: { mode: 2, source: Uint8Array(...), colors: { 4: [255, 0, 0] } }.
@@ -112,8 +99,8 @@ export function activeThreeLabelOverlay(series = state.manifest?.series?.[state.
       mode: 3,
       source: overlays.fusion.voxels,
       colors: getHotLutColors(),
-      opacities: opacityTable(state.fusionOpacity),
-      opacity: state.fusionOpacity,
+      opacities: opacityTable(state.overlays.fusionOpacity),
+      opacity: state.overlays.fusionOpacity,
       legend: null,
     };
   }
@@ -122,8 +109,8 @@ export function activeThreeLabelOverlay(series = state.manifest?.series?.[state.
       mode: 3,
       source: overlays.heatmap.voxels,
       colors: getHotLutColors(),
-      opacities: opacityTable(state.overlayOpacity),
-      opacity: state.overlayOpacity,
+      opacities: opacityTable(state.overlays.overlayOpacity),
+      opacity: state.overlays.overlayOpacity,
       legend: null,
     };
   }

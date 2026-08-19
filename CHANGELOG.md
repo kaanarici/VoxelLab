@@ -6,6 +6,28 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-19
+
+### Fixed
+
+- Restored undistorted 3D volume rendering when viewing a clip-box face
+  head-on, after a 1.2.0 regression that stretched the scene.
+- Entering 3D now shows the full volume instead of a leftover 2D slice crop.
+  The 3D clip follows the reviewed slice only while 3D is already active.
+- 3D anatomy labels stay attached to their structures when zooming without
+  rotating the camera.
+- Mesh export still includes segmentation labels when the colour overlay is
+  turned off.
+- Overlay toggles, fusion, and isolated recipe replay no longer write the
+  wrong display or invent overlay stack names.
+
+### Known Limitations
+
+- The macOS app is not notarized and the Windows installer is unsigned.
+- Format support remains intentionally narrower than Bio-Formats, Fiji, or a
+  clinical DICOM workstation.
+- VoxelLab is not a medical device and is not for clinical use.
+
 ## [1.2.0] - 2026-08-16
 
 ### Added
@@ -124,5 +146,6 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clinical DICOM workstation.
 - VoxelLab is not a medical device and is not for clinical use.
 
+[1.2.1]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.0
 [1.1.2]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.1.2

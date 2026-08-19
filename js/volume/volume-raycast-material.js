@@ -1,10 +1,10 @@
+import { raycastStepCount } from '../core/volume-limits.js';
 import * as THREE from './vendor-three.js';
 
 import {
   VOLUME_RAYCAST_FRAGMENT_SHADER,
   VOLUME_RAYCAST_VERTEX_SHADER,
 } from './volume-raycast-shaders.js';
-import { raycastStepCount } from './volume-raycast-steps.js';
 
 /**
  * Raycast ShaderMaterial for Data3DTexture volume + label LUT. Uniforms match

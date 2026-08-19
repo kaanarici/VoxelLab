@@ -5,7 +5,7 @@ const {
   volumeProjectionSamplingSupport,
   MAX_RAYCAST_STEPS,
   raycastStepCount,
-} = await import('../js/volume/volume-raycast-steps.js');
+} = await import('../js/core/volume-limits.js');
 
 test('raycastStepCount uses the represented voxel diagonal for every render mode', () => {
   const required = Math.ceil(Math.hypot(639, 511, 255)) + 1;

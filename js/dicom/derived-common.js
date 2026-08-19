@@ -19,6 +19,10 @@ import {
   setNoteEntriesForSlice,
   setRoiEntriesForSlice,
 } from '../overlay/annotation-graph.js';
+import {
+  ensureLocalDerivedBucket,
+  setLocalDerivedObject,
+} from '../runtime/viewer-runtime.js';
 import { normalizeModality } from './dicom-meta.js';
 
 export const DICOM_PARSE_FAILED_REASON = 'dicom_parse_failed';
@@ -136,8 +140,7 @@ export function emptyLabelSlices(width, height, depth) {
 }
 
 export function sourceSeriesDerivedState(series) {
-  state._localDerivedObjects[series.slug] = state._localDerivedObjects[series.slug] || {};
-  return state._localDerivedObjects[series.slug];
+  return ensureLocalDerivedBucket(series.slug);
 }
 
 function objectUIDForMeta(meta, fallbackKind = 'derived') {
@@ -163,7 +166,7 @@ export function rememberDerivedObject(sourceSeries, meta, derivedKind, name, pay
     payload,
   });
   const { persisted } = upsertDerivedRegistryEntry(entry);
-  sourceSeriesDerivedState(sourceSeries)[objectUID] = { kind: derivedKind, name: entry.name };
+  setLocalDerivedObject(sourceSeries.slug, objectUID, { kind: derivedKind, name: entry.name });
   return { accepted: true, objectUID, persisted };
 }
 

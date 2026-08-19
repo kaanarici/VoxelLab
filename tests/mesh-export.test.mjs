@@ -2,6 +2,7 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../js/core/state.js';
 import { exportLabelMesh, exportStudyMesh } from '../js/mesh/mesh-export.js';
+import { ensureActiveOverlayVolumes } from '../js/overlay/overlay-volumes.js';
 
 const originalDocument = globalThis.document;
 const originalCreateObjectUrl = URL.createObjectURL;
@@ -39,8 +40,8 @@ function resetMeshState() {
   state.seriesIdx = 0;
   state.regionImgs = null;
   state.regionVoxels = null;
-  state.regionMeta = null;
-  state.useRegions = false;
+  state.overlays.regionMeta = null;
+  state.overlays.labels = false;
 }
 
 beforeEach(() => {
@@ -57,7 +58,7 @@ after(() => {
 test('exportStudyMesh reports and downloads a cloud-style region mesh bundle', async () => {
   const series = { slug: 'cloud_seg_result', width: 3, height: 3, slices: 3 };
   state.manifest = { series: [series] };
-  state.regionMeta = { regions: { 7: { name: 'Thalamus' } } };
+  state.overlays.regionMeta = { regions: { 7: { name: 'Thalamus' } } };
   state.regionVoxels = new Uint8Array(27);
   state.regionVoxels[(1 * 3 + 1) * 3 + 1] = 7;
 
@@ -71,10 +72,29 @@ test('exportStudyMesh reports and downloads a cloud-style region mesh bundle', a
   assert.match(await downloads[0].blob.text(), /o Thalamus/);
 });
 
+test('ensureActiveOverlayVolumes keeps cached labels while the overlay is off', () => {
+  const series = { slug: 'cloud_seg_result', width: 3, height: 3, slices: 3, hasRegions: true };
+  state.manifest = { series: [series] };
+  state.overlays.labels = false;
+  state.overlays.regionMeta = { regions: { 7: { name: 'Thalamus' } } };
+  const voxels = new Uint8Array(27);
+  voxels[(1 * 3 + 1) * 3 + 1] = 7;
+  state.regionVoxels = voxels;
+
+  ensureActiveOverlayVolumes();
+  assert.equal(state.regionVoxels, voxels);
+  ensureActiveOverlayVolumes();
+  assert.equal(state.regionVoxels, voxels);
+
+  const result = exportStudyMesh(series, 'obj');
+  assert.equal(result.ok, true);
+  assert.equal(downloads.length, 1);
+});
+
 test('exportLabelMesh reports unavailable labels before remote slices are cached', () => {
   const series = { slug: 'cloud_seg_result', width: 3, height: 3, slices: 3 };
   state.manifest = { series: [series] };
-  state.regionMeta = { regions: { 7: { name: 'Thalamus' } } };
+  state.overlays.regionMeta = { regions: { 7: { name: 'Thalamus' } } };
 
   const result = exportLabelMesh(series, 7, 'stl');
 

@@ -40,6 +40,7 @@ globalThis.document = {
 };
 
 const { state } = await import('../js/core/state.js');
+const { getAskSession, setAskMode } = await import('../js/ask-session.js');
 const { deactivate2dAuthoringTools } = await import('../js/roi/two-d-tools.js');
 const { toggleMeasure } = await import('../js/roi/measure.js');
 const { toggleAngle } = await import('../js/roi/angle.js');
@@ -52,7 +53,7 @@ test('deactivate2dAuthoringTools clears 2d-only modes and tool chrome', () => {
   state.angleMode = true;
   state.anglePending = [{ x: 1, y: 2 }];
   state.annotateMode = true;
-  state.askMode = true;
+  setAskMode(true);
 
   deactivate2dAuthoringTools();
 
@@ -61,7 +62,7 @@ test('deactivate2dAuthoringTools clears 2d-only modes and tool chrome', () => {
   assert.equal(state.angleMode, false);
   assert.equal(state.anglePending, null);
   assert.equal(state.annotateMode, false);
-  assert.equal(state.askMode, false);
+  assert.equal(getAskSession().mode, false);
   assert.equal(nodes.get('view-xform').classList.contains('measuring'), false);
   assert.equal(nodes.get('view-xform').classList.contains('roi-mode'), false);
   for (const id of ['btn-measure', 'btn-angle', 'btn-annot', 'btn-ask', 'btn-roi-ell', 'btn-roi-poly', 'btn-roi-point', 'btn-slimsam']) {
@@ -74,7 +75,7 @@ test('2d-only tool toggles do not activate outside 2d mode', () => {
   state.measureMode = false;
   state.angleMode = false;
   state.annotateMode = false;
-  state.askMode = false;
+  setAskMode(false);
 
   assert.equal(toggleMeasure(), false);
   assert.equal(toggleAngle(), false);
@@ -83,5 +84,5 @@ test('2d-only tool toggles do not activate outside 2d mode', () => {
   assert.equal(state.measureMode, false);
   assert.equal(state.angleMode, false);
   assert.equal(state.annotateMode, false);
-  assert.equal(state.askMode, false);
+  assert.equal(getAskSession().mode, false);
 });

@@ -15,6 +15,9 @@ const {
   setNoteEntriesForSlice,
   setRoiEntriesForSlice,
 } = await import('../js/overlay/annotation-graph.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
+
+const writes = isolatedHostWrites();
 
 test('collectMeasurements keeps uncalibrated line lengths in pixel units', () => {
   store.clear();
@@ -25,7 +28,7 @@ test('collectMeasurements keeps uncalibrated line lengths in pixel units', () =>
   };
   setMeasurementEntriesForSlice(host, host.manifest.series[0], 0, [
     { x1: 0, y1: 0, x2: 3, y2: 4, mm: 5, unit: 'px' },
-  ]);
+  ], writes);
 
   const bundle = collectMeasurements(host);
 
@@ -45,7 +48,7 @@ test('collectMeasurements exports open PolyLine length and stable source identit
     "shape": 'polyline',
     pts: [[0, 0], [4, 0], [4, 3]],
     stats: { length_px: 7, length_mm: 0.01 },
-  }]);
+  }], writes);
 
   const bundle = collectMeasurements(host);
 
@@ -68,10 +71,10 @@ test('collectMeasurements reports measurement and annotation counts separately',
   };
   setMeasurementEntriesForSlice(host, host.manifest.series[0], 0, [
     { x1: 0, y1: 0, x2: 3, y2: 4, mm: 5, unit: 'mm' },
-  ]);
+  ], writes);
   setNoteEntriesForSlice(host, host.manifest.series[0], 0, [
     { x: 2, y: 3, text: 'review this region' },
-  ]);
+  ], writes);
 
   const bundle = collectMeasurements(host);
 

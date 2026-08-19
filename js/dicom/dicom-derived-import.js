@@ -1,5 +1,9 @@
-import { state } from '../core/state.js';
 import { DCMJS_IMPORT_URL } from '../core/dependencies.js';
+import {
+  appendLocalRtDose,
+  getPendingDerivedObjects,
+  setPendingDerivedObjects,
+} from '../runtime/viewer-runtime.js';
 import { isDerivedObjectModality } from './dicom-import-routing.js';
 import { normalizeModality } from './dicom-meta.js';
 import {
@@ -54,7 +58,7 @@ function pendingObjectBytes(dataset = {}) {
 }
 
 export function queuePendingDerivedObject(dataset) {
-  const pending = state._pendingDerivedObjects || (state._pendingDerivedObjects = []);
+  const pending = [...getPendingDerivedObjects()];
   const key = pendingObjectKey(dataset);
   const existing = pending.find((item) => item.key === key);
   if (existing) return { accepted: true, duplicate: true, key, pendingCount: pending.length };
@@ -67,11 +71,12 @@ export function queuePendingDerivedObject(dataset) {
     return { accepted: false, reason: `Pending derived objects exceed the ${MAX_PENDING_DERIVED_BYTES} byte session budget` };
   }
   pending.push({ key, bytes, dataset });
+  setPendingDerivedObjects(pending);
   return { accepted: true, duplicate: false, key, pendingCount: pending.length };
 }
 
 export function retryPendingDerivedObjects(manifest) {
-  const pending = state._pendingDerivedObjects || [];
+  const pending = getPendingDerivedObjects();
   if (!pending.length) return [];
   const remaining = [];
   const results = [];
@@ -83,7 +88,7 @@ export function retryPendingDerivedObjects(manifest) {
     if (result.reasonCode === 'source_not_loaded') remaining.push(item);
     else results.push({ modality, pendingKey: item.key, ...result });
   }
-  state._pendingDerivedObjects = remaining;
+  setPendingDerivedObjects(remaining);
   return results;
 }
 
@@ -198,8 +203,7 @@ export function applyDerivedDataset(manifest, dataset) {
     if (!dose) return { skipped: true, reason: 'RTDOSE import produced no summary' };
     const remember = rememberDerivedObject(sourceRef.series, meta, 'rtdose', dose.name, dose.summary, 'frame-only');
     if (!remember.accepted) return { skipped: true, reason: `Derived object ${remember.objectUID} already imported`, sourceSlug: sourceRef.series.slug, kind: 'rtdose' };
-    state._localRtDoseBySlug[sourceRef.series.slug] = state._localRtDoseBySlug[sourceRef.series.slug] || [];
-    state._localRtDoseBySlug[sourceRef.series.slug].push({
+    appendLocalRtDose(sourceRef.series.slug, {
       objectUID: remember.objectUID,
       name: dose.name,
       summary: dose.summary,

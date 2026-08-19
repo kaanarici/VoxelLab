@@ -153,6 +153,17 @@ def normalize_ask_entry(value: Any) -> dict[str, Any]:
     return _normalize_ask_fields(payload, envelope)
 
 
+def normalize_ask_sidecar(value: Any) -> dict[str, Any]:
+    envelope = "ask-sidecar"
+    payload = _object(value, envelope)
+    _unexpected(payload, {"slug", "entries"}, envelope)
+    slug = _string(payload, "slug", envelope)
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        raise EnvelopeValidationError(envelope, "entries_not_array")
+    return {"slug": slug, "entries": [normalize_ask_entry(entry) for entry in entries]}
+
+
 def normalize_ask_result(value: Any) -> dict[str, Any]:
     envelope = "ask-result"
     payload = _object(value, envelope)

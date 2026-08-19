@@ -1,53 +1,92 @@
 import { seriesCompareGroup } from '../core/geometry.js';
-import { cloudActionForId, cloudActionForProcessing } from '../cloud-actions.js';
-import { overlayKindsForSeries, setSeriesOverlayHints } from '../runtime/overlay-kinds.js';
-
-// Shape: ['cbct', 'parallel-beam', 'tomosynthesis', 'xray', 'unknown'].
-const PROJECTION_KINDS = new Set(['cbct', 'parallel-beam', 'tomosynthesis', 'unknown', 'xray']);
-// Shape: ['requires-calibration', 'reconstructed', 'reconstruction-pending'].
-const PROJECTION_STATUSES = new Set([
-  'requires-calibration',
-  'requires-reconstruction',
-  'reconstruction-pending',
-  'reconstruction-failed',
-  'reconstructed',
-]);
+import {
+  PROJECTION_KINDS,
+  PROJECTION_MODALITIES,
+  PROJECTION_STATUSES,
+} from '../core/contracts.js';
+import { state } from '../core/state.js';
+import { setManifestCollections } from '../core/state/viewer-commands.js';
+import { RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE } from '../core/viewer-session-shape.js';
 // Shape: ['projectionMatrices', 'sourceDetectorGeometry', 'isocenter', 'calibrationStatus'].
-const PROJECTION_MISSING_GEOMETRY = [
+export const PROJECTION_MISSING_GEOMETRY = [
   'projectionMatrices',
   'sourceDetectorGeometry',
   'isocenter',
   'calibrationStatus',
 ];
+export const MODAL_REQUIRED_URL_FIELDS = ['rawUrl', 'sliceUrlBase'];
 // Cloud series carry `sourceJobId` (camelCase, written by normalize_series_entry);
 // `job_id` is the snake_case on-wire alias a raw Modal envelope may use before
 // normalization. Earlier `modalJobId`/`jobId` aliases were never emitted.
-export const SERIES_JOB_ID_FIELDS = ['sourceJobId', 'job_id'];
+export const SERIES_JOB_ID_FIELDS = ['job_id', 'sourceJobId'];
+export const REQUIRED_SERIES_FIELDS = {
+  slug: 'string',
+  name: 'string',
+  description: 'string',
+  slices: 'integer',
+  width: 'integer',
+  height: 'integer',
+  pixelSpacing: 'list',
+  sliceThickness: 'number',
+};
+export const VECTOR_LENGTHS = {
+  pixelSpacing: 2,
+  firstIPP: 3,
+  lastIPP: 3,
+  orientation: 6,
+  previewDims: 3,
+};
+export const AFFINE_COMPATIBILITY_VALUES = [
+  'exact',
+  'incompatible',
+  'requires-registration',
+  'within-tolerance',
+];
+export const RENDERABILITY_VALUES = ['2d', 'volume'];
+export const GEOMETRY_RECORD_KINDS = [
+  'cartesian_stack_irregular',
+  'cartesian_volume',
+  'insufficient',
+  'single_frame',
+];
 
 const SAFE_ID_RE = /^[A-Za-z0-9_.-]+$/;
 const SERIES_BOOL_FIELDS = [
-  'hasBrain',
-  'hasSeg',
-  'hasSym',
-  'hasStats',
-  'hasAnalysis',
-  'hasRegions',
-  'hasMaskRaw',
-  'hasRaw',
-  'hasPreview',
-  'hasContext',
-  'hasAskHistory',
   'frameOfReferenceUIDConsistent',
+  'hasAnalysis',
+  'hasAskHistory',
+  'hasBrain',
+  'hasContext',
+  'hasMaskRaw',
+  'hasPreview',
+  'hasRaw',
+  'hasRegions',
+  'hasSeg',
+  'hasStats',
+  'hasSym',
   'slicePositionsDistinct',
 ];
+
+export function dumpSeriesContract() {
+  return {
+    requiredSeriesFields: { ...REQUIRED_SERIES_FIELDS },
+    vectorLengths: { ...VECTOR_LENGTHS },
+    optionalBoolFields: [...SERIES_BOOL_FIELDS],
+    jobIdFields: [...SERIES_JOB_ID_FIELDS],
+    affineCompatibilityValues: [...AFFINE_COMPATIBILITY_VALUES],
+    renderabilityValues: [...RENDERABILITY_VALUES],
+    geometryRecordKinds: [...GEOMETRY_RECORD_KINDS],
+    projectionMissingGeometry: [...PROJECTION_MISSING_GEOMETRY],
+    modalRequiredUrlFields: [...MODAL_REQUIRED_URL_FIELDS],
+  };
+}
 
 function isSeriesContractRecord(value) {
   return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
 }
 
 function projectionKindForModality(modality) {
-  if (['CR', 'DX', 'MG', 'XA', 'RF'].includes(modality)) return 'xray';
-  return 'unknown';
+  return PROJECTION_MODALITIES.has(String(modality || '').toUpperCase()) ? 'xray' : 'unknown';
 }
 
 function ensureProjectionSets(manifest) {
@@ -67,21 +106,33 @@ function assertSafeProjectionSetId(id) {
   }
 }
 
+function assertCalibratedProjectionGeometry(value, label = 'projection set') {
+  if (value?.calibrationStatus !== 'calibrated') return;
+  const matrices = value.projectionMatrices;
+  if (!Array.isArray(matrices) || matrices.length !== Number(value.projectionCount)) {
+    throw new Error(`${label}: calibrated sets require one matrix per projection`);
+  }
+  const detectorPixels = value.detectorPixels;
+  if (!Array.isArray(detectorPixels) || detectorPixels.length !== 2
+      || !detectorPixels.every(item => Number.isInteger(item) && item > 0)) {
+    throw new Error(`${label}: calibrated sets require positive [rows, cols]`);
+  }
+  const detectorSpacing = value.detectorSpacingMm;
+  if (!Array.isArray(detectorSpacing) || detectorSpacing.length !== 2
+      || !detectorSpacing.every(item => Number(item) > 0)) {
+    throw new Error(`${label}: calibrated sets require positive [row, col] spacing`);
+  }
+  if (!String(value.frameOfReferenceUID || '').trim()) {
+    throw new Error(`${label}: calibrated sets require FrameOfReferenceUID`);
+  }
+}
+
 function assertSeriesBooleanFields(entry) {
   for (const key of SERIES_BOOL_FIELDS) {
     if (key in entry && entry[key] !== true && entry[key] !== false) {
       throw new Error(`Cloud result ${key} must be a boolean`);
     }
   }
-}
-
-// Shape: { tissue: { source: 'cloud-seg' }, labels: { source: 'cloud-regions' } }.
-export function cloudOverlayHints(entry) {
-  return {
-    tissue: entry?.hasSeg ? { source: 'cloud-seg', legacyKinds: ['seg'] } : null,
-    labels: entry?.hasRegions ? { source: 'cloud-regions', legacyKinds: ['regions'] } : null,
-    heatmap: entry?.hasSym ? { source: 'cloud-sym', legacyKinds: ['sym'] } : null,
-  };
 }
 
 export function normalizeOrigin(value) {
@@ -99,8 +150,15 @@ export function applyPublicSeriesUrls(entry, publicBase) {
   if (!base || !slug) return out;
   if (!out.sliceUrlBase) out.sliceUrlBase = `${base}/data/${slug}`;
   if (out.hasRaw && !out.rawUrl) out.rawUrl = `${base}/${slug}.raw.zst`;
-  if (out.hasRegions && !out.regionUrlBase) out.regionUrlBase = `${base}/data/${slug}_regions`;
-  if (out.hasRegions && !out.regionMetaUrl) out.regionMetaUrl = `${base}/data/${slug}_regions.json`;
+  for (const [type, keys] of Object.entries(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE)) {
+    if (!keys.availableFlag || !out[keys.availableFlag]) continue;
+    if (keys.publicUrlBaseField && !out[keys.publicUrlBaseField]) {
+      out[keys.publicUrlBaseField] = `${base}/data/${slug}_${type}`;
+    }
+    if (keys.publicMetaUrlField && !out[keys.publicMetaUrlField]) {
+      out[keys.publicMetaUrlField] = `${base}/data/${slug}_${type}.json`;
+    }
+  }
   if (out.hasStats && !out.statsUrl) out.statsUrl = `${base}/data/${slug}_stats.json`;
   return out;
 }
@@ -109,20 +167,19 @@ function assertTrustedPublicSeriesUrls(entry, publicBase) {
   const base = String(publicBase || '').replace(/\/+$/, '');
   if (!base) throw new Error('Cloud result requires r2PublicUrl to trust asset locations');
   const trustedOrigin = normalizeOrigin(base);
-  const sliceOrigin = normalizeOrigin(entry.sliceUrlBase || '');
-  if (!sliceOrigin) throw new Error('Cloud result is missing a trusted sliceUrlBase');
-  if (trustedOrigin && sliceOrigin !== trustedOrigin) {
-    throw new Error(`Cloud result escaped the configured R2 origin: ${sliceOrigin}`);
-  }
-  if (entry.hasRaw) {
-    const rawOrigin = normalizeOrigin(entry.rawUrl || '');
-    if (!rawOrigin) throw new Error('Cloud result is missing a trusted rawUrl');
-    if (trustedOrigin && rawOrigin !== trustedOrigin) {
-      throw new Error('Cloud result escaped the configured raw-volume origin');
+  for (const key of MODAL_REQUIRED_URL_FIELDS) {
+    if (key === 'rawUrl' && !entry.hasRaw) continue;
+    const origin = normalizeOrigin(entry[key] || '');
+    if (!origin) throw new Error(`Cloud result is missing a trusted ${key}`);
+    if (trustedOrigin && origin !== trustedOrigin) {
+      throw new Error(
+        key === 'rawUrl'
+          ? 'Cloud result escaped the configured raw-volume origin'
+          : `Cloud result escaped the configured R2 origin: ${origin}`,
+      );
     }
   }
-  const overlayKinds = overlayKindsForSeries(entry);
-  if (overlayKinds.byKind.labels.available) {
+  if (entry.hasRegions) {
     const regionOrigin = normalizeOrigin(entry.regionUrlBase || '');
     const regionMetaOrigin = normalizeOrigin(entry.regionMetaUrl || '');
     if (!regionOrigin || !regionMetaOrigin) {
@@ -172,12 +229,19 @@ export function projectionSetRecordForEntry(entry) {
   ]) {
     if (entry[key]) record[key] = entry[key];
   }
+  assertCalibratedProjectionGeometry(record, 'projection set');
   return record;
 }
 
 export function registerProjectionSet(manifest, entry) {
   const record = projectionSetRecordForEntry(entry);
   if (!record) return null;
+  if (manifest === state.manifest) {
+    const projectionSets = Array.isArray(manifest.projectionSets) ? manifest.projectionSets.slice() : [];
+    upsertById(projectionSets, record);
+    setManifestCollections({ projectionSets });
+    return record;
+  }
   upsertById(ensureProjectionSets(manifest), record);
   return record;
 }
@@ -341,6 +405,7 @@ export function normalizeCloudProjectionSetEntry(entry, seriesEntry = null) {
   if (seriesEntry?.sourceProjectionSetId && normalized.id !== seriesEntry.sourceProjectionSetId) {
     throw new Error(`Cloud projection set id mismatch: ${normalized.id} vs ${seriesEntry.sourceProjectionSetId}`);
   }
+  assertCalibratedProjectionGeometry(normalized, 'Cloud projection set');
   return normalized;
 }
 
@@ -348,34 +413,6 @@ export function attachSeriesJobIdentity(entry, jobId) {
   if (!entry) return null;
   if (!jobId || SERIES_JOB_ID_FIELDS.some(key => entry[key])) return entry;
   return { ...entry, sourceJobId: jobId };
-}
-
-function cloudActionProvenance(entry, status = {}, { jobId = '', processing = {} } = {}) {
-  const processingMode = String(
-    processing.processingMode || processing.processing_mode || status.processing_mode || status.processingMode || 'standard',
-  ).trim() || 'standard';
-  const inputKind = String(processing.inputKind || processing.input_kind || status.input_kind || status.inputKind || '').trim();
-  const rawActionId = String(processing.actionId || processing.action_id || status.action_id || status.actionId || '').trim();
-  const fallbackAction = cloudActionForProcessing({ processingMode });
-  const actionId = rawActionId && SAFE_ID_RE.test(rawActionId) ? rawActionId : fallbackAction.id;
-  const knownAction = cloudActionForId(actionId);
-  const action = {
-    id: actionId,
-    label: knownAction?.label || fallbackAction.label,
-    provider: 'modal',
-    jobId: String(entry?.sourceJobId || jobId || '').trim(),
-    processingMode,
-    resultSlug: String(entry?.slug || '').trim(),
-  };
-  const resultStatus = String(status.status || '').trim().toLowerCase();
-  if (resultStatus && resultStatus !== 'complete') action.resultStatus = resultStatus;
-  if (inputKind) action.inputKind = inputKind;
-  return action;
-}
-
-export function attachCloudActionProvenance(entry, status = {}, context = {}) {
-  if (!entry) return null;
-  return { ...entry, cloudAction: cloudActionProvenance(entry, status, context) };
 }
 
 export function normalizeCloudSeriesEntry(entry, { publicBase = '' } = {}) {
@@ -410,7 +447,6 @@ export function normalizeCloudSeriesEntry(entry, { publicBase = '' } = {}) {
   if (!(Number(normalized.sliceThickness) > 0)) {
     throw new Error('Cloud result has invalid slice thickness');
   }
-  setSeriesOverlayHints(normalized, cloudOverlayHints(normalized));
   assertTrustedPublicSeriesUrls(normalized, publicBase);
   return normalized;
 }
@@ -424,27 +460,4 @@ export function normalizeCompleteSlug(status = {}, seriesEntry = null) {
   const slug = statusSlug || entrySlug;
   if (!slug) throw new Error('Cloud result is missing a completed slug');
   return slug;
-}
-
-export function normalizeCloudUploadResult(status, { jobId = '', publicBase = '', fallbackSeriesEntry = null, processing = {} } = {}) {
-  const terminalStatus = String(status?.status || 'complete').trim().toLowerCase() || 'complete';
-  const seriesEntry = attachCloudActionProvenance(attachSeriesJobIdentity(
-    status?.series_entry
-      ? normalizeCloudSeriesEntry(status.series_entry, { publicBase })
-      : fallbackSeriesEntry,
-    jobId,
-  ), status, { jobId, processing });
-  const projectionSetEntry = status?.projection_set_entry
-    ? normalizeCloudProjectionSetEntry(status.projection_set_entry, seriesEntry)
-    : null;
-  if (seriesEntry?.sourceProjectionSetId && !projectionSetEntry) {
-    throw new Error(`Cloud result is missing projection set ${seriesEntry.sourceProjectionSetId}`);
-  }
-  return {
-    slug: normalizeCompleteSlug(status, seriesEntry),
-    jobId,
-    status: terminalStatus,
-    seriesEntry,
-    projectionSetEntry,
-  };
 }

@@ -1,11 +1,12 @@
 // Findings sidebar + /api/analyze + scrubber severity ticks. Static builds
 // keep cached findings; generation requires the local backend helper APIs.
-import { state, HAS_LOCAL_BACKEND } from './core/state.js';
+import { state } from './core/state.js';
+import { HAS_LOCAL_BACKEND } from './core/local-backend.js';
 import { $, escapeHtml } from './dom.js';
 import { viewerAiFlags, localApiHeaders } from './config.js';
-import { cachedFetchResponse, cachedFetchJson } from './core/cached-fetch.js';
+import { cachedFetchResponse, cachedFetchJson } from './cached-fetch.js';
 import { setAnalysis, setAnalysisBusy, setSliceIndex } from './core/state/viewer-commands.js';
-import { seriesPersistenceKey } from './series/series-identity.js';
+import { seriesPersistenceKey } from './core/series-identity.js';
 import { setScrubMarkers } from './scrubber-markers.js';
 
 let _renderScrubTicks = () => {};
@@ -141,7 +142,7 @@ export function renderFindings() {
   const host = $('findings');
   $('findings-panel').hidden = false;
   const slug = state.manifest.series[state.seriesIdx].slug;
-  const a = state.analysis;
+  const a = state.overlays.analysis;
   const hasFindings = !!(a && a.findings && a.findings.length);
   const groundedCount = hasFindings ? a.findings.filter(f => !!f.contextFingerprint).length : 0;
   const legacyCount = hasFindings ? a.findings.length - groundedCount : 0;
@@ -155,17 +156,17 @@ export function renderFindings() {
       ? 'AI analysis is disabled in config.json. Cached AI observation sidecars still appear here when present.'
       : !aiFlags.localAiAvailable
       ? aiFlags.aiUnavailableMessage
-      : state.analysisBusy
+      : state.overlays.analysisBusy
       ? 'Sending slices to the local AI runner…'
       : '';
     host.innerHTML = `
       ${canRunAnalysis ? `
         <div class="gen-actions">
           <button class="gen-btn" id="gen-current-analysis">
-            ${state.analysisBusy ? '<span class="spinner"></span> Analyzing…' : `Observe slice ${state.sliceIdx + 1}`}
+            ${state.overlays.analysisBusy ? '<span class="spinner"></span> Analyzing…' : `Observe slice ${state.sliceIdx + 1}`}
           </button>
           <button class="gen-btn" id="gen-analysis">
-            ${state.analysisBusy ? 'Queued' : '5-slice overview'}
+            ${state.overlays.analysisBusy ? 'Queued' : '5-slice overview'}
           </button>
         </div>
       ` : ''}
@@ -174,8 +175,8 @@ export function renderFindings() {
     if (!canRunAnalysis) return;
     const btn = $('gen-analysis');
     const cur = $('gen-current-analysis');
-    if (btn && !state.analysisBusy) btn.onclick = () => startAnalysis(slug);
-    if (cur && !state.analysisBusy) cur.onclick = () => startAnalysis(slug, false, [state.sliceIdx]);
+    if (btn && !state.overlays.analysisBusy) btn.onclick = () => startAnalysis(slug);
+    if (cur && !state.overlays.analysisBusy) cur.onclick = () => startAnalysis(slug, false, [state.sliceIdx]);
     return;
   }
 
@@ -199,7 +200,7 @@ export function renderFindings() {
         ${legacyCount > 0 ? ` · ${legacyCount} ungrounded` : ''}
       </span>
       ${canRunAnalysis
-        ? `<span class="regen-link" id="regen-analysis">${state.analysisBusy ? 'analyzing…' : 'regenerate'}</span>`
+        ? `<span class="regen-link" id="regen-analysis">${state.overlays.analysisBusy ? 'analyzing…' : 'regenerate'}</span>`
         : ''}
     </div>
     ${items}
@@ -211,7 +212,7 @@ export function renderFindings() {
     });
   });
   const regen = $('regen-analysis');
-  if (regen && !state.analysisBusy) regen.onclick = () => startAnalysis(slug, true);
+  if (regen && !state.overlays.analysisBusy) regen.onclick = () => startAnalysis(slug, true);
 }
 
 export async function startAnalysis(slug, force = false, slices = null) {
@@ -373,15 +374,15 @@ export function renderScrubTicks() {
     collected.push({ slice, severity: cls, el: tick });
   };
 
-  if (state.analysis && state.analysis.findings) {
-    for (const f of state.analysis.findings) {
+  if (state.overlays.analysis && state.overlays.analysis.findings) {
+    for (const f of state.overlays.analysis.findings) {
       if (f.severity === 'note') continue;
       addTick(f.slice, f.severity, `slice ${f.slice + 1}: ${f.text}`);
     }
   }
 
-  if (state.stats && state.stats.microbleeds && state.stats.microbleeds.per_slice) {
-    const per = state.stats.microbleeds.per_slice;
+  if (state.overlays.stats && state.overlays.stats.microbleeds && state.overlays.stats.microbleeds.per_slice) {
+    const per = state.overlays.stats.microbleeds.per_slice;
     for (let z = 0; z < per.length; z++) {
       if (per[z] > 0) {
         addTick(z, 'microbleed', `slice ${z + 1}: ${per[z]} microbleed candidate${per[z] > 1 ? 's' : ''}`);

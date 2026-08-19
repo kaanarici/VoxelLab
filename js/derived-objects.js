@@ -2,10 +2,10 @@
 // for validation instead of one-off checks.
 
 import { geometryFromSeries } from './core/geometry.js';
+import { DERIVED_KINDS } from './core/contracts.js';
+import { AFFINE_COMPATIBILITY_VALUES } from './series/series-contract.js';
 
-const DERIVED_KINDS = new Set(['seg', 'rtstruct', 'sr', 'rtdose', 'registration', 'derived-volume']);
-
-const AFFINE_COMPATIBILITY = new Set(['exact', 'within-tolerance', 'requires-registration', 'incompatible']);
+const AFFINE_COMPATIBILITY = new Set(AFFINE_COMPATIBILITY_VALUES);
 const DERIVED_REGISTRY_KEY = 'mri-viewer/derived-objects/v1';
 const DERIVED_REGISTRY_VERSION = 1;
 const HYDRATABLE_AFFINE_COMPATIBILITY = new Set(['exact', 'within-tolerance']);

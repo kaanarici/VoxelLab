@@ -1,20 +1,9 @@
 import { obliqueBasis } from '../mpr/mpr-oblique-geometry.js';
+import { clampClipPlaneDepth, clampObliquePitch, clampObliqueYaw } from '../core/view-limits.js';
 
 function finite(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
-}
-
-export function clampObliqueYaw(value) {
-  return Math.max(-180, Math.min(180, finite(value, 0)));
-}
-
-export function clampObliquePitch(value) {
-  return Math.max(-90, Math.min(90, finite(value, 0)));
-}
-
-export function clampClipPlaneDepth(value) {
-  return Math.max(0, Math.min(1, finite(value, 0.5)));
 }
 
 /**
@@ -48,7 +37,7 @@ export function volumeClipPlane({
   const minProjection = normal.reduce((sum, component) => sum + Math.min(0, component), 0);
   const maxProjection = normal.reduce((sum, component) => sum + Math.max(0, component), 0);
   const threshold = minProjection + (maxProjection - minProjection) * clampClipPlaneDepth(depth);
-  const direction = invert ? -1 : 1;
+  const direction = invert ? 1 : -1;
   return [
     normal[0] * direction,
     normal[1] * direction,

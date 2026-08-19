@@ -5,8 +5,6 @@ import {
 } from '../volume/volume-texture-capabilities.js';
 import { MAX_ACCURATE_SLAB_SAMPLES } from './mpr-projection.js';
 import { gpuMprInputSupport } from './mpr-gpu-support.js';
-export { planeForAxis, planeForOblique } from './mpr-projection.js';
-export { gpuMprInputSupport } from './mpr-gpu-support.js';
 
 // Shape: one shared offscreen WebGL MPR renderer reused for all panes.
 const runtime = {

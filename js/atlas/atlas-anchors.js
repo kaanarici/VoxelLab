@@ -11,7 +11,7 @@
 // than on a stray edge pixel.
 
 import { readImageByteData } from '../overlay/overlay-data.js';
-import { regionLabelName } from '../region-meta.js';
+import { regionLabelName } from '../core/region-meta.js';
 
 const MAX_LABEL = 253; // 254/255 are reserved/avoided by the slice compositor
 const DEFAULT_MIN_AREA_PX = 8; // drop single-pixel speckle from the callouts

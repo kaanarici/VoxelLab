@@ -3,15 +3,46 @@
 from __future__ import annotations
 
 import math
+from functools import cmp_to_key
 from typing import Any
+
+from contracts import ORTHONORMAL_TOLERANCE
 
 
 def float_list(value: Any, length: int) -> list[float]:
-    try:
-        items = [float(item) for item in value]
-    except Exception:
+    if isinstance(value, str):
+        items = value.split("\\")
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
         return []
-    return items if len(items) >= length else []
+    out: list[float] = []
+    for item in items:
+        if item is None:
+            return []
+        if isinstance(item, str) and item.strip() == "":
+            return []
+        try:
+            number = float(item)
+        except (TypeError, ValueError):
+            return []
+        if not math.isfinite(number):
+            return []
+        out.append(number)
+    return out if len(out) >= length else []
+
+
+def is_orthonormal_image_plane(iop: Any, tolerance: float = ORTHONORMAL_TOLERANCE) -> bool:
+    values = float_list(iop, 6)
+    if len(values) < 6:
+        return False
+    row = values[:3]
+    col = values[3:6]
+    row_norm = math.sqrt(sum(item * item for item in row))
+    col_norm = math.sqrt(sum(item * item for item in col))
+    if abs(row_norm - 1) > tolerance or abs(col_norm - 1) > tolerance:
+        return False
+    return abs(dot3(row, col)) <= tolerance
 
 
 def dot3(a: list[float], b: list[float]) -> float:
@@ -64,11 +95,13 @@ def ipp_projection(ds: Any, normal: list[float]) -> float | None:
     return dot3(ipp, normal)
 
 
-def slice_sort_key(ds: Any) -> tuple[float, int]:
+def slice_sort_key(ds: Any) -> tuple[int, float, int]:
     instance = int(getattr(ds, "InstanceNumber", 0) or 0)
     normal = slice_normal_from_iop(getattr(ds, "ImageOrientationPatient", []))
     projection = ipp_projection(ds, normal)
-    return (projection if projection is not None else 0.0, instance)
+    if projection is None:
+        return (1, 0.0, instance)
+    return (0, projection, instance)
 
 
 def sort_datasets_spatially(datasets: list[Any], get_dataset: Any | None = None) -> list[Any]:
@@ -78,13 +111,22 @@ def sort_datasets_spatially(datasets: list[Any], get_dataset: Any | None = None)
     first = getter(datasets[0])
     normal = slice_normal_from_iop(getattr(first, "ImageOrientationPatient", []))
 
-    def sort_key(item: Any) -> tuple[float, int]:
-        ds = getter(item)
-        instance = int(getattr(ds, "InstanceNumber", 0) or 0)
-        projection = ipp_projection(ds, normal)
-        return (projection if projection is not None else 0.0, instance)
+    def compare(left: Any, right: Any) -> int:
+        left_ds = getter(left)
+        right_ds = getter(right)
+        left_instance = int(getattr(left_ds, "InstanceNumber", 0) or 0)
+        right_instance = int(getattr(right_ds, "InstanceNumber", 0) or 0)
+        left_projection = ipp_projection(left_ds, normal)
+        right_projection = ipp_projection(right_ds, normal)
+        if left_projection is None or right_projection is None:
+            return left_instance - right_instance
+        if left_projection < right_projection:
+            return -1
+        if left_projection > right_projection:
+            return 1
+        return left_instance - right_instance
 
-    return sorted(datasets, key=sort_key)
+    return sorted(datasets, key=cmp_to_key(compare))
 
 
 def spacing_from_positions(positions: list[list[float]], normal: list[float]) -> dict[str, Any]:

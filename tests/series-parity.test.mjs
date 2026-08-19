@@ -5,12 +5,12 @@ import { URL } from 'node:url';
 
 globalThis.location = new URL('http://127.0.0.1/');
 
+const { GEOMETRY_KIND_CAPABILITY } = await import('../js/core/contracts.js');
 const {
-  GEOMETRY_KIND_CAPABILITY,
   canUseMpr3D,
   geometryKindForSeries,
   reconstructionCapabilityForSeries,
-} = await import('../js/series/series-capabilities.js');
+} = await import('../js/core/series-capabilities.js');
 const { applyPublicSeriesUrls } = await import('../js/series/series-contract.js');
 
 const readJson = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));

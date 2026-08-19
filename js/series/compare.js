@@ -8,7 +8,7 @@
 import { $, escapeHtml } from '../dom.js';
 import { deletePassthroughRootEntry, setPassthroughRootEntry, state } from '../core/state.js';
 import { drawAnnotationPins } from '../overlay/annotation.js';
-import { cachedFetchJson } from '../core/cached-fetch.js';
+import { cachedFetchJson } from '../cached-fetch.js';
 import {
   closestSliceIndexForPatientPoint,
   inPlaneDisplaySize,
@@ -23,9 +23,10 @@ import { renderInspectionReadout, resolveVoxelInspection } from '../inspection-r
 import { drawCompositeSlice } from '../slice-compositor.js';
 import { getRegistrationRecord } from '../metadata.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
+import { OVERLAY_CACHE_BY_KIND, overlayBytesFromCaches, overlayBytesPresent } from '../runtime/overlay-cache-keys.js';
 import { selectionRegionColors } from '../runtime/region-color-isolation.js';
 import { overlaySessionForSeries } from '../runtime/review-readiness.js';
-import { resetCompareViewport, setCompareViewport, setWindowLevel } from '../core/state/viewer-commands.js';
+import { resetCompareViewport, setComparePeers, setCompareViewport, setWindowLevel } from '../core/state/viewer-commands.js';
 import { setSpinnerPending } from '../spinner.js';
 import { loadImageStack, regionMetaUrlForSeries } from './series-image-stack.js';
 
@@ -278,11 +279,13 @@ function compareSliceMatches(peers, primarySeries, z) {
 function comparePendingKey(peers, z, matches = {}) {
   return [
     z,
-    state.useBrain ? 'brain' : 'base',
-    state.useSeg ? 'seg' : '',
-    state.useRegions ? 'regions' : '',
-    state.useSym ? 'sym' : '',
-    state.fusionSlug || '',
+    state.overlays.useBrain ? 'brain' : 'base',
+    ...Object.values(OVERLAY_CACHE_BY_KIND)
+      .filter((cache) => !cache.refuseInOverlayStack)
+      .map((cache) => (state.overlays[cache.kind] ? cache.type : '')),
+    ...Object.values(OVERLAY_CACHE_BY_KIND)
+      .filter((cache) => cache.peerSlugField)
+      .map((cache) => state.overlays[cache.peerSlugField] || ''),
     state.manifest.series[state.seriesIdx]?.slug || '',
     ...peers.map((peer) => {
       const match = matches[peer.slug];
@@ -343,6 +346,16 @@ function sharedCompareMmScale(cells) {
   return calibrated > 0 && Number.isFinite(scale) && scale > 0 ? scale : null;
 }
 
+function comparePeerOverlayStack(cache, po, slug, primarySlug, overlays) {
+  if (cache.peerSlugField) {
+    const overlay = overlays[cache.kind];
+    return slug === primarySlug && overlay.enabled
+      ? (state.cmpStacks[state.overlays[cache.peerSlugField]] || overlay.imgs)
+      : null;
+  }
+  return po[cache.type];
+}
+
 function ensureCompareCurrentSlice(peers, z, primarySlug, matches = {}) {
   const tasks = [];
   for (const series of peers) {
@@ -351,33 +364,26 @@ function ensureCompareCurrentSlice(peers, z, primarySlug, matches = {}) {
     const zi = match?.index ?? Math.min(z, series.slices - 1);
     const overlays = activeOverlayStateForSeries(series);
     const po = peerOverlays[series.slug] || {};
+    const stacks = {};
+    for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+      stacks[cache.kind] = comparePeerOverlayStack(cache, po, series.slug, primarySlug, overlays);
+    }
     const overlaySession = overlaySessionForSeries(series, {
       sliceIdx: zi,
       overlays,
-      stacks: {
-        tissue: po.seg,
-        heatmap: po.sym,
-        labels: po.regions,
-        fusion: series.slug === primarySlug && overlays.fusion.enabled
-          ? (state.cmpStacks[state.fusionSlug] || overlays.fusion.imgs)
-          : null,
-      },
+      stacks,
     });
     const stack = state.cmpStacks[series.slug];
     if (stack?.ensureIndex && !stack[zi]?.complete) {
       tasks.push(stack.ensureIndex(zi, { priority: 'high' }));
     }
-    if (overlaySession.tissue.enabled && !po.seg?.[zi]?.complete && po.seg?.ensureIndex) {
-      tasks.push(po.seg.ensureIndex(zi, { priority: 'high' }));
-    }
-    if (overlaySession.heatmap.enabled && !po.sym?.[zi]?.complete && po.sym?.ensureIndex) {
-      tasks.push(po.sym.ensureIndex(zi, { priority: 'high' }));
-    }
-    if (overlaySession.labels.enabled) {
-      if (!po.regions?.[zi]?.complete && po.regions?.ensureIndex) {
-        tasks.push(po.regions.ensureIndex(zi, { priority: 'high' }));
+    for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+      const overlayStack = stacks[cache.kind];
+      const session = overlaySession[cache.kind];
+      if (session?.enabled && !overlayStack?.[zi]?.complete && overlayStack?.ensureIndex) {
+        tasks.push(overlayStack.ensureIndex(zi, { priority: 'high' }));
       }
-      if (!overlaySession.labels.metaReady && !po.regionMeta) {
+      if (cache.needsRegionMeta && session?.enabled && !session.metaReady && !po.regionMeta) {
         tasks.push(
           softFail(
             cachedFetchJson(regionMetaUrlForSeries(series)).then((data) => { if (data) po.regionMeta = data; }),
@@ -385,12 +391,6 @@ function ensureCompareCurrentSlice(peers, z, primarySlug, matches = {}) {
           ),
         );
       }
-    }
-    const fusionStack = series.slug === primarySlug && overlays.fusion.enabled
-      ? (state.cmpStacks[state.fusionSlug] || overlays.fusion.imgs)
-      : null;
-    if (overlaySession.fusion.enabled && !fusionStack?.[zi]?.complete && fusionStack?.ensureIndex) {
-      tasks.push(fusionStack.ensureIndex(zi, { priority: 'high' }));
     }
   }
   if (!tasks.length) return null;
@@ -522,7 +522,7 @@ export function buildCompareMenu(menuEl, { onSelectionChanged = null, onStop = n
 /** Read checked state from the menu and update cmpManualSlugs. */
 function applyMenuSelection(menuEl) {
   const checked = [...menuEl.querySelectorAll('input:checked')].map((cb) => cb.value);
-  state.cmpManualSlugs = checked.length >= 2 ? checked : null;
+  setComparePeers(checked);
   // Only refresh the live grid while the user still has a valid (>=2) manual set.
   // Dropping below 2 is handled by the caller (it exits compare) — never silently
   // fall back to the auto-group while the user is editing the selection.
@@ -550,7 +550,7 @@ export async function loadComparePeers() {
   const backgroundLoaders = [];
   for (const p of peers) {
     const overlays = activeOverlayStateForSeries(p);
-    const variant = state.useBrain && p.hasBrain ? `${p.slug}_brain` : p.slug;
+    const variant = state.overlays.useBrain && p.hasBrain ? `${p.slug}_brain` : p.slug;
     const match = matches[p.slug];
     const initialIndex = match?.index ?? Math.min(currentIndex, p.slices - 1);
     const base = loadImageStack(variant, p.slices, state.cmpStacks[p.slug], p, {
@@ -565,38 +565,17 @@ export async function loadComparePeers() {
     if (!peerOverlays[p.slug]) peerOverlays[p.slug] = {};
     const po = peerOverlays[p.slug];
 
-    if (overlays.tissue.enabled) {
-      const seg = loadImageStack(`${p.slug}_seg`, p.slices, po.seg, p, {
-        label: `${p.slug} compare tissue overlay`,
+    for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+      if (cache.refuseInOverlayStack || !overlays[cache.kind]?.enabled) continue;
+      const loaded = loadImageStack(`${p.slug}_${cache.type}`, p.slices, po[cache.type], p, {
+        label: `${p.slug} compare ${cache.kind} overlay`,
         windowRadius: SLICE_WINDOW_RADIUS,
         initialIndex,
       });
-      po.seg = seg.imgs;
-      if (!match?.outOfRange) currentLoaders.push(seg.imgs.ensureIndex?.(initialIndex) || Promise.resolve(true));
-      backgroundLoaders.push(...seg.loaders);
-    }
-
-    if (overlays.heatmap.enabled) {
-      const sym = loadImageStack(`${p.slug}_sym`, p.slices, po.sym, p, {
-        label: `${p.slug} compare symmetry overlay`,
-        windowRadius: SLICE_WINDOW_RADIUS,
-        initialIndex,
-      });
-      po.sym = sym.imgs;
-      if (!match?.outOfRange) currentLoaders.push(sym.imgs.ensureIndex?.(initialIndex) || Promise.resolve(true));
-      backgroundLoaders.push(...sym.loaders);
-    }
-
-    if (overlays.labels.enabled) {
-      const regions = loadImageStack(`${p.slug}_regions`, p.slices, po.regions, p, {
-        label: `${p.slug} compare anatomy overlay`,
-        windowRadius: SLICE_WINDOW_RADIUS,
-        initialIndex,
-      });
-      po.regions = regions.imgs;
-      if (!match?.outOfRange) currentLoaders.push(regions.imgs.ensureIndex?.(initialIndex) || Promise.resolve(true));
-      backgroundLoaders.push(...regions.loaders);
-      if (!po.regionMeta) {
+      po[cache.type] = loaded.imgs;
+      if (!match?.outOfRange) currentLoaders.push(loaded.imgs.ensureIndex?.(initialIndex) || Promise.resolve(true));
+      backgroundLoaders.push(...loaded.loaders);
+      if (cache.needsRegionMeta && !po.regionMeta) {
         currentLoaders.push(
           softFail(
             cachedFetchJson(regionMetaUrlForSeries(p)).then((d) => { if (d) po.regionMeta = d; }),
@@ -712,27 +691,15 @@ export function drawCompare() {
     if (!baseBytes) return;
 
     const po = peerOverlays[slug] || {};
-    warmCompareOverlay(po.seg, zi);
-    warmCompareOverlay(po.sym, zi);
-    warmCompareOverlay(po.regions, zi);
-
-    const segBytes = overlays.tissue.enabled && po.seg?.[zi]?.complete
-      ? readImageByteData(po.seg[zi], series.width, series.height)
-      : null;
-    const symBytes = overlays.heatmap.enabled && po.sym?.[zi]?.complete
-      ? readImageByteData(po.sym[zi], series.width, series.height)
-      : null;
-    const regionBytes = overlays.labels.enabled && po.regions?.[zi]?.complete && po.regionMeta
-      ? readImageByteData(po.regions[zi], series.width, series.height)
-      : null;
-    const fusionStack = slug === primarySlug && overlays.fusion.enabled
-      ? (state.cmpStacks[state.fusionSlug] || overlays.fusion.imgs)
-      : null;
-    warmCompareOverlay(fusionStack, zi);
-    const fusionBytes = fusionStack?.[zi]?.complete
-      ? readImageByteData(fusionStack[zi], series.width, series.height)
-      : null;
-    const anyOverlay = !!(segBytes || symBytes || regionBytes || fusionBytes);
+    const overlayBytes = overlayBytesFromCaches((cache) => {
+      const overlayStack = comparePeerOverlayStack(cache, po, slug, primarySlug, overlays);
+      warmCompareOverlay(overlayStack, zi);
+      const ready = overlays[cache.kind]?.enabled
+        && overlayStack?.[zi]?.complete
+        && (cache.type !== 'regions' || po.regionMeta);
+      return ready ? readImageByteData(overlayStack[zi], series.width, series.height) : null;
+    });
+    const anyOverlay = overlayBytesPresent(overlayBytes);
 
     if (!anyOverlay) {
       const imgData = canvas._cmpImageData?.width === series.width && canvas._cmpImageData?.height === series.height
@@ -746,14 +713,11 @@ export function drawCompare() {
     } else {
       drawCompositeSlice(ctx, series.width, series.height, {
         baseBytes,
-        segBytes,
-        symBytes,
-        regionBytes,
-        fusionBytes,
+        overlayBytes,
         wlLut,
         regionColors: selectionRegionColors(po.regionMeta?.colors || null, state),
-        regionAlpha: state.overlayOpacity,
-        fusionAlpha: state.fusionOpacity,
+        regionAlpha: state.overlays.overlayOpacity,
+        fusionAlpha: state.overlays.fusionOpacity,
         hotLut,
       });
     }

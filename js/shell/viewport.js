@@ -9,7 +9,7 @@ import { geometryFromSeries, inPlaneDisplaySize } from '../core/geometry.js';
 import { hasPatientFrame, viewPresetAnatomy, NEUTRAL_VIEW_LABELS } from '../core/view-orientation.js';
 import { obliqueBasis } from '../mpr/mpr-oblique-geometry.js';
 import { updateScaleBar } from '../overlay/scale-bar.js';
-import { setFitZoom, setWindowLevel, setVolumeTransfer } from '../core/state/viewer-commands.js';
+import { setFitZoom, setInvertDisplay, setWindowLevel, setVolumeTransfer } from '../core/state/viewer-commands.js';
 
 // L/R/A/P/S/I corner labels from ImageOrientationPatient (2D mode).
 
@@ -129,7 +129,7 @@ export function updateMprOrientationMarkers(series) {
   const coT = majorAxis(sd[0], sd[1], sd[2]);
   const saR = majorAxis(c0, c1, c2);
   const saT = coT;
-  const oblique = obliqueBasis(state.obYaw, state.obPitch);
+  const oblique = obliqueBasis(state.mpr.obYaw, state.mpr.obPitch);
   const toPatient = (vector) => [0, 1, 2].map(axis => (
     vector[0] * geo.row[axis]
     + vector[1] * geo.col[axis]
@@ -175,10 +175,10 @@ export function updateMprOrientationMarkers(series) {
 }
 
 export function toggleInvert() {
-  state.invertDisplay = !state.invertDisplay;
+  const next = setInvertDisplay(!state.invertDisplay);
   const btn = $('btn-invert');
-  if (btn) btn.classList.toggle('active', state.invertDisplay);
-  return state.invertDisplay;
+  if (btn) btn.classList.toggle('active', next);
+  return next;
 }
 export function isInverted() { return !!state.invertDisplay; }
 

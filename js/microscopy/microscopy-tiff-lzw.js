@@ -23,14 +23,14 @@ function appendByte(prefix, value) {
   return entry;
 }
 
-function readCode(source, state) {
-  if (state.bitOffset + state.codeWidth > source.byteLength * 8) return null;
+function readCode(source, decoder) {
+  if (decoder.bitOffset + decoder.codeWidth > source.byteLength * 8) return null;
   let code = 0;
-  for (let index = 0; index < state.codeWidth; index += 1) {
-    const bit = state.bitOffset + index;
+  for (let index = 0; index < decoder.codeWidth; index += 1) {
+    const bit = decoder.bitOffset + index;
     code = (code << 1) | ((source[bit >> 3] >> (7 - (bit & 7))) & 1);
   }
-  state.bitOffset += state.codeWidth;
+  decoder.bitOffset += decoder.codeWidth;
   return code;
 }
 
@@ -64,7 +64,7 @@ export function decodeTiffLzwStrip(value, expectedBytes, stripIndex = 0) {
 
   const output = new Uint8Array(expected);
   const dictionary = new Array(MAX_DICTIONARY_CODES);
-  const state = { bitOffset: 0, codeWidth: 9 };
+  const decoder = { bitOffset: 0, codeWidth: 9 };
   const maxCodes = expected + Math.ceil(expected / 256) + 16;
   let nextCode = FIRST_DICTIONARY_CODE;
   let previous = null;
@@ -74,14 +74,14 @@ export function decodeTiffLzwStrip(value, expectedBytes, stripIndex = 0) {
   let sawEnd = false;
 
   while (true) {
-    const code = readCode(source, state);
+    const code = readCode(source, decoder);
     if (code == null) break;
     codeCount += 1;
     if (codeCount > maxCodes) {
       throw lzwResourceLimit(stripIndex, `contains more than ${maxCodes} bounded decoder codes.`);
     }
     if (code === CLEAR_CODE) {
-      state.codeWidth = 9;
+      decoder.codeWidth = 9;
       nextCode = FIRST_DICTIONARY_CODE;
       previous = null;
       sawClear = true;
@@ -111,8 +111,8 @@ export function decodeTiffLzwStrip(value, expectedBytes, stripIndex = 0) {
       dictionary[nextCode] = appendByte(previous, entry[0]);
       nextCode += 1;
       // TIFF uses the early-change LZW convention from TIFF 6.0.
-      if (state.codeWidth < 12 && nextCode === (1 << state.codeWidth) - 1) {
-        state.codeWidth += 1;
+      if (decoder.codeWidth < 12 && nextCode === (1 << decoder.codeWidth) - 1) {
+        decoder.codeWidth += 1;
       }
     }
     previous = entry;
@@ -122,8 +122,8 @@ export function decodeTiffLzwStrip(value, expectedBytes, stripIndex = 0) {
   if (outputOffset !== expected) {
     throw lzwError(stripIndex, `decoded to ${outputOffset} bytes; expected ${expected}.`);
   }
-  const paddingBits = source.byteLength * 8 - state.bitOffset;
-  if (paddingBits > 8 || hasNonzeroPadding(source, state.bitOffset)) {
+  const paddingBits = source.byteLength * 8 - decoder.bitOffset;
+  if (paddingBits > 8 || hasNonzeroPadding(source, decoder.bitOffset)) {
     throw lzwError(stripIndex, 'contains trailing data after its end-of-information code.');
   }
   return output;

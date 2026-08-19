@@ -1,22 +1,6 @@
-import { RUNTIME_OVERLAY_KIND_BY_TYPE } from './viewer-session-shape.js';
-
-// Shape: canonical runtime overlay names, e.g. ['tissue', 'labels', 'heatmap', 'fusion'].
-export const CANONICAL_OVERLAY_KINDS = Object.freeze(uniqueStrings(Object.values(RUNTIME_OVERLAY_KIND_BY_TYPE)));
-
-// Shape: legacy UI/storage slot -> canonical overlay kind, shared with viewer session state.
-export const LEGACY_OVERLAY_KIND_MAP = Object.freeze({ ...RUNTIME_OVERLAY_KIND_BY_TYPE });
-
-const SERIES_OVERLAY_HINTS = '__voxOverlayHints';
-
-function isOverlayRecord(value) {
-  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
-}
-
-function hintForSeries(series, kind) {
-  if (!isOverlayRecord(series)) return null;
-  const hint = series[SERIES_OVERLAY_HINTS]?.[kind];
-  return isOverlayRecord(hint) ? hint : null;
-}
+import { seriesIdentityKey } from '../core/series-identity.js';
+import { deletePassthroughRootEntry, setPassthroughRootEntry, state } from '../core/state.js';
+import { OVERLAY_CACHE_BY_KIND } from './overlay-cache-keys.js';
 
 function uniqueStrings(values = []) {
   const out = [];
@@ -27,86 +11,92 @@ function uniqueStrings(values = []) {
   return out;
 }
 
+// Shape: canonical runtime overlay names, e.g. ['tissue', 'labels', 'heatmap', 'fusion'].
+export const CANONICAL_OVERLAY_KINDS = Object.freeze(
+  uniqueStrings(Object.values(OVERLAY_CACHE_BY_KIND).map((cache) => cache.kind)),
+);
+
+function isOverlayRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
+function overlayHintKey(series) {
+  return seriesIdentityKey(series);
+}
+
+function hintsForSeries(series) {
+  const key = overlayHintKey(series);
+  if (!key) return null;
+  const stored = state._seriesOverlayHints?.[key];
+  return isOverlayRecord(stored) ? stored : null;
+}
+
+function hintForSeries(series, kind) {
+  const hint = hintsForSeries(series)?.[kind];
+  return isOverlayRecord(hint) ? hint : null;
+}
+
+function hintAvailable(value) {
+  return value === true || value === false ? value : null;
+}
+
 function defaultDescriptor(kind, series) {
-  if (kind === 'tissue') {
-    return {
-      kind,
-      available: !!series?.hasSeg,
-      legacyKinds: ['seg'],
-      manifestFlag: 'hasSeg',
-      source: series?.hasSeg ? 'series-seg' : null,
-    };
-  }
-  if (kind === 'labels') {
-    return {
-      kind,
-      available: !!series?.hasRegions,
-      legacyKinds: ['regions'],
-      manifestFlag: 'hasRegions',
-      source: series?.hasRegions ? 'series-regions' : null,
-    };
-  }
-  if (kind === 'heatmap') {
-    return {
-      kind,
-      available: !!series?.hasSym,
-      legacyKinds: ['sym'],
-      manifestFlag: 'hasSym',
-      source: series?.hasSym ? 'series-sym' : null,
-    };
-  }
+  const flag = OVERLAY_CACHE_BY_KIND[kind]?.availableFlag;
   return {
-    kind,
-    available: false,
-    legacyKinds: ['fusion'],
-    manifestFlag: null,
-    source: null,
+    available: flag ? !!series?.[flag] : false,
   };
 }
 
-// Shape: { labels: { source: 'dicom-seg', legacyKinds: ['regions', 'seg'] } }.
+export function overlayAvailabilityForKind(series, kind) {
+  return hintAvailable(hintForSeries(series, kind)?.available)
+    ?? defaultDescriptor(kind, series).available;
+}
+
+function ensureOverlayHintBag() {
+  if (state._seriesOverlayHints && Object.getPrototypeOf(state._seriesOverlayHints) === Object.prototype) {
+    return true;
+  }
+  state._seriesOverlayHints = {};
+  return true;
+}
+
+// Shape: { labels: { available: true } }.
 export function setSeriesOverlayHints(series, hints = {}) {
   if (!isOverlayRecord(series) || !isOverlayRecord(hints)) return series;
-  const storedHints = series[SERIES_OVERLAY_HINTS];
-  const existing = isOverlayRecord(storedHints) ? storedHints : {};
+  const key = overlayHintKey(series);
+  if (!key) return series;
+  const existing = hintsForSeries(series) || {};
   const next = { ...existing };
-  for (const kind of CANONICAL_OVERLAY_KINDS) {
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    const kind = cache.kind;
     if (!(kind in hints) || !isOverlayRecord(hints[kind])) continue;
-    const hint = hints[kind];
-    const previous = isOverlayRecord(existing[kind]) ? existing[kind] : {};
-    next[kind] = {
-      ...previous,
-      ...hint,
-      legacyKinds: uniqueStrings([...(previous.legacyKinds || []), ...(hint.legacyKinds || [])]),
-      source: String(hint.source || previous.source || '').trim() || null,
-    };
+    const available = hintAvailable(hints[kind].available) ?? hintAvailable(existing[kind]?.available);
+    if (available == null) {
+      delete next[kind];
+      continue;
+    }
+    next[kind] = { available };
   }
-  Object.defineProperty(series, SERIES_OVERLAY_HINTS, {
-    value: next,
-    writable: true,
-    configurable: true,
-    enumerable: false,
-  });
+  ensureOverlayHintBag();
+  setPassthroughRootEntry('_seriesOverlayHints', key, next);
   return series;
 }
 
-// Shape: { byKind: { tissue: { available: true, ... } }, availableKinds: ['tissue'] }.
+export function clearSeriesOverlayHints(series) {
+  const key = overlayHintKey(series);
+  if (!key) return false;
+  return deletePassthroughRootEntry('_seriesOverlayHints', key);
+}
+
+// Shape: { byKind: { tissue: { available: true } }, availableKinds: ['tissue'] }.
 export function overlayKindsForSeries(series) {
   const byKind = {};
-  for (const kind of CANONICAL_OVERLAY_KINDS) {
-    const base = defaultDescriptor(kind, series);
-    const hint = hintForSeries(series, kind);
-    byKind[kind] = {
-      ...base,
-      available: hint?.available === true || hint?.available === false ? hint.available : base.available,
-      legacyKinds: uniqueStrings([...(base.legacyKinds || []), ...(hint?.legacyKinds || [])]),
-      source: String(hint?.source || base.source || '').trim() || null,
-    };
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    byKind[cache.kind] = { available: overlayAvailabilityForKind(series, cache.kind) };
   }
   const availableKinds = CANONICAL_OVERLAY_KINDS.filter((kind) => byKind[kind].available);
   return {
     byKind,
     availableKinds,
-    legacyMap: { ...LEGACY_OVERLAY_KIND_MAP },
   };
 }

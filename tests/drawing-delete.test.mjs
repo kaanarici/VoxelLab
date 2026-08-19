@@ -50,13 +50,14 @@ const { initROI, drawROIs } = await import('../js/roi.js');
 const { drawAngles } = await import('../js/roi/angle.js');
 const {
   angleEntriesForSlice,
+  hydrateDrawingBags,
   measurementEntriesForSlice,
   roiEntriesForSlice,
   setAngleEntriesForSlice,
   setMeasurementEntriesForSlice,
   setRoiEntriesForSlice,
 } = await import('../js/overlay/annotation-graph.js');
-const { deleteMeasurementAt } = await import('../js/core/state/viewer-tool-commands.js');
+const { deleteMeasurementAt } = await import('../js/roi/measure.js');
 
 initROI({
   state,
@@ -126,6 +127,7 @@ test('measurement delete removes the persisted entry by stable id', () => {
   state.measurements = {};
   setMeasurementEntriesForSlice(state, 'measure_case', 1, [{ id: 12, x1: 4, y1: 5, x2: 20, y2: 25, mm: 17 }]);
   state.measurements = {};
+  hydrateDrawingBags();
 
   deleteMeasurementAt('measure_case|1', { id: 12 });
 

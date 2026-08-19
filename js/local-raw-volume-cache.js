@@ -1,11 +1,12 @@
 import { state } from './core/state.js';
+import {
+  deleteLocalRuntimeMapEntry,
+  getLocalRawVolumeOrder,
+  setLocalRawVolumeOrder,
+  setLocalRuntimeMapEntry,
+} from './runtime/viewer-runtime.js';
 
 const MAX_LOCAL_RAW_VOLUME_BYTES = 512 * 1024 * 1024;
-
-function ensureLocalRawVolumeOrder() {
-  if (!Array.isArray(state._localRawVolumeOrder)) state._localRawVolumeOrder = [];
-  return state._localRawVolumeOrder;
-}
 
 function totalLocalRawVolumeBytes() {
   return Object.values(state._localRawVolumes || {}).reduce(
@@ -17,9 +18,9 @@ function totalLocalRawVolumeBytes() {
 export function touchLocalRawVolume(slug = '') {
   const key = String(slug || '').trim();
   if (!key || !state._localRawVolumes?.[key]) return false;
-  const next = ensureLocalRawVolumeOrder().filter((entry) => entry !== key);
+  const next = getLocalRawVolumeOrder().filter((entry) => entry !== key);
   next.push(key);
-  state._localRawVolumeOrder = next;
+  setLocalRawVolumeOrder(next);
   return true;
 }
 
@@ -27,10 +28,10 @@ export function clearLocalRawVolume(slug = '') {
   const key = String(slug || '').trim();
   if (!key) return false;
   const hadVolume = Boolean(state._localRawVolumes?.[key]);
-  if (state._localRawVolumes) delete state._localRawVolumes[key];
-  const order = ensureLocalRawVolumeOrder();
+  deleteLocalRuntimeMapEntry('_localRawVolumes', key);
+  const order = getLocalRawVolumeOrder();
   const next = order.filter((entry) => entry !== key);
-  state._localRawVolumeOrder = next;
+  setLocalRawVolumeOrder(next);
   return hadVolume || next.length !== order.length;
 }
 
@@ -42,13 +43,13 @@ export function cacheLocalRawVolume(slug, rawVolume, { maxBytes = MAX_LOCAL_RAW_
     clearLocalRawVolume(key);
     return false;
   }
-  state._localRawVolumes[key] = rawVolume;
+  setLocalRuntimeMapEntry('_localRawVolumes', key, rawVolume);
   touchLocalRawVolume(key);
   while (totalLocalRawVolumeBytes() > maxBytes) {
-    const victim = ensureLocalRawVolumeOrder().find((entry) => entry !== key);
+    const victim = getLocalRawVolumeOrder().find((entry) => entry !== key);
     if (!victim) break;
-    delete state._localRawVolumes[victim];
-    state._localRawVolumeOrder = ensureLocalRawVolumeOrder().filter((entry) => entry !== victim);
+    deleteLocalRuntimeMapEntry('_localRawVolumes', victim);
+    setLocalRawVolumeOrder(getLocalRawVolumeOrder().filter((entry) => entry !== victim));
   }
   return true;
 }

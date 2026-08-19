@@ -1,0 +1,49 @@
+{
+  "staticRootFiles": [
+    "config.json",
+    "config.local.json",
+    "favicon.svg",
+    "icons.svg",
+    "index.html",
+    "sw.js",
+    "viewer.js"
+  ],
+  "staticRootDirectories": ["css", "data", "js", "schemas", "templates"],
+  "staticPackagePaths": [
+    "node_modules/@cornerstonejs/codec-charls/dist/",
+    "node_modules/@cornerstonejs/codec-openjpeg/dist/",
+    "node_modules/dcmjs/build/dcmjs.es.js",
+    "node_modules/fzstd/esm/index.mjs",
+    "node_modules/onnxruntime-web/dist/esm/ort.min.js",
+    "node_modules/onnxruntime-web/dist/ort-training-wasm-simd.wasm",
+    "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm",
+    "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
+    "node_modules/onnxruntime-web/dist/ort-wasm-simd.jsep.wasm",
+    "node_modules/onnxruntime-web/dist/ort-wasm-simd.wasm",
+    "node_modules/onnxruntime-web/dist/ort-wasm-threaded.wasm",
+    "node_modules/onnxruntime-web/dist/ort-wasm.wasm",
+    "node_modules/pako/dist/pako.esm.mjs",
+    "node_modules/three/build/three.module.js",
+    "node_modules/three/examples/jsm/controls/TrackballControls.js"
+  ],
+  "csp": {
+    "shared": [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "script-src 'self' 'wasm-unsafe-eval'",
+      "worker-src 'self'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:"
+    ],
+    "browser": [
+      "frame-ancestors 'none'",
+      "style-src 'self'",
+      "connect-src 'self' https:"
+    ],
+    "desktop": [
+      "style-src 'self' 'unsafe-inline'",
+      "connect-src 'self' http: https: data: blob:"
+    ]
+  }
+}

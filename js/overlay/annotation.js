@@ -1,14 +1,11 @@
 // Annotations tool — numbered pins dropped on 2D slices with a text
-// note. Persisted to localStorage by selected-series fingerprint and slice so
-// they survive reloads without a backend. Each entry:
+// note. Live notes bags are owned by viewer-commands via annotation-graph;
+// localStorage is boot hydrate plus write-through mirror. Each entry:
 //   { id, x, y, text, createdAt }
 // where id is a monotonic counter per slice, used for the pin label.
 //
-// Exports a clean API: the viewer wires the click path + redraw
-// callback once via initAnnotations() and then only has to call the
-// exported draw/hit/list functions. Callbacks exist because drawing
-// and slice navigation still live in viewer.js (until those paths are
-// also extracted).
+// initAnnotations() stores redraw callbacks for this module's click/edit
+// path. Drawing lists come from annotation-graph, not a plugin host.
 
 import { $, escapeHtml, openModal, closeModal, clientToCanvasPx as _clientToCanvasPx } from '../dom.js';
 import { state } from '../core/state.js';

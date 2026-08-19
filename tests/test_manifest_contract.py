@@ -469,6 +469,45 @@ def test_manifest_accepts_derived_binding_with_source_series_slug_fallback() -> 
     assert errors == []
 
 
+def test_manifest_accepts_slug_bound_derived_binding_with_empty_frame_of_reference() -> None:
+    manifest = fixture_manifest()
+    manifest["series"].append(
+        {
+            "slug": "local_source",
+            "name": "Source",
+            "description": "source",
+            "slices": 2,
+            "width": 32,
+            "height": 32,
+            "pixelSpacing": [1.0, 1.0],
+            "sliceThickness": 1.0,
+            "hasBrain": False,
+            "hasSeg": False,
+            "hasRaw": False,
+            "firstIPP": [0, 0, 0],
+            "lastIPP": [0, 0, 1],
+            "orientation": [1, 0, 0, 0, 1, 0],
+        }
+    )
+    manifest["series"][0]["derivedObjectBindings"] = [
+        {
+            "derivedKind": "seg",
+            "frameOfReferenceUID": "",
+            "sourceSeriesSlug": "local_source",
+            "requiresRegistration": True,
+            "affineCompatibility": "requires-registration",
+        }
+    ]
+    manifest["series"][0]["firstIPP"] = [0, 0, 0]
+    manifest["series"][0]["lastIPP"] = [0, 0, 1]
+    manifest["series"][0]["orientation"] = [1, 0, 0, 0, 1, 0]
+    manifest["series"][0]["sliceSpacingRegular"] = True
+
+    errors = validate_manifest_data(manifest)
+
+    assert errors == []
+
+
 def test_manifest_rejects_exact_binding_when_frame_of_reference_mismatches_source() -> None:
     manifest = fixture_manifest()
     manifest["series"][0]["frameOfReferenceUID"] = "1.2.derived"

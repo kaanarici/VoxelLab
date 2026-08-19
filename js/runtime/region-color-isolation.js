@@ -33,7 +33,7 @@ export function selectionRegionColors(baseColors, state) {
     hidden: state.hiddenLabels,
     locked: state.lockedLabels,
     preview: state.previewLabel,
-    allLabels: allLabelsFromMeta(state.regionMeta),
+    allLabels: allLabelsFromMeta(state.overlays.regionMeta),
   });
   return filteredRegionColors(baseColors, visible);
 }

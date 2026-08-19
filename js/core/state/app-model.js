@@ -1,43 +1,3 @@
-// Legacy flat keys (e.g. state.lowT) resolve via APP_ALIASES into grouped state.
-export const APP_ALIASES = {
-  mprX: 'mpr.x',
-  mprY: 'mpr.y',
-  mprZ: 'mpr.z',
-  mprQuality: 'mpr.quality',
-  mprGpuEnabled: 'mpr.gpuEnabled',
-  mprProjectionMode: 'mpr.projectionMode',
-  mprSlabThicknessMm: 'mpr.slabThicknessMm',
-  obYaw: 'mpr.obYaw',
-  obPitch: 'mpr.obPitch',
-
-  lowT: 'three.lowT',
-  highT: 'three.highT',
-  intensity: 'three.intensity',
-  clipMin: 'three.clipMin',
-  clipMax: 'three.clipMax',
-  clipPlaneEnabled: 'three.clipPlaneEnabled',
-  clipPlaneDepth: 'three.clipPlaneDepth',
-  clipPlaneInvert: 'three.clipPlaneInvert',
-  renderMode: 'three.renderMode',
-  threeSeriesIdx: 'threeRuntime.seriesIdx',
-  threeVariant: 'threeRuntime.variant',
-
-  useBrain: 'overlays.useBrain',
-  useSeg: 'overlays.useSeg',
-  useSym: 'overlays.useSym',
-  useRegions: 'overlays.useRegions',
-  regionMeta: 'overlays.regionMeta',
-  stats: 'overlays.stats',
-  analysis: 'overlays.analysis',
-  analysisBusy: 'overlays.analysisBusy',
-  fusionSlug: 'overlays.fusionSlug',
-  fusionOpacity: 'overlays.fusionOpacity',
-  overlayOpacity: 'overlays.overlayOpacity',
-  cmpZoom: 'compare.viewport.zoom',
-  cmpTx: 'compare.viewport.tx',
-  cmpTy: 'compare.viewport.ty',
-};
-
 export function createInitialAppModel() {
   return {
     manifest: null,
@@ -82,9 +42,9 @@ export function createInitialAppModel() {
 
     overlays: {
       useBrain: false,
-      useSeg: false,
-      useSym: false,
-      useRegions: false,
+      tissue: false,
+      labels: false,
+      heatmap: false,
       regionMeta: null,
       stats: null,
       analysis: null,
@@ -100,12 +60,6 @@ export function createInitialAppModel() {
     },
 
     annotateMode: false,
-    annotationEdit: null,
-    askMode: false,
-    askPen: false,
-    askMarquee: null,
-    askBusy: false,
-    askHistory: [],
 
     selectRequestId: 0,
     seriesViewMemory: {},
@@ -114,7 +68,6 @@ export function createInitialAppModel() {
     tx: 0,
     ty: 0,
 
-    cineTimer: null,
     cineFps: 12,
 
     measureMode: false,
@@ -123,9 +76,11 @@ export function createInitialAppModel() {
     angleMode: false,
     anglePending: null,
     angleMeasurements: {},
+    rois: {},
+    notes: {},
     hiddenLabels: new Set(),
     // Anatomy-label isolate/lock selection. lockedLabels persists per-series;
-    // previewLabel is transient but remains visible to plugin snapshots.
+    // previewLabel is transient but remains visible to overlay snapshots.
     lockedLabels: new Set(),
     previewLabel: null,
 

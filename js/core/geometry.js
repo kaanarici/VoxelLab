@@ -1,6 +1,8 @@
 // Canonical patient-space geometry helpers shared by browser import,
 // MPR, 3D scaling, measurements, compare, and SR export.
 
+import { ORTHONORMAL_TOLERANCE } from './contracts.js';
+
 export function numberList(value, minLength = 0) {
   const source = Array.isArray(value)
     ? value
@@ -8,8 +10,12 @@ export function numberList(value, minLength = 0) {
   if (!source) return [];
   const out = [];
   for (const item of source) {
-    const number = Number(item);
-    if (Number.isFinite(number)) out.push(number);
+    if (item == null) return [];
+    const text = String(item).trim();
+    if (text === '') return [];
+    const number = Number(text);
+    if (!Number.isFinite(number)) return [];
+    out.push(number);
   }
   return out.length >= minLength ? out : [];
 }
@@ -53,14 +59,13 @@ export function orientationFromIOP(iop) {
   return { row, col };
 }
 
-export function isOrthonormalImagePlane(iop, tolerance = 1e-3) {
+export function isOrthonormalImagePlane(iop, tolerance = ORTHONORMAL_TOLERANCE) {
   const values = numberList(iop, 6);
   if (values.length < 6) return false;
-  const rowLength = norm3(values.slice(0, 3));
-  const colLength = norm3(values.slice(3, 6));
-  if (Math.abs(rowLength - 1) > tolerance || Math.abs(colLength - 1) > tolerance) return false;
-  const basis = orientationFromIOP(iop);
-  return !!basis && Math.abs(dot3(basis.row, basis.col)) <= tolerance;
+  const row = values.slice(0, 3);
+  const col = values.slice(3, 6);
+  if (Math.abs(norm3(row) - 1) > tolerance || Math.abs(norm3(col) - 1) > tolerance) return false;
+  return Math.abs(dot3(row, col)) <= tolerance;
 }
 
 /** Derive the normalized slice normal from a DICOM ImageOrientationPatient value. */
@@ -185,6 +190,29 @@ export function geometryFromSeries(series = {}) {
     affineLps,
     frameOfReferenceUID: String(series.frameOfReferenceUID || ''),
   };
+}
+
+/** Physical box of the 3D mesh before max-axis normalization (column, row, slice). */
+export function volumeDisplayExtents(series = {}) {
+  const geo = geometryFromSeries(series);
+  const width = Math.max(1, Number(series.width) || 1);
+  const height = Math.max(1, Number(series.height) || 1);
+  const slices = Math.max(1, Number(series.slices) || 1);
+  return {
+    x: width * geo.colSpacing,
+    y: height * geo.rowSpacing,
+    z: slices * geo.sliceSpacing,
+    colSpacing: geo.colSpacing,
+    rowSpacing: geo.rowSpacing,
+    sliceSpacing: geo.sliceSpacing,
+  };
+}
+
+/** Unit-cube scale for the Three.js volume mesh; longest physical axis maps to 1. */
+export function volumeDisplayScale(series = {}) {
+  const extents = volumeDisplayExtents(series);
+  const longest = Math.max(extents.x, extents.y, extents.z, 1e-6);
+  return [extents.x / longest, extents.y / longest, extents.z / longest];
 }
 
 /** Return the patient-space point at a clamped slice index along the series slice axis. */

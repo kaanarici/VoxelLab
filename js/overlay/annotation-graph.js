@@ -1,6 +1,20 @@
 import { storageJsonGet, storageJsonSet } from '../derived-objects.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
 import { state as appState } from '../core/state.js';
+import {
+  setAngleMeasurementMapEntry,
+  setMeasurementMapEntry,
+  setNoteMapEntry,
+  setRoiMapEntry,
+} from '../core/state/viewer-commands.js';
+import { isLiveViewerHost } from '../runtime/viewer-runtime.js';
+
+const LIVE_BUCKET_WRITERS = {
+  measurements: setMeasurementMapEntry,
+  angleMeasurements: setAngleMeasurementMapEntry,
+  rois: setRoiMapEntry,
+  notes: setNoteMapEntry,
+};
 
 export const MEASUREMENT_STORAGE_KEY = 'mri-viewer/measurements/v2';
 export const ANGLE_STORAGE_KEY = 'mri-viewer/angles/v2';
@@ -25,11 +39,11 @@ function context(host, seriesOrSlug) {
   return series?.slug && identity ? { series, slug: series.slug, identity } : null;
 }
 
-function standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list) {
+function standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list, writes) {
   if (hostOrSeries?.constructor === String) {
-    return { host: appState, series: hostOrSeries, sliceIdx: seriesOrSlice, list: sliceOrList };
+    return { host: appState, series: hostOrSeries, sliceIdx: seriesOrSlice, list: sliceOrList, writes: list };
   }
-  return { host: hostOrSeries, series: seriesOrSlice, sliceIdx: sliceOrList, list };
+  return { host: hostOrSeries, series: seriesOrSlice, sliceIdx: sliceOrList, list, writes };
 }
 
 function sliceKey(ctx, sliceIdx) {
@@ -42,13 +56,6 @@ function readBucket(key) {
 
 function writeBucket(key, value) {
   return storageJsonSet(key, value);
-}
-
-function readSliceBucket(storageKey, ctx, sliceIdx) {
-  if (!ctx) return [];
-  const all = readBucket(storageKey);
-  const value = all[sliceKey(ctx, sliceIdx)];
-  return Array.isArray(value) ? value : [];
 }
 
 function writeSliceBucket(storageKey, ctx, sliceIdx, list) {
@@ -65,17 +72,41 @@ function memoryKey(ctx, sliceIdx) {
   return sliceKey(ctx, sliceIdx);
 }
 
-function listForSlice(hostBucket, storageKey, ctx, sliceIdx) {
-  const storageList = readSliceBucket(storageKey, ctx, sliceIdx);
-  if (storageList.length) return storageList;
-  return Array.isArray(hostBucket?.[memoryKey(ctx, sliceIdx)]) ? hostBucket[memoryKey(ctx, sliceIdx)] : [];
+function listForSlice(hostBucket, ctx, sliceIdx) {
+  const value = hostBucket?.[memoryKey(ctx, sliceIdx)];
+  return Array.isArray(value) ? value : [];
 }
 
-function writeHostSlice(hostBucket, ctx, sliceIdx, list) {
-  if (!hostBucket || !ctx) return;
+function writeEntriesForSlice(host, bucketName, storageKey, ctx, sliceIdx, list, writes) {
+  if (!ctx) return [];
+  const next = Array.isArray(list) ? list : [];
   const key = memoryKey(ctx, sliceIdx);
-  if (Array.isArray(list) && list.length) hostBucket[key] = list.map((entry) => ({ ...entry }));
-  else delete hostBucket[key];
+  const writer = LIVE_BUCKET_WRITERS[bucketName];
+  if (isLiveViewerHost(host)) {
+    writer(key, next);
+    writeSliceBucket(storageKey, ctx, sliceIdx, next);
+    return next;
+  }
+  if (!writes?.runtimeMapEntry) {
+    return listForSlice(host?.[bucketName], ctx, sliceIdx);
+  }
+  const value = next.length ? next.map((entry) => ({ ...entry })) : undefined;
+  writes.runtimeMapEntry(host, bucketName, key, value);
+  return next;
+}
+
+function hydrateStorageBucket(storageKey, setter) {
+  const all = readBucket(storageKey);
+  for (const [key, list] of Object.entries(all || {})) {
+    if (Array.isArray(list) && list.length) setter(key, list);
+  }
+}
+
+export function hydrateDrawingBags() {
+  hydrateStorageBucket(MEASUREMENT_STORAGE_KEY, setMeasurementMapEntry);
+  hydrateStorageBucket(ANGLE_STORAGE_KEY, setAngleMeasurementMapEntry);
+  hydrateStorageBucket(ROI_STORAGE_KEY, setRoiMapEntry);
+  hydrateStorageBucket(NOTE_STORAGE_KEY, setNoteMapEntry);
 }
 
 function pushSeriesEntries(out, ctx, bucket, kind, mapEntry) {
@@ -86,7 +117,7 @@ function pushSeriesEntries(out, ctx, bucket, kind, mapEntry) {
     try { parsed = JSON.parse(key); } catch { continue; }
     if (!Array.isArray(parsed) || parsed[0] !== ctx.identity) continue;
     const sliceIdx = Number(parsed[1] || 0);
-    for (const entry of entries || []) out.push(mapEntry(entry, sliceIdx));
+    for (const [index, entry] of (entries || []).entries()) out.push(mapEntry(entry, sliceIdx, index));
   }
 }
 
@@ -110,87 +141,64 @@ export function drawingEntriesForSeries(host, seriesOrSlug) {
   const ctx = context(host, seriesOrSlug);
   if (!ctx) return [];
   const out = [];
-  const seen = new Set();
-  const pushUnique = (entry) => {
-    if (seen.has(entry.id)) return;
-    seen.add(entry.id);
-    out.push(entry);
-  };
-  for (const [kind, storageKey, hostBucket] of [
-    ['line', MEASUREMENT_STORAGE_KEY, host?.measurements],
-    ['angle', ANGLE_STORAGE_KEY, host?.angleMeasurements],
+  for (const [kind, hostBucket] of [
+    ['line', host?.measurements],
+    ['angle', host?.angleMeasurements],
   ]) {
-    const persisted = [];
-    pushSeriesEntries(persisted, ctx, readBucket(storageKey), kind, (entry, sliceIdx) => ({
-      kind, id: entryId(kind === 'line' ? 'measure' : 'angle', ctx.slug, sliceIdx, entry, 0), sliceIdx, data: entry,
+    pushSeriesEntries(out, ctx, hostBucket, kind, (entry, sliceIdx, index) => ({
+      kind, id: entryId(kind === 'line' ? 'measure' : 'angle', ctx.slug, sliceIdx, entry, index), sliceIdx, data: entry,
     }));
-    for (const entry of persisted) pushUnique(entry);
-    const keyPrefix = JSON.stringify([ctx.identity]).slice(0, -1);
-    for (const [key, entries] of Object.entries(hostBucket || {})) {
-      if (!key.startsWith(keyPrefix)) continue;
-      let parsed;
-      try { parsed = JSON.parse(key); } catch { continue; }
-      if (!Array.isArray(parsed) || parsed[0] !== ctx.identity) continue;
-      const sliceIdx = Number(parsed[1] || 0);
-      for (const [index, entry] of (entries || []).entries()) {
-        pushUnique({ kind, id: entryId(kind === 'line' ? 'measure' : 'angle', ctx.slug, sliceIdx, entry, index), sliceIdx, data: entry });
-      }
-    }
   }
-  pushSeriesEntries(out, ctx, readBucket(ROI_STORAGE_KEY), 'roi', (entry, sliceIdx) => ({
+  pushSeriesEntries(out, ctx, host?.rois, 'roi', (entry, sliceIdx, index) => ({
     kind: ['ellipse', 'polygon', 'polyline', 'point'].includes(entry["shape"]) ? entry["shape"] : 'polygon',
-    id: `roi:${ctx.slug}|${sliceIdx}:${entry.id ?? 0}`, sliceIdx, data: entry,
+    id: `roi:${ctx.slug}|${sliceIdx}:${entry.id ?? index}`, sliceIdx, data: entry,
   }));
-  pushSeriesEntries(out, ctx, readBucket(NOTE_STORAGE_KEY), 'note', (entry, sliceIdx) => ({
-    kind: 'note', id: `note:${ctx.slug}|${sliceIdx}:${entry.id ?? 0}`, sliceIdx, data: entry,
+  pushSeriesEntries(out, ctx, host?.notes, 'note', (entry, sliceIdx, index) => ({
+    kind: 'note', id: `note:${ctx.slug}|${sliceIdx}:${entry.id ?? index}`, sliceIdx, data: entry,
   }));
   return out.sort((a, b) => a.sliceIdx - b.sliceIdx);
 }
 
 export function measurementEntriesForSlice(host, seriesOrSlug, sliceIdx) {
   const ctx = context(host, seriesOrSlug);
-  return ctx ? listForSlice(host?.measurements, MEASUREMENT_STORAGE_KEY, ctx, sliceIdx) : [];
+  return ctx ? listForSlice(host?.measurements, ctx, sliceIdx) : [];
 }
 
-export function setMeasurementEntriesForSlice(host, seriesOrSlug, sliceIdx, list) {
+export function setMeasurementEntriesForSlice(host, seriesOrSlug, sliceIdx, list, writes) {
   const ctx = context(host, seriesOrSlug);
-  const next = writeSliceBucket(MEASUREMENT_STORAGE_KEY, ctx, sliceIdx, list);
-  writeHostSlice(host?.measurements, ctx, sliceIdx, next);
-  return next;
+  return writeEntriesForSlice(host, 'measurements', MEASUREMENT_STORAGE_KEY, ctx, sliceIdx, list, writes);
 }
 
 export function angleEntriesForSlice(host, seriesOrSlug, sliceIdx) {
   const ctx = context(host, seriesOrSlug);
-  return ctx ? listForSlice(host?.angleMeasurements, ANGLE_STORAGE_KEY, ctx, sliceIdx) : [];
+  return ctx ? listForSlice(host?.angleMeasurements, ctx, sliceIdx) : [];
 }
 
-export function setAngleEntriesForSlice(host, seriesOrSlug, sliceIdx, list) {
+export function setAngleEntriesForSlice(host, seriesOrSlug, sliceIdx, list, writes) {
   const ctx = context(host, seriesOrSlug);
-  const next = writeSliceBucket(ANGLE_STORAGE_KEY, ctx, sliceIdx, list);
-  writeHostSlice(host?.angleMeasurements, ctx, sliceIdx, next);
-  return next;
+  return writeEntriesForSlice(host, 'angleMeasurements', ANGLE_STORAGE_KEY, ctx, sliceIdx, list, writes);
 }
 
 export function roiEntriesForSlice(hostOrSeries, seriesOrSlice, sliceOrList) {
   const args = standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList);
   const ctx = context(args.host, args.series);
-  return ctx ? readSliceBucket(ROI_STORAGE_KEY, ctx, args.sliceIdx) : [];
+  return ctx ? listForSlice(args.host?.rois, ctx, args.sliceIdx) : [];
 }
 
-export function setRoiEntriesForSlice(hostOrSeries, seriesOrSlice, sliceOrList, list) {
-  const args = standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list);
-  return writeSliceBucket(ROI_STORAGE_KEY, context(args.host, args.series), args.sliceIdx, args.list);
+export function setRoiEntriesForSlice(hostOrSeries, seriesOrSlice, sliceOrList, list, writes) {
+  const args = standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list, writes);
+  return writeEntriesForSlice(args.host, 'rois', ROI_STORAGE_KEY, context(args.host, args.series), args.sliceIdx, args.list, args.writes);
 }
 
 export function noteEntriesForSlice(hostOrSeries, seriesOrSlice, sliceOrList) {
   const args = standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList);
   const ctx = context(args.host, args.series);
-  return ctx ? readSliceBucket(NOTE_STORAGE_KEY, ctx, args.sliceIdx) : [];
+  return ctx ? listForSlice(args.host?.notes, ctx, args.sliceIdx) : [];
 }
 
-export function setNoteEntriesForSlice(hostOrSeries, seriesOrSlice, sliceOrList, list) {
-  const args = standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list);
-  return writeSliceBucket(NOTE_STORAGE_KEY, context(args.host, args.series), args.sliceIdx, args.list);
+export function setNoteEntriesForSlice(hostOrSeries, seriesOrSlice, sliceOrList, list, writes) {
+  const args = standaloneSliceArgs(hostOrSeries, seriesOrSlice, sliceOrList, list, writes);
+  return writeEntriesForSlice(args.host, 'notes', NOTE_STORAGE_KEY, context(args.host, args.series), args.sliceIdx, args.list, args.writes);
 }
 
 export function nextDrawingEntryId(list) {
@@ -207,18 +215,18 @@ export function annotatedSlicesForSeries(hostOrSeries, seriesOrSlug) {
   const ctx = context(host, series);
   const out = new Set();
   if (!ctx) return out;
-  pushSeriesEntries([], ctx, readBucket(NOTE_STORAGE_KEY), 'note', (_entry, sliceIdx) => {
+  pushSeriesEntries([], ctx, host?.notes, 'note', (_entry, sliceIdx) => {
     out.add(sliceIdx);
     return null;
   });
   return out;
 }
 
-export function clearDrawingEntriesForSlice(host, seriesOrSlug, sliceIdx) {
+export function clearDrawingEntriesForSlice(host, seriesOrSlug, sliceIdx, writes) {
   const ctx = context(host, seriesOrSlug);
   if (!ctx) return;
-  setMeasurementEntriesForSlice(host, ctx.series, sliceIdx, []);
-  setAngleEntriesForSlice(host, ctx.series, sliceIdx, []);
-  setRoiEntriesForSlice(host, ctx.series, sliceIdx, []);
-  setNoteEntriesForSlice(host, ctx.series, sliceIdx, []);
+  setMeasurementEntriesForSlice(host, ctx.series, sliceIdx, [], writes);
+  setAngleEntriesForSlice(host, ctx.series, sliceIdx, [], writes);
+  setRoiEntriesForSlice(host, ctx.series, sliceIdx, [], writes);
+  setNoteEntriesForSlice(host, ctx.series, sliceIdx, [], writes);
 }

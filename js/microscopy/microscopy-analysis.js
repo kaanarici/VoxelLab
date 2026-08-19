@@ -2,14 +2,15 @@
 // object becomes a polygon ROI entry so CSV/JSON/PNG/ImageJ-ROI-ZIP export and the results
 // panel all work unchanged. Measurements retain their source scalar domain (D1b).
 
+import { inPlanePixelSpacing } from '../core/geometry.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
 import {
   measurementEntriesForSlice,
   nextDrawingEntryId,
   roiEntriesForSlice,
   setRoiEntriesForSlice,
 } from '../overlay/annotation-graph.js';
-import { inPlanePixelSpacing } from '../core/geometry.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
+import { hostWritesFor } from '../runtime/viewer-runtime.js';
 import { datasetSpacingMm, rawMicroscopyValueSource } from './microscopy-dataset-model.js';
 import { projectStack } from './microscopy-projection.js';
 import { computeThreshold, applyThreshold } from './microscopy-threshold.js';
@@ -56,7 +57,7 @@ export function particleObjectToEntry(object, index, id, ctx) {
 // Appends particle objects to the active slice's ROI entries. Returns the stable object ids
 // (used by the recipe operation descriptor for deterministic replay).
 export function applyParticleResults(host, series, {
-  sliceIdx, channelIndex = 0, channelName = '', timeIndex = 0, objects = [], createdAt = Date.now(), valueSource = 'raw_16bit',
+  sliceIdx, channelIndex = 0, channelName = '', timeIndex = 0, objects = [], createdAt = Date.now(), valueSource = 'raw_16bit', writes,
 } = {}) {
   const list = roiEntriesForSlice(host, series, sliceIdx).slice();
   const ids = [];
@@ -67,7 +68,7 @@ export function applyParticleResults(host, series, {
     list.push(entry);
     ids.push(entry.importedObjectId);
   });
-  setRoiEntriesForSlice(host, series, sliceIdx, list);
+  setRoiEntriesForSlice(host, series, sliceIdx, list, writes);
   return ids;
 }
 
@@ -95,18 +96,23 @@ function analysisLogForSeries(host, series) {
   return identity ? host?._microscopyAnalysisLog?.[identity] || [] : [];
 }
 
-function recordAnalysisOp(host, series, descriptor) {
-  const identity = analysisIdentity(host, series);
-  if (!identity) return;
-  if (!host._microscopyAnalysisLog) host._microscopyAnalysisLog = {};
-  (host._microscopyAnalysisLog[identity] ||= []).push(descriptor);
+function writeAnalysisMapEntry(host, mapKey, entryKey, value, writes) {
+  return hostWritesFor(host, writes)?.runtimeMapEntry?.(host, mapKey, entryKey, value) || false;
 }
 
-function setLatestResult(host, series, key, result) {
+function recordAnalysisOp(host, series, descriptor, writes) {
   const identity = analysisIdentity(host, series);
   if (!identity) return;
-  if (!host._microscopyAnalysisResults) host._microscopyAnalysisResults = {};
-  (host._microscopyAnalysisResults[identity] ||= {})[key] = { ...result, seriesPersistenceKey: identity };
+  const current = analysisLogForSeries(host, series);
+  writeAnalysisMapEntry(host, '_microscopyAnalysisLog', identity, [...current, descriptor], writes);
+}
+
+function setLatestResult(host, series, key, result, writes) {
+  const identity = analysisIdentity(host, series);
+  if (!identity) return;
+  const bucket = { ...(host?._microscopyAnalysisResults?.[identity] || {}) };
+  bucket[key] = { ...result, seriesPersistenceKey: identity };
+  writeAnalysisMapEntry(host, '_microscopyAnalysisResults', identity, bucket, writes);
 }
 
 function activeLine(host, series, sliceIdx, channelIndex, timeIndex) {
@@ -168,7 +174,7 @@ export function matchingColocalizationResult(host, series, {
 
 export function runLineProfile(host, series, {
   channelIndex = 0, timeIndex = 0, sliceIdx = 0, sampling = 'nearest', line = null,
-  createdAt = Date.now(), record = true,
+  createdAt = Date.now(), record = true, writes,
 } = {}) {
   const plane = resolveSourcePlane(host, series, { channelIndex, timeIndex, sliceIdx, projection: null });
   if (!plane) return { ok: false, reason: 'no_raw_plane' };
@@ -199,14 +205,14 @@ export function runLineProfile(host, series, {
       },
     },
   };
-  setLatestResult(host, series, 'lineProfile', { ...result, descriptor, channelName: channelName(series, channelIndex) });
-  if (record) recordAnalysisOp(host, series, descriptor);
+  setLatestResult(host, series, 'lineProfile', { ...result, descriptor, channelName: channelName(series, channelIndex) }, writes);
+  if (record) recordAnalysisOp(host, series, descriptor, writes);
   return { ...result, descriptor, objectIds: [] };
 }
 
 export function runPixelwiseColocalization(host, series, {
   channelA = 0, channelB = 1, timeIndex = 0, sliceIdx = 0,
-  thresholdA, thresholdB, createdAt = Date.now(), record = true,
+  thresholdA, thresholdB, createdAt = Date.now(), record = true, writes,
 } = {}) {
   if (Number(channelA) === Number(channelB)) return { ok: false, reason: 'same_channel' };
   const planeA = resolveSourcePlane(host, series, { channelIndex: channelA, timeIndex, sliceIdx, projection: null });
@@ -225,8 +231,8 @@ export function runPixelwiseColocalization(host, series, {
   };
   setLatestResult(host, series, 'colocalization', {
     ...result, descriptor, channelAName: channelName(series, channelA), channelBName: channelName(series, channelB),
-  });
-  if (record) recordAnalysisOp(host, series, descriptor);
+  }, writes);
+  if (record) recordAnalysisOp(host, series, descriptor, writes);
   return { ...result, descriptor, objectIds: [] };
 }
 
@@ -238,7 +244,7 @@ export function runPixelwiseColocalization(host, series, {
 export function runParticleAnalysis(host, series, config = {}) {
   const {
     channelIndex = 0, timeIndex = 0, sliceIdx = 0, channelName = '',
-    projection = null, threshold = {}, particle = {}, createdAt = Date.now(), record = true,
+    projection = null, threshold = {}, particle = {}, createdAt = Date.now(), record = true, writes,
   } = config;
   const plane = resolveSourcePlane(host, series, { channelIndex, timeIndex, sliceIdx, projection });
   if (!plane) return { ok: false, reason: 'no_raw_plane' };
@@ -256,6 +262,7 @@ export function runParticleAnalysis(host, series, config = {}) {
   const objectIds = applyParticleResults(host, series, {
     sliceIdx, channelIndex, channelName, timeIndex, objects, createdAt,
     valueSource: rawMicroscopyValueSource(series),
+    writes,
   });
 
   const log = analysisLogForSeries(host, series);
@@ -282,7 +289,7 @@ export function runParticleAnalysis(host, series, config = {}) {
     },
     outputRoiObjectIds: objectIds,
   };
-  if (record) recordAnalysisOp(host, series, descriptor);
+  if (record) recordAnalysisOp(host, series, descriptor, writes);
   return {
     ok: true, descriptor, objectIds, summary, labeledMask, mask,
     width: plane.width, height: plane.height, threshold: thr,
@@ -290,7 +297,7 @@ export function runParticleAnalysis(host, series, config = {}) {
 }
 
 // Re-runs an analysis op from its descriptor (recipe replay). Does not re-record into the log.
-export function replayAnalysisOp(host, series, descriptor, { createdAt = Date.now() } = {}) {
+export function replayAnalysisOp(host, series, descriptor, { createdAt = Date.now(), writes } = {}) {
   const p = descriptor?.params || {};
   if (descriptor?.op === 'line-profile') {
     return runLineProfile(host, series, {
@@ -301,6 +308,7 @@ export function replayAnalysisOp(host, series, descriptor, { createdAt = Date.no
       line: p.line,
       createdAt,
       record: false,
+      writes,
     });
   }
   if (descriptor?.op === 'pixelwise-colocalization') {
@@ -313,6 +321,7 @@ export function replayAnalysisOp(host, series, descriptor, { createdAt = Date.no
       thresholdB: p.thresholdB,
       createdAt,
       record: false,
+      writes,
     });
   }
   const max = p.particle?.sizeRangePx?.[1];
@@ -329,5 +338,6 @@ export function replayAnalysisOp(host, series, descriptor, { createdAt = Date.no
     },
     createdAt,
     record: false,
+    writes,
   });
 }

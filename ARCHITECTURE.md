@@ -12,6 +12,7 @@ The architecture has a deliberately strong center and a broader edge:
 
 - Browser viewer: `index.html`, `viewer.js`, and `js/` render 2D slices, MPR, 3D, overlays, measurements, compare mode, and local imports.
 - Shared geometry contract: [`js/core/geometry.js`](js/core/geometry.js) and [`python/geometry.py`](python/geometry.py) define patient-space ordering, spacing, affine construction, and compare grouping.
+- `js/core` does not import `dom`, `notify`, `shell`, `series`, `mpr`, `volume`, `overlay`, or `runtime`. ESLint enforces that closed layer.
 - Local Python tooling: converters, segmentation helpers, biomarkers, registration, and data preparation consume the same geometry contract.
 - Optional cloud pipeline: `python/modal_app.py` processes supported CT/MR volumes and calibrated projection/ultrasound jobs, then returns manifest-compatible outputs. This is the advanced engine surface, not the default viewer path.
 
@@ -19,7 +20,8 @@ The architecture has a deliberately strong center and a broader edge:
 
 ```mermaid
 graph TD
-  viewer["viewer.js"] --> state["js/core/state.js"]
+  boot["js/bootstrap.js"] --> viewer["viewer.js"]
+  viewer --> state["js/core/state.js"]
   state --> commands["js/core/state/viewer-commands.js"]
   state --> runtimeState["js/core/state/runtime-state.js"]
   viewer --> config["js/config.js"]
@@ -28,20 +30,34 @@ graph TD
   viewer --> modes["js/view-modes.js"]
   viewer --> slice["js/slice-view.js"]
   viewer --> volume3d["js/volume/volume-3d.js"]
-  viewer --> plugin["js/plugin.js"]
 
   selectSeries --> stacks["js/series/series-image-stack.js"]
   selectSeries --> session["js/runtime/viewer-session.js"]
   selectSeries --> derived["js/dicom/dicom-derived-import.js"]
   selectSeries --> error["js/core/error.js"]
+  selectSeries --> runtime["js/runtime/viewer-runtime.js"]
+  overlayKeys["js/runtime/overlay-cache-keys.js"]
+  runtime --> overlayKeys
+  fusionLoader["js/fusion-loader.js"] --> overlayKeys
+  fusionLoader --> runtime
+  fusionLoader --> overlayStack
+  overlayStack["js/overlay/overlay-stack.js"] --> overlayKeys
+  overlayStack --> runtime
+  overlayToggle["js/overlay/overlay-toggle.js"] --> overlayStack
+  overlayVolumes["js/overlay/overlay-volumes.js"] --> overlayKeys
+  isolatedHost["js/runtime/isolated-host.js"]
+  %% isolatedHost is the isolated write adapter, not a child of viewer-runtime
 
   wire --> slice
   wire --> modes
   wire --> volume3d
   wire --> mprPanel["js/wire-controls-mpr-panel.js"]
   wire --> upload["js/projects/study-upload-modal.js"]
+  wire --> consultAsk["js/consult-ask.js"]
+  wire --> askSession["js/ask-session.js"]
 
-  upload --> import["js/dicom/dicom-import.js"]
+  upload --> intake["js/intake/run-local-import.js"]
+  intake --> import["js/dicom/dicom-import.js"]
   upload --> dicomweb["js/dicom/dicomweb/dicomweb-source.js"]
   upload --> dicomsr["js/dicom/dicom-sr.js / js/dicom/dicom-sr-collect.js"]
   import --> parse["js/dicom/dicom-import-parse.js"]
@@ -61,18 +77,20 @@ graph TD
 
   volume3d --> voxels["js/volume/volume-voxels-ensure.js"]
   volume3d --> hr["js/volume/volume-hr-voxels.js"]
-  volume3d --> runtime["js/runtime/*"]
+  volume3d --> runtime
   hr --> worker
   voxels --> stacks
 
   annotation["js/overlay/annotation.js"] --> annotationGraph["js/overlay/annotation-graph.js"]
-  plugin --> state
+  consultAsk --> askSession["js/ask-session.js"]
   derived --> geometry
   derived --> annotationGraph
   modes --> state
   wire --> state
   selectSeries --> state
 ```
+
+`js/runtime/overlay-cache-keys.js` is the live overlay iterator. `js/fusion-loader.js` is a peer of overlay-stack, not a `${slug}_fusion` path. Overlay-stack and fusion-loader do not import `sync.js`. Overlay-stack ready and fusion-loader ready both fire `notifyOverlayReady` / the injected redraw from `initReactiveSync`. Fusion-loader stays deferred until a fusion peer is selected. `js/runtime/isolated-host.js` is the isolated write adapter (`isolatedHostWrites()`), not a child of viewer-runtime. Live UI uses `hostWritesFor` on viewer-runtime and does not import `writeHost*`.
 
 ## Data Flow
 
@@ -98,7 +116,7 @@ graph TD
 - `ensureVoxels()` builds the shared grayscale label-ready volume for 2D hover, MPR, and 3D. `ensureHRVoxels()` upgrades that path with raw 16-bit data when present.
 - Local microscopy imports enter that same volume contract only when the active C/T position has a complete, regular, calibrated Z stack with retained raw planes. Missing planes, gaps, or untrusted spacing keep the series 2D-only.
 - Raw 16-bit upgrades enforce fixed voxel and modeled working-set limits, bounded response streaming, exact single-frame Zstandard metadata and checksums, and decode validation before Cache Storage or viewer state is updated.
-- 2D rendering applies window/level, colormap, plugin overlays, annotations, and label overlays on the current slice only.
+- 2D rendering applies window/level, colormap, post-composite overlays ([`js/overlay/post-composite-overlays.js`](js/overlay/post-composite-overlays.js)), annotations, and label overlays on the current slice only.
 - MPR reuses the same voxel buffers and trilinear intensity sampler across orthogonal, oblique, CPU, and GPU paths. Interaction quality state defers expensive repaint work without changing interpolation semantics.
 - 3D uploads only when the underlying voxel data changed; window/level and clipping stay uniform-only updates.
 - Measurements, annotations, SEG labels, region overlays, and derived-object bindings all enter after the shared series/voxel selection step rather than inventing parallel data paths.
@@ -107,14 +125,20 @@ graph TD
 
 | State Group | Primary Writers | Primary Readers |
 |---|---|---|
-| `manifest`, `seriesIdx`, `sliceIdx` | `viewer.js` bootstraps the manifest; `js/core/state/viewer-commands.js` owns normal selection/slice changes; `js/series/remove-series.js` owns removal transitions | nearly all rendering modules |
-| `mpr.*` | `js/core/state/viewer-commands.js`; UI and rendering modules call those commands | `js/mpr/mpr-view.js`, `js/slice-view.js`, `js/mpr/mpr-gpu.js` |
+| `manifest`, `seriesIdx`, `sliceIdx` | `viewer.js` bootstraps the manifest; `js/core/state/viewer-commands.js` owns selection, slice, empty, and removal index updates. Isolated recipe/test hosts write `sliceIdx` only through `isolatedHostWrites().sliceIndex`. Live UI modules in `js/roi`, `js/microscopy`, and `js/overlay` take `hostWritesFor` / that adapter or refuse; they do not assign `host.sliceIdx` | nearly all rendering modules |
+| `mpr.*` | `js/core/state/viewer-commands.js`. Live pan/zoom/reset call `setMprViewport`. Interaction flags (`panning`, `lastX`, `moved`) stay module-local in `js/wire-controls-mpr-panel.js`, not on `state.mpr.viewports` | `js/mpr/mpr-view.js`, `js/slice-view.js`, `js/mpr/mpr-gpu.js`, `js/wire-controls-mpr-panel.js` |
 | `three.*` (serializable display settings) | `js/core/state/viewer-commands.js` | `js/volume/volume-3d.js`, clip/readout UI, render-state persistence |
 | `threeRuntime.*` (renderer objects and readiness) | `js/runtime/viewer-runtime.js` | `js/volume/volume-3d.js`, label-overlay rendering, runtime readiness modules |
-| `overlays.*` (configuration and loaded sidecars) | `js/core/state/viewer-commands.js` owns user-facing settings and selection resets; overlay/import modules hydrate bounded runtime data | `js/slice-view.js`, `js/slice-compositor.js`, `js/mpr/mpr-view.js`, `js/volume/volume-label-overlay.js` |
+| overlay enable flags (`tissue` / `labels` / `heatmap` / `useBrain` / `fusionSlug`) | `js/core/state/viewer-commands.js`. Live overlay session and paint speak persist kinds (`tissue` / `labels` / `heatmap` / `fusion`). Asset directories `seg` / `regions` / `sym` (and fusion) remain loader-boundary names. `OVERLAY_CACHE_BY_KIND` / `OVERLAY_CACHE_BY_TYPE` in `js/runtime/overlay-cache-keys.js` (derived from `RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE` in core) is the live overlay iterator: subscribe keys, snapshot imgs, series-stack writes, voxel dirty-checks, atlas-3d rebuild, capability-bit → persist-kind init, view-modes re-ensure, `activeOverlayStateForSeries`, MPR voxel source, overlay-toggle loader type, select-series / compare stack loads, compare ensure/paint, and 2D slice paint. Dual persist/dir namespaces stay. Iterator rows carry refuse/peer/sample/meta flags from that table, so overlay-stack, 2D/MPR sample, compare, and volume restore do not special-case `fusion`/`regions`/`seg` by name. `ensureOverlayStack` loads PNG stacks and writes `setOverlayStack` / `setRegionMeta`; it does not import sync, metadata, or volume-3d. Current-slice and volume-prefetch ready fire an injected redraw from sync. Table refresh and 3D label upload follow those cache writes via subscribe and overlay-volume `onReady`. Overlay-toggle writes enable flags and loader type; it does not import volume-3d. Rows with `refuseInOverlayStack` (fusion) are refused inside `ensureOverlayStack`; fusion-loader is the peer load path and uses the same table keys via `setOverlayStack` / `setOverlayVoxels`, then `notifyOverlayReady` for redraw. It is not imported at boot. | `js/overlay/overlay-toggle.js`, `js/runtime/active-overlay-state.js`, `js/fusion-loader.js`, slice / MPR / 3D paint |
+| `overlays.*` sidecars (`regionMeta`, analysis, stats) | commands own selection resets; overlay/import modules hydrate bounded runtime data | `js/slice-view.js`, `js/slice-compositor.js`, `js/mpr/mpr-view.js`, `js/volume/volume-label-overlay.js` |
 | `voxels`, `hrVoxels` | `js/volume/volume-voxels-ensure.js`, `js/volume/volume-hr-voxels.js`, cached through `js/runtime/viewer-runtime.js` | `js/slice-view.js`, `js/mpr/mpr-view.js`, `js/mpr/mpr-gpu.js`, `js/volume/volume-3d.js` |
-| local import caches (`_local*`) | `js/dicom/dicom-import.js`, `js/dicom/dicom-derived-import.js`, microscopy import/analysis adapters, `js/dicom/dicomweb/dicomweb-source.js` | `js/series/select-series.js`, volume builders, microscopy controls and analysis |
-| measurements / annotations / ask | `js/roi/measure.js`, `js/overlay/annotation.js`, `js/overlay/annotation-graph.js`, `js/consult-ask.js` | `js/slice-view.js`, side panels, DICOM SR export/report paths |
+| local import caches (`_local*`) | live viewer uses `js/runtime/viewer-runtime.js` `setLocalRuntimeMapEntry`, which writes through `setPassthroughRootEntry` so subscribers hear entry changes. Isolated recipe/test hosts patch their own maps through `isolatedHostWrites()` in `js/runtime/isolated-host.js`. Live UI modules take that adapter or refuse non-live hosts; they do not import `writeHost*` | `js/series/select-series.js`, volume builders, microscopy controls and analysis |
+| live drawings (measurements / angles / ROI / notes) | `js/core/state/viewer-commands.js` (`setMeasurementMapEntry` / `setAngleMeasurementMapEntry` / `setRoiMapEntry` / `setNoteMapEntry`) is the live source of truth. `js/overlay/annotation-graph.js` hydrates those bags from localStorage once at boot (`hydrateDrawingBags` from `viewer.js`), then live reads use the bags. Live writes go through the same setters and mirror to storage. Isolated hosts write drawing bags only through an injected `isolatedHostWrites()` adapter | `js/slice-view.js`, side panels, DICOM SR export/report paths |
+| Ask / Consult session | `js/ask-session.js` (module-local; not on the app document). `js/consult-ask.js` reads `getAskSession()` | Ask panel, cloud context |
+| `manifest.series[]` records | `js/core/state/viewer-commands.js` `patchManifestSeries` / `setManifestCollections` replace the live list slot and return that slot after replace; `patchManifestSeries` no-ops if the record is not in the live list. Overlay hints live in `state._seriesOverlayHints` keyed by `seriesIdentityKey`, not on the series object. Capability bits (`hasSeg` / `hasRegions` / `hasSym`) remain series-contract fields written through that command when the record is in the live manifest. Live ingest (`injectManifestSeries` / `injectLocalSeries` targeting `state.manifest`) replaces the list through `setManifestCollections`. Builders may still mutate records before they enter the live list. Isolated recipe/test hosts patch their own series list through `isolatedHostWrites().patchSeries` (`writeHostSeriesRecord`) | series panels, overlay loaders, desktop import, microscopy volume eligibility |
+| `manifest.projectionSets[]` | `js/core/state/viewer-commands.js` `setManifestCollections`. Live ingest (`registerProjectionSet` targeting `state.manifest`, including `injectLocalSeries` and cloud upload) copies the list then replaces it through that command. Builders may still mutate records before they enter the live list | reconstruction/import UI |
+
+`state` remains one notify proxy over the app document plus runtime buffers. Lint blocks `state.x =` outside `js/core/state/**` and `js/runtime/**`; nested bags and `_` / `cmpStacks` passthrough roots are not owned by that lint. Live series records and live `projectionSets` are replaced through `patchManifestSeries` or `setManifestCollections` rather than decorated in place. Isolated copies of those writes live only in `js/runtime/isolated-host.js`.
 
 ## Geometry Contract
 
@@ -122,6 +146,8 @@ graph TD
 - [`js/core/geometry.js`](js/core/geometry.js) and [`python/geometry.py`](python/geometry.py) are a dual implementation of that spec, not two independent sources of truth.
 - Change order is strict: update the canonical fixture first, then update the JS and Python implementations, then run `npm run check:geometry`.
 - [`scripts/check_geometry_parity.mjs`](scripts/check_geometry_parity.mjs) now enforces the shared contract surface and fails if a shared geometry function is added without a matching fixture entry.
+- Series/manifest field names, vector lengths, job-id aliases, and affine-compatibility tokens live in [`schemas/series-contract.json`](schemas/series-contract.json). [`js/series/series-contract.js`](js/series/series-contract.js) dumps that surface and uses `modalRequiredUrlFields` when trusting cloud URLs. [`python/series_contract.py`](python/series_contract.py) loads the same JSON. Incomplete projection-set records get `missingGeometry` from `projectionMissingGeometry` in [`python/modal_volumes.py`](python/modal_volumes.py). [`scripts/check_series_contract.mjs`](scripts/check_series_contract.mjs) fails on dump drift.
+- Overlay loader-dir rows (persist kind, cache slots, refuse/peer/sample/meta flags, public URL fields, output labels) live in [`schemas/overlay-contract.json`](schemas/overlay-contract.json). [`js/core/viewer-session-shape.js`](js/core/viewer-session-shape.js) dumps that surface; [`js/runtime/overlay-cache-keys.js`](js/runtime/overlay-cache-keys.js) copies it onto the live iterator. [`python/overlay_contract.py`](python/overlay_contract.py) loads the same JSON. [`scripts/check_overlay_contract.mjs`](scripts/check_overlay_contract.mjs) fails on dump drift. Dual persist/dir namespaces stay. GPU texture slot names are not part of this schema.
 
 ## Accuracy-First Rules
 
@@ -163,8 +189,9 @@ Those inputs can participate in:
 - [`js/dicom/dicom-import-parse.js`](js/dicom/dicom-import-parse.js): browser import classification and DICOM metadata normalization
 - [`js/dicom/dicomweb/dicomweb-source.js`](js/dicom/dicomweb/dicomweb-source.js): WADO-RS metadata normalization plus frame-fetch adapters for the shared import path
 - [`js/dicom/dicomweb/session-transport.js`](js/dicom/dicomweb/session-transport.js): DICOMweb frame Accept negotiation, transfer-syntax verification, and session transport policy
-- [`js/series/series-contract.js`](js/series/series-contract.js): normalized manifest/projection-set records shared by local imports and cloud results
-- [`js/series/series-capabilities.js`](js/series/series-capabilities.js): UI-facing capability gating for MPR/3D
+- [`js/series/series-contract.js`](js/series/series-contract.js): normalized manifest/projection-set records shared by local imports and cloud results; field vocabulary in [`schemas/series-contract.json`](schemas/series-contract.json)
+- [`js/core/series-capabilities.js`](js/core/series-capabilities.js): UI-facing capability gating for MPR/3D
+- [`js/core/region-meta.js`](js/core/region-meta.js): anatomy legend/name normalization shared by inspect, atlas, and mesh export
 - [`js/derived-objects.js`](js/derived-objects.js): derived-object binding contract and affine/FoR compatibility rules
 - [`js/dicom/dicom-derived-import.js`](js/dicom/dicom-derived-import.js): session-backed SEG / RTSTRUCT / VoxelLab viewer-style SR note import path plus RT Dose metadata binding, all bound to the shared geometry contract
 - [`js/mpr/mpr-geometry.js`](js/mpr/mpr-geometry.js): orthogonal MPR plane sizing and voxel mapping

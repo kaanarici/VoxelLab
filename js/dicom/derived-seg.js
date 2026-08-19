@@ -1,5 +1,7 @@
 import { state } from '../core/state.js';
+import { patchManifestSeries } from '../core/state/viewer-commands.js';
 import { setSeriesOverlayHints } from '../runtime/overlay-kinds.js';
+import { setLocalRuntimeMapEntry } from '../runtime/viewer-runtime.js';
 import { frameMetasForInstance } from './dicom-frame-meta.js';
 import { normalizeModality } from './dicom-meta.js';
 import { isCompressed } from './dicom-codecs.js';
@@ -201,16 +203,13 @@ export function attachRegionOverlay(sourceSeries, overlay) {
     mergedMeta.colors[shifted] = overlay.regionMeta.colors[label];
   }
 
-  state._localRegionMetaBySlug[sourceSeries.slug] = mergedMeta;
-  state._localRegionLabelSlicesBySlug[sourceSeries.slug] = mergedSlices;
-  state._localStacks[`${sourceSeries.slug}_regions`] = labelSlicesToImages(mergedSlices, sourceSeries.width, sourceSeries.height);
+  setLocalRuntimeMapEntry('_localRegionMetaBySlug', sourceSeries.slug, mergedMeta);
+  setLocalRuntimeMapEntry('_localRegionLabelSlicesBySlug', sourceSeries.slug, mergedSlices);
+  setLocalRuntimeMapEntry('_localStacks', `${sourceSeries.slug}_regions`, labelSlicesToImages(mergedSlices, sourceSeries.width, sourceSeries.height));
   setSeriesOverlayHints(sourceSeries, {
-    labels: {
-      source: overlay.overlaySource || (overlay.kind === 'seg' ? 'dicom-seg' : 'local-regions'),
-      legacyKinds: [overlay.legacySlot || 'regions', overlay.kind],
-    },
+    labels: { available: true },
   });
-  sourceSeries.hasRegions = true;
+  patchManifestSeries(sourceSeries, { hasRegions: true });
   return { count: Object.keys(overlay.regionMeta.regions).length };
 }
 
@@ -306,8 +305,6 @@ export function buildSegOverlayImport(dataset, sourceSeries) {
   return {
     kind: 'seg',
     overlayKind: 'labels',
-    legacySlot: 'regions',
-    overlaySource: 'dicom-seg',
     name: String(meta.SeriesDescription || meta.SeriesInstanceUID || 'SEG import'),
     labelSlices,
     regionMeta: buildRegionMeta(sourceSeries, segments.filter((segment) => segment.voxelCount > 0)),

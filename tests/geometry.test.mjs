@@ -25,6 +25,8 @@ const {
   sliceNormalFromIOP,
   sliceSpacingStatsFromPositions,
   sortDatasetsSpatially,
+  volumeDisplayExtents,
+  volumeDisplayScale,
 } = await import('../js/core/geometry.js');
 const { geometryFromSeries } = await import('../js/core/geometry.js');
 const { geometryFromDicomMetas } = await import('../js/core/geometry.js');
@@ -82,9 +84,11 @@ for (const caseData of FIXTURE.sharedContract.norm3) {
   });
 }
 
-test('numberList preserves DICOM-style numeric coercion for arrays and multi-value strings', () => {
-  assert.deepEqual(numberList(['1', 'bad', 2, '', null]), [1, 2, 0, 0]);
-  assert.deepEqual(numberList('1\\bad\\2\\\\3', 3), [1, 2, 0, 3]);
+test('numberList fail-closes on empty or non-numeric DICOM tokens', () => {
+  assert.deepEqual(numberList(['1', '2', 3]), [1, 2, 3]);
+  assert.deepEqual(numberList('1\\2\\3', 3), [1, 2, 3]);
+  assert.deepEqual(numberList(['1', 'bad', 2, '', null]), []);
+  assert.deepEqual(numberList('1\\bad\\2\\\\3', 3), []);
   assert.deepEqual(numberList([1, 2], 3), []);
   assert.deepEqual(numberList({ bad: true }), []);
 });
@@ -161,6 +165,12 @@ for (const caseData of FIXTURE.sharedContract.buildGeometryRecord) {
   });
 }
 
+for (const caseData of FIXTURE.sharedContract.isOrthonormalImagePlane) {
+  test(`geometry contract: isOrthonormalImagePlane/${caseData.id}`, () => {
+    assert.equal(isOrthonormalImagePlane(caseData.iop), caseData.expected);
+  });
+}
+
 for (const caseData of FIXTURE.browserOnlyContract.patientLpsToVoxel) {
   test(`geometry browser contract: patientLpsToVoxel/${caseData.id}`, () => {
     approxList(patientLpsToVoxel(caseData.series, caseData.point), caseData.expected);
@@ -227,4 +237,25 @@ test('isDecodable returns true for lossless and uncompressed, false for lossy-di
   assert.equal(isDecodable('1.2.840.10008.1.2.4.81'), true);
   assert.equal(isDecodable('1.2.840.10008.1.2.4.50'), false);
   assert.equal(isDecodable('1.2.840.10008.1.2.4.100'), false);
+});
+
+test('volumeDisplayScale matches geometryFromSeries physical extents', () => {
+  const series = {
+    width: 4,
+    height: 8,
+    slices: 2,
+    pixelSpacing: [2, 0.5],
+    sliceSpacing: 3,
+    orientation: [1, 0, 0, 0, 1, 0],
+    firstIPP: [0, 0, 0],
+    lastIPP: [0, 0, 3],
+  };
+  const extents = volumeDisplayExtents(series);
+  const geo = geometryFromSeries(series);
+  assert.equal(extents.x, 4 * geo.colSpacing);
+  assert.equal(extents.y, 8 * geo.rowSpacing);
+  assert.equal(extents.z, 2 * geo.sliceSpacing);
+  const scale = volumeDisplayScale(series);
+  const longest = Math.max(extents.x, extents.y, extents.z);
+  assert.deepEqual(scale, [extents.x / longest, extents.y / longest, extents.z / longest]);
 });

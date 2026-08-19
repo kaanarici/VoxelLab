@@ -117,7 +117,7 @@ function render() {
     pillCenterY: it.y,
     colW,
     locked: locked.has(it.label),
-    tip: volumeTip(series, state.regionMeta, it.label),
+    tip: volumeTip(series, state.overlays.regionMeta, it.label),
   }));
   renderAtlasPills(svg, items, items.length ? anatomyBadge(series) : '', w, h);
 }

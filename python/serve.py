@@ -49,40 +49,13 @@ import microscopy_routes as _microscopy_routes
 import security_http as _security_http
 import server_config as _server_config
 from ai_runtime import public_ai_status
+from host_policy import STATIC_PACKAGE_PATHS, STATIC_ROOT_DIRECTORIES, STATIC_ROOT_FILES
 from microscopy_convert import SUPPORTED_EXTENSIONS as SUPPORTED_CONVERT_EXTENSIONS
 from runtime_env import overlay_env
 
 
 ROOT = _server_config.ROOT
 DATA = _server_config.DATA
-
-STATIC_ROOT_FILES = frozenset({
-    "config.json",
-    "config.local.json",
-    "favicon.svg",
-    "icons.svg",
-    "index.html",
-    "sw.js",
-    "viewer.js",
-})
-STATIC_ROOT_DIRECTORIES = ("css", "data", "js", "templates")
-STATIC_PACKAGE_PATHS = (
-    "node_modules/@cornerstonejs/codec-charls/dist/",
-    "node_modules/@cornerstonejs/codec-openjpeg/dist/",
-    "node_modules/dcmjs/build/dcmjs.es.js",
-    "node_modules/fzstd/esm/index.mjs",
-    "node_modules/onnxruntime-web/dist/esm/ort.min.js",
-    "node_modules/onnxruntime-web/dist/ort-training-wasm-simd.wasm",
-    "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm",
-    "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
-    "node_modules/onnxruntime-web/dist/ort-wasm-simd.jsep.wasm",
-    "node_modules/onnxruntime-web/dist/ort-wasm-simd.wasm",
-    "node_modules/onnxruntime-web/dist/ort-wasm-threaded.wasm",
-    "node_modules/onnxruntime-web/dist/ort-wasm.wasm",
-    "node_modules/pako/dist/pako.esm.mjs",
-    "node_modules/three/build/three.module.js",
-    "node_modules/three/examples/jsm/controls/TrackballControls.js",
-)
 TRACKBALL_CONTROLS_PATH = "/node_modules/three/examples/jsm/controls/TrackballControls.js"
 
 

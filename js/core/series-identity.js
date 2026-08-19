@@ -55,7 +55,7 @@ function microscopyPersistenceGrid(series) {
 // across imported studies. Keep this descriptor deliberately limited to fields
 // that describe the selected source and its pixel grid so it is stable across
 // viewer sessions while separating otherwise similarly named series.
-export function seriesPersistenceFingerprint(series, manifest = {}) {
+function seriesPersistenceFingerprint(series, manifest = {}) {
   if (!series?.slug) return '';
   const source = series.microscopyDataset?.source || {};
   const payload = {

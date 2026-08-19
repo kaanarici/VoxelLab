@@ -26,7 +26,7 @@ test('removeSeriesFromViewer clears selected runtime data and forgets its deskto
   const originalVolumeCache = state._seriesVolumeCacheEntries;
   const originalRawOrder = state._localRawVolumeOrder;
   const originalSelectRequestId = state.selectRequestId;
-  const originalFusionSlug = state.fusionSlug;
+  const originalFusionSlug = state.overlays.fusionSlug;
   const originalFusionImgs = state.fusionImgs;
   const originalFusionVoxels = state.fusionVoxels;
   const originalDesktop = globalThis.voxellabDesktop;
@@ -48,7 +48,7 @@ test('removeSeriesFromViewer clears selected runtime data and forgets its deskto
     state._localRawVolumes[removed.slug] = new Float32Array(8);
     state._localRawVolumeOrder = [removed.slug];
     state._seriesVolumeCacheEntries = [{ slug: removed.slug }, { slug: retained.slug }];
-    state.fusionSlug = removed.slug;
+    state.overlays.fusionSlug = removed.slug;
     state.fusionImgs = [{ complete: true }];
     state.fusionVoxels = new Uint8Array(8);
     globalThis.voxellabDesktop = {
@@ -72,7 +72,7 @@ test('removeSeriesFromViewer clears selected runtime data and forgets its deskto
     assert.equal(state._localRawVolumes[removed.slug], undefined);
     assert.deepEqual(state._localRawVolumeOrder, []);
     assert.deepEqual(state._seriesVolumeCacheEntries.map(item => item.slug), [retained.slug]);
-    assert.equal(state.fusionSlug, null);
+    assert.equal(state.overlays.fusionSlug, null);
     assert.equal(state.fusionImgs, null);
     assert.equal(state.fusionVoxels, null);
     assert.deepEqual(forgotten, [['import-0123456789abcdef01234567']]);
@@ -84,7 +84,7 @@ test('removeSeriesFromViewer clears selected runtime data and forgets its deskto
     state._seriesVolumeCacheEntries = originalVolumeCache;
     state._localRawVolumeOrder = originalRawOrder;
     state.selectRequestId = originalSelectRequestId;
-    state.fusionSlug = originalFusionSlug;
+    state.overlays.fusionSlug = originalFusionSlug;
     state.fusionImgs = originalFusionImgs;
     state.fusionVoxels = originalFusionVoxels;
     delete state._localStacks[removed.slug];

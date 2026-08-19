@@ -29,12 +29,12 @@ export function wireVolumeClipControls() {
   bindRange('s-ymin', value => setClipAxis('min', 1, value));
   bindRange('s-ymax', value => setClipAxis('max', 1, value));
   bindRange('s-clip-plane-depth', depth => setObliqueClip({ depth }));
-  bindFiniteNumber('s-clip-plane-yaw', yaw => setObliqueAngles({ yaw }), () => state.obYaw);
-  bindFiniteNumber('s-clip-plane-pitch', pitch => setObliqueAngles({ pitch }), () => state.obPitch);
+  bindFiniteNumber('s-clip-plane-yaw', yaw => setObliqueAngles({ yaw }), () => state.mpr.obYaw);
+  bindFiniteNumber('s-clip-plane-pitch', pitch => setObliqueAngles({ pitch }), () => state.mpr.obPitch);
 
   const enabled = $('s-clip-plane-enabled');
   const syncDependentState = () => {
-    const planeActive = !!state.clipPlaneEnabled;
+    const planeActive = !!state.three.clipPlaneEnabled;
     const depth = $('s-clip-plane-depth');
     const invert = $('s-clip-plane-invert');
     if (depth) depth.disabled = !planeActive;
@@ -52,9 +52,9 @@ export function wireVolumeClipControls() {
   });
 
   setObliqueClip({
-    enabled: state.clipPlaneEnabled,
-    depth: state.clipPlaneDepth,
-    invert: state.clipPlaneInvert,
+    enabled: state.three.clipPlaneEnabled,
+    depth: state.three.clipPlaneDepth,
+    invert: state.three.clipPlaneInvert,
   });
   syncDependentState();
 }

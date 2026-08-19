@@ -1,6 +1,6 @@
 import { state } from '../core/state.js';
 import { listDerivedRegistryEntriesForSeriesWithSkipped } from '../derived-objects.js';
-import { sourceSeriesDerivedState } from './derived-common.js';
+import { replaceLocalDerivedBucket, setLocalRuntimeMapEntry } from '../runtime/viewer-runtime.js';
 import { attachRegionOverlay, deserializeSegPayload } from './derived-seg.js';
 
 function hydrateSegEntries(sourceSeries, entries) {
@@ -12,8 +12,6 @@ function hydrateSegEntries(sourceSeries, entries) {
     attachRegionOverlay(sourceSeries, {
       kind: 'seg',
       overlayKind: 'labels',
-      legacySlot: 'regions',
-      overlaySource: 'dicom-seg',
       name: entry.name,
       labelSlices: overlay.labelSlices,
       regionMeta: overlay.regionMeta,
@@ -24,23 +22,23 @@ function hydrateSegEntries(sourceSeries, entries) {
 function hydrateRtDoseEntries(sourceSeries, entries) {
   const doseEntries = entries.filter((entry) => entry?.binding?.derivedKind === 'rtdose' && entry?.payload?.format === 'rtdose-summary-v1');
   if (!doseEntries.length) return;
-  state._localRtDoseBySlug[sourceSeries.slug] = doseEntries.map((entry) => ({
+  setLocalRuntimeMapEntry('_localRtDoseBySlug', sourceSeries.slug, doseEntries.map((entry) => ({
     objectUID: entry.objectUID,
     name: entry.name,
     summary: entry.payload,
-  }));
+  })));
 }
 
 export function hydrateDerivedStateForSeries(sourceSeries) {
   const { entries, skipped } = listDerivedRegistryEntriesForSeriesWithSkipped(sourceSeries);
-  const derivedState = sourceSeriesDerivedState(sourceSeries);
-  for (const key of Object.keys(derivedState)) delete derivedState[key];
+  const next = {};
   for (const entry of entries) {
-    derivedState[entry.objectUID] = {
+    next[entry.objectUID] = {
       kind: entry.binding.derivedKind,
       name: entry.name,
     };
   }
+  replaceLocalDerivedBucket(sourceSeries.slug, next);
   hydrateSegEntries(sourceSeries, entries);
   hydrateRtDoseEntries(sourceSeries, entries);
   entries.skipped = skipped;

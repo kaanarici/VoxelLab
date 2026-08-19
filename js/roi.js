@@ -31,11 +31,12 @@ import {
 //   · for DWI ADC: the same stats translated to physical ADC
 //     (×10⁻³ mm²/s) using the series stats sidecar
 //
-// ROIs persist in localStorage per selected-series fingerprint and slice so
-// they survive reloads without crossing identically named studies.
+// Live ROI bags are owned by viewer-commands (`setRoiMapEntry`) via
+// annotation-graph. That module hydrates from localStorage at boot and
+// mirrors live writes; isolated hosts pass `isolatedHostWrites()`.
 //
-// The module exposes a small public API the host page wires up:
-//   · initROI(deps)          — pass the state + helper functions it needs
+// Tool surface:
+//   · initROI(deps)          — redraw/notify callbacks for this tool
 //   · toggleROI('ellipse'|'polygon'|'point')  — flip into the tool
 //   · drawROIs(svg, ...)     — render all current-slice ROIs into an
 //                              existing SVG element
@@ -47,7 +48,7 @@ const NS = 'http://www.w3.org/2000/svg';
 
 // Internal state. Cleared on module load so a stale "pending" ROI can't
 // survive a refresh.
-const state = {
+const roiState = {
   mode:      null,     // null | 'ellipse' | 'polygon' | 'point'
   pending:   null,     // in-progress shape being drawn
   deps:      null,     // injected host dependencies
@@ -55,16 +56,16 @@ const state = {
 
 // ---------- persistence ----------
 function listHere() {
-  const { state: host } = state.deps;
+  const { state: host } = roiState.deps;
   return roiEntriesForSlice(host, host.manifest.series[host.seriesIdx], host.sliceIdx);
 }
 function setHere(list) {
-  const { state: host } = state.deps;
+  const { state: host } = roiState.deps;
   setRoiEntriesForSlice(host, host.manifest.series[host.seriesIdx], host.sliceIdx, list);
 }
 
 function currentMicroscopyScope() {
-  const { state: host } = state.deps;
+  const { state: host } = roiState.deps;
   const series = host.manifest.series[host.seriesIdx];
   if (series?.imageDomain !== 'microscopy') return null;
   return {
@@ -94,7 +95,7 @@ function sameMicroscopyScope(roi, scope) {
 // PNG data. This is the same display-domain source the hover readout
 // uses. Only the ADC branch below converts back into physical units.
 function computeStats(pts, roiKind) {
-  const { state: host, getRawSliceData } = state.deps;
+  const { state: host, getRawSliceData } = roiState.deps;
   const series = host.manifest.series[host.seriesIdx];
   if (roiKind === 'polyline') {
     const spacing = inPlanePixelSpacing(series);
@@ -201,8 +202,8 @@ function computeStats(pts, roiKind) {
   // Physical ADC translation if we're on DWI ADC and the rescale info
   // is available. Use the hrVoxels if present (more precise); otherwise
   // skip — the 8-bit path is too lossy for a meaningful ADC number.
-  if (series.slug === 'dwi_adc' && host.stats && host.stats.adc && host.hrVoxels) {
-    const adc = host.stats.adc;
+  if (series.slug === 'dwi_adc' && host.overlays.stats && host.overlays.stats.adc && host.hrVoxels) {
+    const adc = host.overlays.stats.adc;
     const hr = host.hrVoxels;
     let hsum = 0, hsum2 = 0, hn = 0, hmin = Infinity, hmax = -Infinity;
     const z = host.sliceIdx;
@@ -242,8 +243,8 @@ export function drawROIs(svg) {
   list.forEach((roi, i) => renderOne(svg, roi, i));
 
   // Live preview of an in-progress shape
-  if (state.pending) {
-    renderPending(svg, state.pending);
+  if (roiState.pending) {
+    renderPending(svg, roiState.pending);
   }
 }
 
@@ -300,7 +301,7 @@ function renderOne(svg, roi, i) {
     const length = Number.isFinite(s.length_mm) ? `${s.length_mm.toFixed(2)} mm` : `${Number(s.length_px || 0).toFixed(1)} px`;
     line += ` · ${length}`;
   }
-  if (Number.isFinite(s.area_mm2)) line += ` · ${formatAreaFromMm2(s.area_mm2, state.deps.state.manifest.series[state.deps.state.seriesIdx])}`;
+  if (Number.isFinite(s.area_mm2)) line += ` · ${formatAreaFromMm2(s.area_mm2, roiState.deps.state.manifest.series[roiState.deps.state.seriesIdx])}`;
   if (s.adc) {
     line += ` · ${s.adc.mean.toFixed(2)} ±${s.adc.std.toFixed(2)} ×10⁻³ mm²/s`;
   } else if (Number.isFinite(s.mean) && Number.isFinite(s.std)) {
@@ -342,7 +343,7 @@ function renderOne(svg, roi, i) {
     if (next.length !== cur.length) {
       setHere(next);
       drawROIs(svg);
-      state.deps.onROIChange?.();
+      roiState.deps.onROIChange?.();
     }
   });
   g.appendChild(hit);
@@ -382,82 +383,82 @@ function renderPending(svg, pending) {
 
 // ---------- tool activation ----------
 export function initROI(deps) {
-  state.deps = deps;
+  roiState.deps = deps;
 }
 
 export function toggleROI(mode) {
-  if (state.deps?.state?.mode !== '2d' && state.mode !== mode) return state.mode;
-  if (state.mode === mode) {
-    state.mode = null;
-    state.pending = null;
+  if (roiState.deps?.state?.mode !== '2d' && roiState.mode !== mode) return roiState.mode;
+  if (roiState.mode === mode) {
+    roiState.mode = null;
+    roiState.pending = null;
   } else {
-    state.mode = mode;
-    state.pending = null;
+    roiState.mode = mode;
+    roiState.pending = null;
   }
-  if (state.mode) void ensureCtHuVolume();
-  state.deps.onROIChange?.();
-  return state.mode;
+  if (roiState.mode) void ensureCtHuVolume();
+  roiState.deps.onROIChange?.();
+  return roiState.mode;
 }
 
 export function clearROIMode() {
-  state.mode = null;
-  state.pending = null;
-  state.deps?.onROIChange?.();
-  return state.mode;
+  roiState.mode = null;
+  roiState.pending = null;
+  roiState.deps?.onROIChange?.();
+  return roiState.mode;
 }
 
 export function isROIMode() {
-  return state.mode !== null;
+  return roiState.mode !== null;
 }
 
 export function currentROIMode() {
-  return state.mode;
+  return roiState.mode;
 }
 
 export function cancelROI() {
-  state.pending = null;
-  state.deps.onROIChange?.();
+  roiState.pending = null;
+  roiState.deps.onROIChange?.();
 }
 
 // Mouse-down handler for the canvas. Expected to be called from the host
 // page's unified pointer dispatch. Coordinates should already be in the
 // canvas's native pixel space.
 export function onROIDown(px, py) {
-  if (!state.mode) return;
+  if (!roiState.mode) return;
 
-  if (state.mode === 'ellipse') {
-    if (!state.pending) {
-      state.pending = { "shape": 'ellipse', pts: [[px, py], [px, py]] };
+  if (roiState.mode === 'ellipse') {
+    if (!roiState.pending) {
+      roiState.pending = { "shape": 'ellipse', pts: [[px, py], [px, py]] };
     } else {
       // Second click finalizes
-      state.pending.pts[1] = [px, py];
+      roiState.pending.pts[1] = [px, py];
       finalize();
     }
-  } else if (state.mode === 'polygon') {
-    if (!state.pending) {
-      state.pending = { "shape": 'polygon', pts: [[px, py]] };
+  } else if (roiState.mode === 'polygon') {
+    if (!roiState.pending) {
+      roiState.pending = { "shape": 'polygon', pts: [[px, py]] };
     } else {
-      state.pending.pts.push([px, py]);
+      roiState.pending.pts.push([px, py]);
     }
-  } else if (state.mode === 'point') {
+  } else if (roiState.mode === 'point') {
     appendPointCount(px, py);
     return;
   }
-  state.deps.onROIChange?.();
+  roiState.deps.onROIChange?.();
 }
 
 export function onROIMove(px, py) {
-  if (!state.pending) return false;
-  if (state.mode === 'ellipse') {
-    state.pending.pts[1] = [px, py];
+  if (!roiState.pending) return false;
+  if (roiState.mode === 'ellipse') {
+    roiState.pending.pts[1] = [px, py];
     return true;
   }
   return false;
 }
 
 export function finalizePolygonROI() {
-  if (!state.pending || state.mode !== 'polygon') return;
-  if (state.pending.pts.length < 3) { state.pending = null; state.deps.onROIChange?.(); return; }
+  if (!roiState.pending || roiState.mode !== 'polygon') return;
+  if (roiState.pending.pts.length < 3) { roiState.pending = null; roiState.deps.onROIChange?.(); return; }
   finalize();
 }
 
@@ -465,7 +466,7 @@ export function finalizePolygonROI() {
 // loaded yet, so pull it in on demand (cached + shared with 3D/MPR). Taking a
 // measurement also lights up the hover HU readout, which reads the same volume.
 async function ensureCtHuVolume() {
-  const host = state.deps?.state;
+  const host = roiState.deps?.state;
   const series = host?.manifest?.series?.[host.seriesIdx];
   if (!series || series.modality !== 'CT' || (!series.hasRaw && !series.rawUrl)) return;
   if (host.hrVoxels?.length === series.width * series.height * series.slices) return;
@@ -474,12 +475,12 @@ async function ensureCtHuVolume() {
 }
 
 async function finalize() {
-  if (!state.pending) return;
-  const { pts, "shape": roiKind } = state.pending;
+  if (!roiState.pending) return;
+  const { pts, "shape": roiKind } = roiState.pending;
   await ensureCtHuVolume();
-  if (!state.pending) return; // cancelled while the volume loaded
+  if (!roiState.pending) return; // cancelled while the volume loaded
   const stats = computeStats(pts, roiKind);
-  if (!stats) { state.pending = null; state.deps.onROIChange?.(); return; }
+  if (!stats) { roiState.pending = null; roiState.deps.onROIChange?.(); return; }
   const list = listHere();
   list.push({
     id:    nextDrawingEntryId(list),
@@ -490,8 +491,8 @@ async function finalize() {
     createdAt: Date.now(),
   });
   setHere(list);
-  state.pending = null;
-  state.deps.onROIChange?.();
+  roiState.pending = null;
+  roiState.deps.onROIChange?.();
 }
 
 function appendPointCount(px, py) {
@@ -525,8 +526,8 @@ function appendPointCount(px, py) {
     });
   }
   setHere(list);
-  state.pending = null;
-  state.deps.onROIChange?.();
+  roiState.pending = null;
+  roiState.deps.onROIChange?.();
 }
 
 // Re-compute stats for every ROI on the current slice. Used when the
@@ -543,7 +544,7 @@ export function refreshROIStatsHere() {
 
 // Total count across all slices of the current series (for sidebar).
 export function countROIs() {
-  const { state: host } = state.deps;
+  const { state: host } = roiState.deps;
   if (!host || !host.manifest) return 0;
   const series = host.manifest.series[host.seriesIdx];
   return drawingEntriesForSeries(host, series)

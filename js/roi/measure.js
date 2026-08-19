@@ -12,12 +12,16 @@ import { inPlanePixelSpacing } from '../core/geometry.js';
 import { formatLengthFromMm } from '../core/physical-units.js';
 import { updateScaleBar } from '../overlay/scale-bar.js';
 import { state } from '../core/state.js';
+import { getAskSession } from '../ask-session.js';
 import { drawROIs } from '../roi.js';
 import { notify } from '../notify.js';
-import { measurementEntriesForSlice } from '../overlay/annotation-graph.js';
 import {
-  appendMeasurement,
-  deleteMeasurementAt,
+  deleteDrawingEntryById,
+  measurementEntriesForSlice,
+  nextDrawingEntryId,
+  setMeasurementEntriesForSlice,
+} from '../overlay/annotation-graph.js';
+import {
   setMeasureMode,
   setMeasurePending,
 } from '../core/state/viewer-tool-commands.js';
@@ -27,6 +31,36 @@ import { renderRoiResults } from './roi-results.js';
 export function measureKey() {
   const slug = state.manifest.series[state.seriesIdx]?.slug || '';
   return `${slug}|${state.sliceIdx}`;
+}
+
+function parseSliceKey(key) {
+  const [slug = '', slicePart = '0'] = String(key || '').split('|');
+  return { slug, sliceIdx: Number(slicePart || 0) };
+}
+
+function drawingTarget(slug) {
+  const series = state.manifest?.series?.[state.seriesIdx];
+  return series?.slug === slug ? series : slug;
+}
+
+export function appendMeasurement(key, measurement) {
+  const { slug, sliceIdx } = parseSliceKey(key);
+  const target = drawingTarget(slug);
+  const list = measurementEntriesForSlice(state, target, sliceIdx);
+  // Shape: { id: 3, x1: 10, y1: 20, x2: 40, y2: 20, mm: 12.4 }.
+  const { _new, ...persisted } = measurement || {};
+  const next = [...list, { ...persisted, id: persisted?.id ?? nextDrawingEntryId(list) }];
+  return setMeasurementEntriesForSlice(state, target, sliceIdx, next);
+}
+
+export function deleteMeasurementAt(key, measurement) {
+  const { slug, sliceIdx } = parseSliceKey(key);
+  const target = drawingTarget(slug);
+  const list = measurementEntriesForSlice(state, target, sliceIdx);
+  const next = measurement?.id != null
+    ? deleteDrawingEntryById(list, measurement.id)
+    : list.filter((entry) => entry !== measurement);
+  setMeasurementEntriesForSlice(state, target, sliceIdx, next);
 }
 
 function measurementsHere() {
@@ -229,8 +263,8 @@ export function drawMeasurements() {
   updateScaleBar();
 
   // Ask tool: dashed marquee while dragging a region (screengrab-style)
-  if (state.askMode && state.askMarquee) {
-    const m = state.askMarquee;
+  if (getAskSession().mode && getAskSession().marquee) {
+    const m = getAskSession().marquee;
     const lx = Math.min(m.x0, m.x1);
     const ly = Math.min(m.y0, m.y1);
     const rw = Math.abs(m.x1 - m.x0);

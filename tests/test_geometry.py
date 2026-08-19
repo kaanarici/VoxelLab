@@ -10,6 +10,7 @@ from geometry import (
     compare_group_key,
     cross3,
     dot3,
+    is_orthonormal_image_plane,
     norm3,
     normalize3,
     ipp_projection,
@@ -117,3 +118,8 @@ def test_geometry_contract_build_geometry_record() -> None:
         )
 
         _assert_geometry_record(record, case["expected"])
+
+
+def test_geometry_contract_is_orthonormal_image_plane() -> None:
+    for case in FIXTURE["sharedContract"]["isOrthonormalImagePlane"]:
+        assert is_orthonormal_image_plane(case["iop"]) is case["expected"]

@@ -1,4 +1,4 @@
-  import { initHorizontalScrollFades } from '../core/horizontal-scroll-fades.js';
+  import { initHorizontalScrollFades } from './horizontal-scroll-fades.js';
 
   /* Mobile shell: sidebars become viewport overlays and the bottom toolbar's
      tool rail (everything after the cine separator) becomes horizontally

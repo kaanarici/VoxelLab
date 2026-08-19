@@ -4,20 +4,21 @@ import { URL } from 'node:url';
 
 globalThis.location = new URL('http://127.0.0.1/');
 
-const { state } = await import('../js/core/state.js');
+const { state, subscribe } = await import('../js/core/state.js');
 const {
   applyViewerPreset,
   beginSeriesSelection,
   finishSeriesSelection,
   hydrateSeriesSidecars,
-  hydrateSeriesStacks,
   initializeSeriesViewState,
   isSeriesSelectionCurrent,
   nudgeMprAxis,
+  patchManifestSeries,
   resetCompareViewport,
   setMprGpuEnabled,
   setMprProjection,
   setMprViewport,
+  getMprViewport,
   setCompareViewport,
   setAnalysis,
   setAnalysisBusy,
@@ -25,20 +26,32 @@ const {
   setColormap,
   setClipAxis,
   setFitZoom,
+  setMeasurementMapEntry,
   setMprPosition,
+  setNoteMapEntry,
   setObliqueAngles,
   setObliqueClip,
   setOverlayEnabled,
   setRenderMode,
   resetMprViewport,
+  setRoiMapEntry,
+  setSeriesDesktopImportId,
   setSliceIndex,
+  setViewMode,
   setVolumeTransfer,
   setWindowLevel,
   syncMprSliceIndex,
   syncSeriesIdxForActiveSlug,
 } = await import('../js/core/state/viewer-commands.js');
 const { beginViewerRuntimeSession } = await import('../js/runtime/viewer-session.js');
-const { stashRuntimeVolumeCache } = await import('../js/runtime/viewer-runtime.js');
+const { setSeriesImageStacks, stashRuntimeVolumeCache, transitionVolumeCaches } = await import('../js/runtime/viewer-runtime.js');
+const { writeHostSeriesRecord } = await import('../js/runtime/isolated-host.js');
+const { getAskSession, setAskHistory } = await import('../js/ask-session.js');
+
+function selectWithCaches(index, opts) {
+  const previous = state.manifest?.series?.[state.seriesIdx] || null;
+  return transitionVolumeCaches(previous, () => beginSeriesSelection(index, opts));
+}
 
 function volumeSeries(slug, slices = 8) {
   return {
@@ -72,6 +85,147 @@ test('setSliceIndex clamps against the active series bounds', () => {
   assert.equal(state.sliceIdx, 0);
 });
 
+test('setSliceIndex in 3D clips the volume to the review slice', () => {
+  state.manifest = { series: [{ slug: 'cmd_slice_3d', slices: 3 }] };
+  state.seriesIdx = 0;
+  state.sliceIdx = 1;
+  state.three.clipMin = [0, 0, 0];
+  state.three.clipMax = [1, 1, 1];
+  setViewMode('3d');
+  assert.equal(state.sliceIdx, 1);
+  assert.equal(state.three.clipMax[2], 1);
+  assert.equal(setSliceIndex(1), 1);
+  assert.equal(state.sliceIdx, 1);
+  assert.equal(state.three.clipMax[2], 2 / 3);
+  setClipAxis('max', 2, 1 / 3);
+  assert.equal(state.sliceIdx, 0);
+  setViewMode('2d');
+});
+
+test('setMeasurementMapEntry writes the live measurements bag through commands', () => {
+  setMeasurementMapEntry('["measure",0]', [{ id: 1, x1: 0, y1: 0, x2: 2, y2: 2 }]);
+  assert.equal(state.measurements['["measure",0]'][0].id, 1);
+  setMeasurementMapEntry('["measure",0]', []);
+  assert.equal(state.measurements['["measure",0]'], undefined);
+});
+
+test('setRoiMapEntry and setNoteMapEntry write the live drawing bags through commands', () => {
+  setRoiMapEntry('["roi",0]', [{ id: 2, "shape": 'point', pts: [[1, 1]] }]);
+  setNoteMapEntry('["note",0]', [{ id: 3, x: 4, y: 5, text: 'pin' }]);
+  assert.equal(state.rois['["roi",0]'][0].id, 2);
+  assert.equal(state.notes['["note",0]'][0].text, 'pin');
+  setRoiMapEntry('["roi",0]', []);
+  setNoteMapEntry('["note",0]', []);
+  assert.equal(state.rois['["roi",0]'], undefined);
+  assert.equal(state.notes['["note",0]'], undefined);
+});
+
+test('patchManifestSeries replaces the live series record instead of mutating it', () => {
+  const original = { slug: 'cmd_series_patch', hasRegions: false };
+  state.manifest = { series: [original] };
+  state.seriesIdx = 0;
+  const seen = [];
+  const off = subscribe('manifest.series', (value) => seen.push(value.length));
+
+  const next = patchManifestSeries(original, { hasRegions: true, _desktopImportId: 'import-1' });
+
+  off();
+  assert.equal(original.hasRegions, false);
+  assert.equal(original._desktopImportId, undefined);
+  assert.notEqual(next, original);
+  assert.equal(next.hasRegions, true);
+  assert.equal(next._desktopImportId, 'import-1');
+  assert.notEqual(state.manifest.series[0], original);
+  assert.equal(state.manifest.series[0], next);
+  assert.equal(state.manifest.series.indexOf(next), 0);
+  assert.equal(state.manifest.series[0].hasRegions, true);
+  assert.equal(state.manifest.series[0]._desktopImportId, 'import-1');
+  assert.deepEqual(seen, [1]);
+});
+
+test('patchManifestSeries no-ops when the series is not in the live list', () => {
+  const orphan = {
+    slug: 'cmd_orphan',
+    hasRegions: false,
+    microscopy: { channelIndex: 0, composite: { enabled: false, channels: [true, true] } },
+  };
+  state.manifest = { series: [{ slug: 'cmd_live', hasRegions: false }] };
+
+  const next = patchManifestSeries(orphan, { hasRegions: true, microscopy: { channelIndex: 1 } });
+
+  assert.equal(next, null);
+  assert.equal(orphan.hasRegions, false);
+  assert.equal(orphan.microscopy.channelIndex, 0);
+  assert.equal(state.manifest.series[0].hasRegions, false);
+});
+
+test('patchManifestSeries empty patch returns the live list slot and null on miss', () => {
+  const live = { slug: 'cmd_empty_live', hasRegions: false };
+  const orphan = { slug: 'cmd_empty_orphan', hasRegions: false };
+  state.manifest = { series: [live] };
+  const slot = state.manifest.series[0];
+
+  assert.equal(patchManifestSeries(live, {}), slot);
+  assert.equal(patchManifestSeries(0, {}), slot);
+  assert.equal(patchManifestSeries(orphan, {}), null);
+  assert.equal(patchManifestSeries(orphan), null);
+  assert.equal(patchManifestSeries(9, {}), null);
+  assert.equal(state.manifest.series[0], slot);
+});
+
+test('patchManifestSeries deep-merges nested microscopy without dropping channel lists', () => {
+  const original = {
+    slug: 'cmd_microscopy_merge',
+    microscopy: {
+      channelIndex: 0,
+      channelName: 'DAPI',
+      timeIndex: 0,
+      volumeEligible: true,
+      composite: { enabled: false, channels: [true, true, false] },
+    },
+  };
+  state.manifest = { series: [original] };
+
+  const next = patchManifestSeries(original, {
+    slices: 4,
+    microscopy: { channelIndex: 1, channelName: 'GFP' },
+  });
+
+  assert.notEqual(next, original);
+  assert.equal(next.slices, 4);
+  assert.equal(next.microscopy.channelIndex, 1);
+  assert.equal(next.microscopy.channelName, 'GFP');
+  assert.equal(next.microscopy.timeIndex, 0);
+  assert.equal(next.microscopy.volumeEligible, true);
+  assert.deepEqual(next.microscopy.composite.channels, [true, true, false]);
+  assert.equal(original.microscopy.channelIndex, 0);
+  assert.deepEqual(original.microscopy.composite.channels, [true, true, false]);
+
+  const enabled = patchManifestSeries(next, { microscopy: { composite: { enabled: true } } });
+  assert.equal(enabled.microscopy.composite.enabled, true);
+  assert.deepEqual(enabled.microscopy.composite.channels, [true, true, false]);
+  assert.equal(enabled.microscopy.channelIndex, 1);
+});
+
+test('setSeriesDesktopImportId writes through patchManifestSeries', () => {
+  const original = { slug: 'cmd_desktop_id' };
+  state.manifest = { series: [original] };
+  const id = setSeriesDesktopImportId(0, 'import-abcdef');
+  assert.equal(id, 'import-abcdef');
+  assert.equal(state.manifest.series[0]._desktopImportId, 'import-abcdef');
+  assert.notEqual(state.manifest.series[0], original);
+  assert.equal(original._desktopImportId, undefined);
+});
+
+test('writeHostSeriesRecord patches isolated hosts in place', () => {
+  const series = { slug: 'cmd_iso_series_record', microscopy: { volumeEligible: true } };
+  const host = { manifest: { series: [series] }, seriesIdx: 0 };
+  const next = writeHostSeriesRecord(host, series, { geometryKind: 'volumeStack' });
+  assert.equal(next, series);
+  assert.equal(series.geometryKind, 'volumeStack');
+  assert.equal(host.manifest.series[0], series);
+});
+
 test('setWindowLevel clamps to viewer-safe numeric bounds', () => {
   const next = setWindowLevel(900, -40);
   assert.deepEqual(next, { window: 512, level: 0 });
@@ -98,7 +252,7 @@ test('applyViewerPreset updates render controls in one command call', () => {
     mode: 'mip',
     clipPlaneEnabled: false,
   });
-  assert.equal(state.renderMode, 'mip');
+  assert.equal(state.three.renderMode, 'mip');
 });
 
 test('beginSeriesSelection resets runtime-heavy buckets and preserves request guards', () => {
@@ -112,7 +266,7 @@ test('beginSeriesSelection resets runtime-heavy buckets and preserves request gu
   state.seriesIdx = 0;
   state.sliceIdx = 3;
   state.loaded = true;
-  state.analysis = { summary: 'old' };
+  state.overlays.analysis = { summary: 'old' };
   state.voxels = new Uint8Array([1, 2, 3]);
   state.voxelsKey = 'old';
   state.hrVoxels = new Float32Array([0.1, 0.2]);
@@ -120,35 +274,35 @@ test('beginSeriesSelection resets runtime-heavy buckets and preserves request gu
   state.segImgs = [{ complete: true }];
   state.symImgs = [{ complete: true }];
   state.regionImgs = [{ complete: true }];
-  state.regionMeta = { legend: { 1: 'Region' } };
-  state.stats = { symmetryScores: [1, 2] };
+  state.overlays.regionMeta = { legend: { 1: 'Region' } };
+  state.overlays.stats = { symmetryScores: [1, 2] };
   state.fusionImgs = [{ complete: true }];
   state.fusionVoxels = new Uint8Array([9]);
-  state.fusionSlug = 'peer';
-  state.askHistory = [{ prompt: 'old' }];
-  state.clipMin = [0.1, 0.2, 0.3];
-  state.clipMax = [0.7, 0.8, 0.9];
+  state.overlays.fusionSlug = 'peer';
+  setAskHistory([{ prompt: 'old' }]);
+  state.three.clipMin = [0.1, 0.2, 0.3];
+  state.three.clipMax = [0.7, 0.8, 0.9];
 
-  const next = beginSeriesSelection(1, { preserveSlice: true });
+  const next = selectWithCaches(1, { preserveSlice: true });
 
   assert.equal(next.series.slug, 'cmd_b');
   assert.equal(state.seriesIdx, 1);
   assert.equal(state.sliceIdx, 3);
   assert.equal(state.loaded, false);
-  assert.equal(state.analysis, null);
+  assert.equal(state.overlays.analysis, null);
   assert.equal(state.voxels, null);
   assert.equal(state.hrVoxels, null);
   assert.deepEqual(state.segImgs, []);
   assert.deepEqual(state.symImgs, []);
   assert.deepEqual(state.regionImgs, []);
-  assert.equal(state.regionMeta, null);
-  assert.equal(state.stats, null);
+  assert.equal(state.overlays.regionMeta, null);
+  assert.equal(state.overlays.stats, null);
   assert.equal(state.fusionImgs, null);
   assert.equal(state.fusionVoxels, null);
-  assert.equal(state.fusionSlug, null);
-  assert.deepEqual(state.askHistory, []);
-  assert.deepEqual(state.clipMin, [0, 0, 0]);
-  assert.deepEqual(state.clipMax, [1, 1, 1]);
+  assert.equal(state.overlays.fusionSlug, null);
+  assert.deepEqual(getAskSession().history, [{ prompt: 'old' }]);
+  assert.deepEqual(state.three.clipMin, [0, 0, 0]);
+  assert.deepEqual(state.three.clipMax, [1, 1, 1]);
   assert.equal(isSeriesSelectionCurrent(next.requestId, 'cmd_b'), true);
   assert.equal(isSeriesSelectionCurrent(next.requestId, 'cmd_a'), false);
 });
@@ -215,14 +369,14 @@ test('beginSeriesSelection applies an imported series default window and level o
 test('setRenderMode rejects sampled extrema previews beyond the shader step contract', () => {
   state.manifest = { series: [{ ...volumeSeries('projection_limit', 1), width: 2049, height: 1 }] };
   state.seriesIdx = 0;
-  state.renderMode = 'alpha';
+  state.three.renderMode = 'alpha';
 
   assert.equal(setRenderMode('mip'), 'alpha');
-  assert.equal(state.renderMode, 'alpha');
+  assert.equal(state.three.renderMode, 'alpha');
 
   state.manifest.series[0].width = 2048;
   assert.equal(setRenderMode('mip'), 'mip');
-  assert.equal(state.renderMode, 'mip');
+  assert.equal(state.three.renderMode, 'mip');
 });
 
 test('series selection drops an inherited extrema preview beyond its sampling limit', () => {
@@ -235,12 +389,12 @@ test('series selection drops an inherited extrema preview beyond its sampling li
     ],
   };
   state.seriesIdx = 0;
-  state.renderMode = 'mip';
+  state.three.renderMode = 'mip';
   state.loaded = true;
 
   beginSeriesSelection(1);
 
-  assert.equal(state.renderMode, 'alpha');
+  assert.equal(state.three.renderMode, 'alpha');
 });
 
 test('beginSeriesSelection scopes remembered views by study identity when slugs repeat', () => {
@@ -307,7 +461,7 @@ test('beginSeriesSelection preserves a hydrated view on the first selection', ()
   state.loaded = false;
   state.mode = '2d';
   state.sliceIdx = 0;
-  state.useRegions = false;
+  state.overlays.labels = false;
   state.seriesViewMemory = {
     'anonymous||||initial_memory': {
       mode: '3d',
@@ -329,7 +483,13 @@ test('beginSeriesSelection preserves a hydrated view on the first selection', ()
   assert.equal(selected.restoredView, true);
   assert.equal(state.mode, '3d');
   assert.equal(state.sliceIdx, 6);
-  assert.equal(state.useRegions, true);
+  assert.equal(state.overlays.labels, true);
+  assert.deepEqual(state.seriesViewMemory['anonymous||||initial_memory'].overlays, {
+    useBrain: false,
+    tissue: false,
+    labels: true,
+    heatmap: false,
+  });
 });
 
 test('beginSeriesSelection restores saved slice but falls back to 2D when saved mode is unsupported', () => {
@@ -364,8 +524,8 @@ test('beginSeriesSelection restores warm volume caches for recently revisited se
     ],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
-  state.fusionSlug = null;
+  state.overlays.useBrain = false;
+  state.overlays.fusionSlug = null;
   const voxA = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
   const hrA = new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]);
   const segA = new Uint8Array([1, 0, 0, 2]);
@@ -378,7 +538,7 @@ test('beginSeriesSelection restores warm volume caches for recently revisited se
   state.regionVoxels = null;
   state.fusionVoxels = null;
 
-  beginSeriesSelection(1);
+  selectWithCaches(1);
   assert.equal(state.voxels, null);
   assert.equal(state.hrVoxels, null);
   const voxB = new Uint8Array([8, 7, 6, 5, 4, 3, 2, 1]);
@@ -388,7 +548,7 @@ test('beginSeriesSelection restores warm volume caches for recently revisited se
   state.hrKey = '';
   state.segVoxels = null;
 
-  beginSeriesSelection(0);
+  selectWithCaches(0);
   assert.equal(state.voxels, null, 'hr-backed warm restore should not keep the downgraded uint8 volume');
   assert.equal(state.hrVoxels, hrA);
   assert.equal(state.segVoxels, segA);
@@ -399,7 +559,7 @@ test('warm volume cache evicts by aggregate bytes and rejects an oversized entry
   state._seriesVolumeCacheEntries = [];
   state.manifest = { series: [volumeSeries('warm_bounded')] };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.voxels = new Uint8Array(8);
   state.hrVoxels = null;
   state.segVoxels = null;
@@ -429,7 +589,7 @@ test('beginSeriesSelection keeps warm volume caches scoped to study identity whe
   };
   state.manifest = { patient: 'anonymous', series: [first, second] };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   const voxA = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
   const voxB = new Uint8Array([8, 7, 6, 5, 4, 3, 2, 1]);
   state.voxels = voxA;
@@ -440,12 +600,12 @@ test('beginSeriesSelection keeps warm volume caches scoped to study identity whe
   state.regionVoxels = null;
   state.fusionVoxels = null;
 
-  beginSeriesSelection(1);
+  selectWithCaches(1);
   assert.equal(state.voxels, null, 'study B must not restore study A voxels just because the slug matches');
   state.voxels = voxB;
   state.voxelsKey = 'old-b';
 
-  beginSeriesSelection(0);
+  selectWithCaches(0);
   assert.equal(state.voxels, voxA);
   assert.equal(state.voxelsKey, 'anonymous|study-a||series-a|repeat_volume|base');
 });
@@ -455,16 +615,19 @@ test('setBrainStack preserves the active viewer session while replacing same-ser
   state.manifest = { series: [{ ...volumeSeries('brain_keep', 4), hasBrain: true }] };
   state.seriesIdx = 0;
   state.selectRequestId = 11;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.voxels = new Uint8Array([1, 2, 3]);
   state.voxelsKey = 'old-base';
   state.threeRuntime.seriesIdx = 0;
   state.threeRuntime.mesh = {};
   beginViewerRuntimeSession(state.manifest.series[0], { requestId: 11 });
 
-  setBrainStack({ nextUseBrain: true, imgs: [{ complete: true, naturalWidth: 4 }] });
+  transitionVolumeCaches(state.manifest.series[0], () => {
+    setBrainStack({ nextUseBrain: true });
+    setSeriesImageStacks({ imgs: [{ complete: true, naturalWidth: 4 }], cmpStacks: {} });
+  }, { resetViewerSessionState: false });
 
-  assert.equal(state.useBrain, true);
+  assert.equal(state.overlays.useBrain, true);
   assert.equal(state.viewerSession.slug, 'brain_keep');
   assert.equal(state.viewerSession.requestId, 11);
   assert.equal(state.threeRuntime.seriesIdx, -1);
@@ -472,46 +635,48 @@ test('setBrainStack preserves the active viewer session while replacing same-ser
   assert.equal(state.imgs.length, 1);
 });
 
-test('hydrateSeriesStacks and hydrateSeriesSidecars land data without finishing the load early', () => {
-  hydrateSeriesStacks({
+test('setSeriesImageStacks and hydrateSeriesSidecars land data without finishing the load early', () => {
+  setSeriesImageStacks({
     imgs: [{ complete: true }],
     segImgs: [{ complete: true }],
+    fusionImgs: [{ complete: true }],
   });
   hydrateSeriesSidecars({
     analysis: { summary: 'fresh' },
     regionMeta: { legend: { 1: 'Region' } },
-    askHistory: [{ prompt: 'new' }],
     stats: { symmetryScores: [0.1, 0.2] },
   });
+  setAskHistory([{ prompt: 'new' }]);
 
   assert.equal(state.loaded, false);
   assert.equal(state.imgs.length, 1);
   assert.equal(state.segImgs.length, 1);
-  assert.equal(state.analysis.summary, 'fresh');
-  assert.deepEqual(state.askHistory, [{ prompt: 'new' }]);
+  assert.equal(state.fusionImgs.length, 1);
+  assert.equal(state.overlays.analysis.summary, 'fresh');
+  assert.deepEqual(getAskSession().history, [{ prompt: 'new' }]);
 
-  state.threeSeriesIdx = 4;
+  state.threeRuntime.seriesIdx = 4;
   finishSeriesSelection();
   assert.equal(state.loaded, true);
-  assert.equal(state.threeSeriesIdx, 4);
+  assert.equal(state.threeRuntime.seriesIdx, 4);
 });
 
 test('setOverlayEnabled enforces exclusivity when requested', () => {
-  state.useSeg = false;
-  state.useRegions = true;
+  state.overlays.tissue = false;
+  state.overlays.labels = true;
 
-  const next = setOverlayEnabled('useSeg', true, ['useRegions']);
+  const next = setOverlayEnabled('tissue', true, ['labels']);
 
   assert.equal(next, true);
-  assert.equal(state.useSeg, true);
-  assert.equal(state.useRegions, false);
+  assert.equal(state.overlays.tissue, true);
+  assert.equal(state.overlays.labels, false);
 });
 
 test('initializeSeriesViewState centers MPR state and drops unavailable overlays', () => {
-  state.useBrain = true;
-  state.useSeg = true;
-  state.useRegions = true;
-  state.useSym = true;
+  state.overlays.useBrain = true;
+  state.overlays.tissue = true;
+  state.overlays.labels = true;
+  state.overlays.heatmap = true;
 
   const next = initializeSeriesViewState({
     width: 11,
@@ -528,9 +693,9 @@ test('initializeSeriesViewState centers MPR state and drops unavailable overlays
     mprY: 4,
     mprZ: 3,
     useBrain: false,
-    useSeg: true,
-    useRegions: false,
-    useSym: false,
+    tissue: true,
+    labels: false,
+    heatmap: false,
   });
   assert.deepEqual(state.mpr.viewports, {
     ax: { zoom: 1, tx: 0, ty: 0 },
@@ -554,19 +719,19 @@ test('setMprPosition clamps to series bounds and can sync the slice index', () =
 test('syncMprSliceIndex and nudgeMprAxis keep MPR navigation consistent', () => {
   state.manifest = { series: [{ slug: 'mpr_nav', width: 10, height: 12, slices: 9 }] };
   state.seriesIdx = 0;
-  state.mprX = 5;
-  state.mprY = 6;
-  state.mprZ = 2;
+  state.mpr.x = 5;
+  state.mpr.y = 6;
+  state.mpr.z = 2;
   state.sliceIdx = 8;
 
   syncMprSliceIndex();
-  assert.equal(state.mprZ, 8);
+  assert.equal(state.mpr.z, 8);
 
   nudgeMprAxis('y', -20);
-  assert.equal(state.mprY, 0);
+  assert.equal(state.mpr.y, 0);
 
   nudgeMprAxis('z', -3);
-  assert.equal(state.mprZ, 5);
+  assert.equal(state.mpr.z, 5);
   assert.equal(state.sliceIdx, 5);
 });
 
@@ -603,15 +768,30 @@ test('setMprViewport clamps and resets per-pane viewport state', () => {
   });
 });
 
+test('setMprViewport pan writes tx/ty without interaction flags on the document', () => {
+  setMprViewport('ax', { zoom: 2, tx: 10, ty: -4 });
+  const snapshot = getMprViewport('ax');
+  assert.deepEqual(setMprViewport('ax', { zoom: snapshot.zoom, tx: snapshot.tx + 6, ty: snapshot.ty + 3 }), {
+    zoom: 2,
+    tx: 16,
+    ty: -1,
+  });
+  assert.deepEqual(state.mpr.viewports.ax, { zoom: 2, tx: 16, ty: -1 });
+  assert.deepEqual(getMprViewport('ax'), { zoom: 2, tx: 16, ty: -1 });
+  assert.equal('panning' in state.mpr.viewports.ax, false);
+  assert.equal('lastX' in state.mpr.viewports.ax, false);
+  assert.equal('moved' in state.mpr.viewports.ax, false);
+});
+
 test('setClipAxis preserves a minimum gap between clip bounds', () => {
-  state.clipMin = [0, 0, 0];
-  state.clipMax = [1, 1, 1];
+  state.three.clipMin = [0, 0, 0];
+  state.three.clipMax = [1, 1, 1];
 
   setClipAxis('min', 0, 0.995);
   setClipAxis('max', 1, 0.001);
 
-  assert.deepEqual(state.clipMin, [0.99, 0, 0]);
-  assert.deepEqual(state.clipMax, [1, 0.01, 1]);
+  assert.deepEqual(state.three.clipMin, [0.99, 0, 0]);
+  assert.deepEqual(state.three.clipMax, [1, 0.01, 1]);
 });
 
 test('analysis, colormap, and fit-zoom commands update viewer session state directly', () => {

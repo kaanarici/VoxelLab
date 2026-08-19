@@ -1,6 +1,7 @@
 import { state } from '../state.js';
-import { canUseMpr3D } from '../../series/series-capabilities.js';
-import { seriesIdentityKey } from '../../series/series-identity.js';
+import { canUseMpr3D } from '../series-capabilities.js';
+import { seriesIdentityKey } from '../series-identity.js';
+import { overlayEnableSnapshot } from '../viewer-session-shape.js';
 import { clampSliceIndex, getCurrentSeries } from './viewer-selectors.js';
 import { scheduleSessionPersist } from './session-persistence.js';
 
@@ -26,12 +27,7 @@ export function rememberSeriesViewState(series = getCurrentSeries()) {
     sliceIdx: clampSliceIndex(state.sliceIdx, series),
     window: state.window,
     level: state.level,
-    overlays: {
-      useBrain: !!state.useBrain,
-      useSeg: !!state.useSeg,
-      useRegions: !!state.useRegions,
-      useSym: !!state.useSym,
-    },
+    overlays: overlayEnableSnapshot(state.overlays),
     // Locked anatomy structures (numeric ids). Sets don't survive JSON, so store
     // a sorted array; rehydrated to a Set on restore.
     lockedLabels: state.lockedLabels instanceof Set
@@ -72,13 +68,41 @@ export function viewStateForSeries(series, { preserveSlice = false } = {}) {
       restored: false,
     };
   }
+  if (overlaysNeedCanonicalWrite(saved.overlays)) {
+    saved.overlays = migrateSeriesViewOverlayEnable(saved.overlays);
+    scheduleSessionPersist();
+  }
   return {
     mode: normalModeForSeries(series, saved.mode),
     sliceIdx: clampSliceIndex(saved.sliceIdx, series),
     window: Number.isFinite(saved.window) ? saved.window : null,
     level: Number.isFinite(saved.level) ? saved.level : null,
-    overlays: saved.overlays || null,
+    overlays: overlayEnableFromSaved(saved.overlays),
     lockedLabels: Array.isArray(saved.lockedLabels) ? saved.lockedLabels : [],
     restored: true,
   };
+}
+
+function isOverlayEnableRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+}
+
+function overlayEnableFromSaved(overlays) {
+  if (!isOverlayEnableRecord(overlays)) return null;
+  return overlayEnableSnapshot(overlays);
+}
+
+export function migrateSeriesViewOverlayEnable(overlays) {
+  if (!isOverlayEnableRecord(overlays)) return null;
+  return {
+    useBrain: !!overlays.useBrain,
+    tissue: overlays.tissue != null ? !!overlays.tissue : !!overlays.useSeg,
+    labels: overlays.labels != null ? !!overlays.labels : !!overlays.useRegions,
+    heatmap: overlays.heatmap != null ? !!overlays.heatmap : !!overlays.useSym,
+  };
+}
+
+function overlaysNeedCanonicalWrite(overlays) {
+  if (!isOverlayEnableRecord(overlays)) return false;
+  return 'useSeg' in overlays || 'useRegions' in overlays || 'useSym' in overlays;
 }

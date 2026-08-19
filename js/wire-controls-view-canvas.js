@@ -2,6 +2,7 @@
 
 import { $ } from './dom.js';
 import { state } from './core/state.js';
+import { getAskSession } from './ask-session.js';
 import {
   isROIMode,
   currentROIMode,
@@ -21,7 +22,7 @@ import {
 } from './view-transform.js';
 import { updateScaleBar } from './overlay/scale-bar.js';
 import { showHoverAt } from './slice-view.js';
-import { setWindowLevel } from './core/state/viewer-commands.js';
+import { setWindowLevel, setZoomTransform } from './core/state/viewer-commands.js';
 
 /**
  * @param {object} deps
@@ -70,7 +71,7 @@ export function wireViewCanvas(deps) {
     if (isAngleMode()) { onAngleClick(e); drawMeasurements(); return; }
     if (isSlimSAMMode()) { onSlimSAMClick(e, clientToCanvasPx); return; }
     if (state.annotateMode) { onAnnotateClick(e); return; }
-    if (state.askMode && state.askPen) {
+    if (getAskSession().mode && getAskSession().pen) {
       e.preventDefault();
       const { handleAskPointerDown } = await import('./consult-ask.js');
       handleAskPointerDown(e);
@@ -116,8 +117,10 @@ export function wireViewCanvas(deps) {
         });
       }
     } else if (panning) {
-      state.tx += (e.clientX - lastX);
-      state.ty += (e.clientY - lastY);
+      setZoomTransform({
+        tx: state.tx + (e.clientX - lastX),
+        ty: state.ty + (e.clientY - lastY),
+      });
       lastX = e.clientX; lastY = e.clientY;
       applyTransform();
     }
@@ -136,7 +139,7 @@ export function wireViewCanvas(deps) {
     }
     // Selection crosshair only while the pen is armed; otherwise the viewer is a
     // normal pannable viewer even with the Ask composer open.
-    if (state.askMode && state.askPen && state.mode === '2d' && !dragging && !panning) {
+    if (getAskSession().mode && getAskSession().pen && state.mode === '2d' && !dragging && !panning) {
       hideAnnotHover();
       hideHover();
       canvas.style.cursor = 'crosshair';

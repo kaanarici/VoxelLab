@@ -6,7 +6,7 @@
 
 import { geometryFromSeries, inPlanePixelSpacing } from '../core/geometry.js';
 import { effectiveSliceSpacing } from '../mpr/mpr-geometry.js';
-import { regionLabelName } from '../region-meta.js';
+import { regionLabelName } from '../core/region-meta.js';
 import { anatomyBadge } from '../region-source.js';
 
 /** Count voxels in `regionVoxels` equal to `label` (the rendered mask). */

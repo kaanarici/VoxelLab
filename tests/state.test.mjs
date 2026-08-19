@@ -13,6 +13,8 @@ const {
   getStateSnapshot,
   setPassthroughRootEntry,
 } = await import('../js/core/state.js');
+const { setLocalRuntimeMapEntry, hostWritesFor, isLiveViewerHost, LIVE_HOST_WRITES } = await import('../js/runtime/viewer-runtime.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
 const { ensureVoxels, tryFlattenVoxelsInWorker } = await import('../js/volume/volume-voxels-ensure.js');
 const { createLocalByteSlice } = await import('../js/series/local-byte-slice.js');
 
@@ -30,47 +32,37 @@ test('batch coalesces repeated writes into one notification with the final value
   assert.equal(state.sliceIdx, 8);
 });
 
-test('legacy aliases and grouped fields stay in sync for nested state', () => {
+test('nested grouped fields notify on the nested path only', () => {
   const seen = [];
-  const unsubscribeLow = subscribe('lowT', (value) => seen.push(['lowT', value]));
-  const unsubscribeGroup = subscribe('three.lowT', (value) => seen.push(['three.lowT', value]));
-  const unsubscribeClip = subscribe('clipMin', (value) => seen.push(['clipMin', [...value]]));
+  const unsubscribeLow = subscribe('three.lowT', (value) => seen.push(['three.lowT', value]));
+  const unsubscribeClip = subscribe('three.clipMin', (value) => seen.push(['three.clipMin', [...value]]));
 
   batch(() => {
-    state.lowT = 0.24;
+    state.three.lowT = 0.24;
     state.three.clipMin = [0.1, 0.2, 0.3];
   });
 
   unsubscribeLow();
-  unsubscribeGroup();
   unsubscribeClip();
 
-  assert.equal(state.lowT, 0.24);
   assert.equal(state.three.lowT, 0.24);
-  assert.deepEqual(state.clipMin, [0.1, 0.2, 0.3]);
   assert.deepEqual(state.three.clipMin, [0.1, 0.2, 0.3]);
   assert.deepEqual(seen.sort((a, b) => a[0].localeCompare(b[0])), [
-    ['clipMin', [0.1, 0.2, 0.3]],
-    ['lowT', 0.24],
+    ['three.clipMin', [0.1, 0.2, 0.3]],
     ['three.lowT', 0.24],
   ]);
 });
 
-test('nested alias writes notify root subscribers', () => {
-  state.clipMax = [1, 1, 1];
+test('nested array element writes notify the parent path', () => {
+  state.three.clipMax = [1, 1, 1];
   const seen = [];
-  const unsubscribeAlias = subscribe('clipMax', (value) => seen.push(['clipMax', [...value]]));
-  const unsubscribeGroup = subscribe('three.clipMax', (value) => seen.push(['three.clipMax', [...value]]));
+  const unsubscribe = subscribe('three.clipMax', (value) => seen.push([...value]));
 
-  state.clipMax[2] = 0.42;
+  state.three.clipMax[2] = 0.42;
 
-  unsubscribeAlias();
-  unsubscribeGroup();
+  unsubscribe();
 
-  assert.deepEqual(seen.sort((a, b) => a[0].localeCompare(b[0])), [
-    ['clipMax', [1, 1, 0.42]],
-    ['three.clipMax', [1, 1, 0.42]],
-  ]);
+  assert.deepEqual(seen, [[1, 1, 0.42]]);
 });
 
 test('state exposes explicit collection and tool defaults without lazy module init', () => {
@@ -78,12 +70,16 @@ test('state exposes explicit collection and tool defaults without lazy module in
 
   assert.ok(Object.hasOwn(snapshot, 'measurements'));
   assert.ok(Object.hasOwn(snapshot, 'angleMeasurements'));
+  assert.ok(Object.hasOwn(snapshot, 'rois'));
+  assert.ok(Object.hasOwn(snapshot, 'notes'));
   assert.ok(Object.hasOwn(snapshot, 'anglePending'));
   assert.ok(Object.hasOwn(snapshot, 'angleMode'));
   assert.ok(Object.hasOwn(snapshot, 'hiddenLabels'));
   assert.ok(Object.hasOwn(snapshot, 'viewerSession'));
   assert.deepEqual(snapshot.measurements, {});
   assert.deepEqual(snapshot.angleMeasurements, {});
+  assert.deepEqual(snapshot.rois, {});
+  assert.deepEqual(snapshot.notes, {});
   assert.equal(snapshot.anglePending, null);
   assert.equal(snapshot.angleMode, false);
   assert.deepEqual(snapshot.hiddenLabels, []);
@@ -111,6 +107,18 @@ test('passthrough compare stack writes notify root subscribers', () => {
   assert.deepEqual(seen, [['cmpStacks', 1]]);
 });
 
+test('local runtime map entry writes notify passthrough subscribers', () => {
+  state._localStacks = {};
+  const seen = [];
+  const off = subscribe('_localStacks', (value) => seen.push(value.cmd_local?.length || 0));
+
+  setLocalRuntimeMapEntry('_localStacks', 'cmd_local', [{ complete: true }]);
+
+  off();
+  assert.deepEqual(seen, [1]);
+  assert.equal(state._localStacks.cmd_local[0].complete, true);
+});
+
 test('nested measurement writes notify root subscribers', () => {
   state.measurements = { 'series|0': [] };
   const seen = [];
@@ -135,7 +143,7 @@ test('nested angle writes notify root subscribers', () => {
   assert.deepEqual(seen, [['angleMeasurements', [33.5]]]);
 });
 
-test('state snapshots are deeply frozen for plugin consumers', () => {
+test('state snapshots are deeply frozen', () => {
   const snapshot = getStateSnapshot();
 
   assert.equal(Object.isFrozen(snapshot), true);
@@ -146,16 +154,16 @@ test('state snapshots are deeply frozen for plugin consumers', () => {
   });
 });
 
-test('state snapshots reuse existing roots for legacy aliases', () => {
+test('state snapshots include nested display roots without flat aliases', () => {
   state.three.clipMin = [0.12, 0.24, 0.36];
 
   const snapshot = getStateSnapshot();
 
-  assert.equal(snapshot.clipMin, snapshot.three.clipMin);
-  assert.deepEqual(snapshot.clipMin, [0.12, 0.24, 0.36]);
+  assert.deepEqual(snapshot.three.clipMin, [0.12, 0.24, 0.36]);
+  assert.equal(Object.hasOwn(snapshot, 'clipMin'), false);
 });
 
-test('transient previewLabel has one live root shared with plugin snapshots', () => {
+test('transient previewLabel has one live root shared with overlay snapshots', () => {
   state.previewLabel = 17;
 
   const snapshot = getStateSnapshot();
@@ -193,8 +201,8 @@ test('cached base voxels can still hydrate overlay volumes later', () => {
     }],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
-  state.useRegions = false;
+  state.overlays.useBrain = false;
+  state.overlays.labels = false;
   state.regionVoxels = null;
   state.voxels = null;
   state.voxelsKey = '';
@@ -211,7 +219,7 @@ test('cached base voxels can still hydrate overlay volumes later', () => {
   assert.equal(ensureVoxels(), true);
   assert.equal(state.regionVoxels, null);
 
-  state.useRegions = true;
+  state.overlays.labels = true;
   assert.equal(ensureVoxels(), true);
   assert.deepEqual([...state.regionVoxels], [1, 0, 2, 0, 0, 3, 0, 4]);
 });
@@ -221,7 +229,7 @@ test('ensureVoxels rebuilds an evicted local raw volume from compact byte slices
     series: [{ slug: 'local_bytes', width: 2, height: 1, slices: 2 }],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.voxels = null;
   state.voxelsKey = '';
   state._localRawVolumes = {};
@@ -248,7 +256,7 @@ test('ensureVoxels keys cached volumes by series identity, not list position', (
     }],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.voxels = oldVoxels;
   state.voxelsKey = '0|base';
   state.segVoxels = null;
@@ -305,7 +313,7 @@ test('ensureVoxels does not duplicate an in-flight worker flatten on the main th
     }],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.voxels = null;
   state.voxelsKey = '';
   state.imgs = [{ complete: true, naturalWidth: 2 }];
@@ -317,4 +325,19 @@ test('ensureVoxels does not duplicate an in-flight worker flatten on the main th
 
   releaseBitmap({ close() {} });
   assert.equal(await pending, false);
+});
+
+test('hostWritesFor treats only the live state object as the live host', () => {
+  assert.equal(isLiveViewerHost(null), false);
+  assert.equal(isLiveViewerHost(undefined), false);
+  assert.equal(isLiveViewerHost({}), false);
+  assert.equal(isLiveViewerHost(state), true);
+  assert.equal(hostWritesFor(null), null);
+  assert.equal(hostWritesFor(undefined), null);
+  assert.equal(hostWritesFor({}), null);
+  assert.equal(hostWritesFor(state), LIVE_HOST_WRITES);
+  const adapter = isolatedHostWrites();
+  assert.equal(hostWritesFor(state, adapter), LIVE_HOST_WRITES);
+  const isolated = {};
+  assert.equal(hostWritesFor(isolated, adapter), adapter);
 });

@@ -1,10 +1,10 @@
 import { $ } from '../dom.js';
 import { signalPanelReady } from '../collapsible-sidebar.js';
 import { formatLengthFromMm } from '../core/physical-units.js';
-import { readImageByteData } from '../overlay/overlay-data.js';
 import { state } from '../core/state.js';
 import { cacheLocalRawVolume, clearLocalRawVolume } from '../local-raw-volume-cache.js';
-import { invalidateVoxelCache, resetThreeRuntimeSession } from '../runtime/viewer-runtime.js';
+import { readImageByteData } from '../overlay/overlay-data.js';
+import { hostWritesFor, invalidateVoxelCache, isLiveViewerHost, resetThreeRuntimeSession, setSeriesImageStacks } from '../runtime/viewer-runtime.js';
 import { enhanceSelectLikeDropdowns } from '../select-like-dropdown.js';
 import {
   applyDisplayRangeToChannelStacks,
@@ -28,38 +28,26 @@ import {
   microscopyVolumeFailureReason,
   microscopyZCoverage,
 } from './microscopy-volume.js';
+import {
+  hideMicroscopyAnalysisPanel,
+  initMicroscopyAnalysisPanel,
+  renderMicroscopyAnalysisPanel,
+} from './microscopy-analysis-panel.js';
 
 let afterStackChange = () => {};
 let workflowStatusText = '';
-let microscopyAnalysisPanelModule = null;
-let microscopyAnalysisPanelLoading = null;
 
-async function loadMicroscopyAnalysisPanel() {
-  if (microscopyAnalysisPanelModule) return microscopyAnalysisPanelModule;
-  if (!microscopyAnalysisPanelLoading) {
-    microscopyAnalysisPanelLoading = import('./microscopy-analysis-panel.js').then((mod) => {
-      microscopyAnalysisPanelModule = mod;
-      mod.initMicroscopyAnalysisPanel({ onRedraw: afterStackChange });
-      return mod;
-    }).catch((error) => {
-      microscopyAnalysisPanelLoading = null;
-      throw error;
-    });
-  }
-  return microscopyAnalysisPanelLoading;
+function writeSeriesRecord(host, series, patch, writes) {
+  if (!series) return series;
+  return hostWritesFor(host, writes)?.patchSeries?.(host, series, patch) || null;
 }
 
-function hideMicroscopyAnalysisPanel(host = state) {
-  const panel = $('microscopy-analysis-panel');
-  const root = $('microscopy-analysis-controls');
-  root?.replaceChildren();
-  panel?.classList.add('panel-init-hidden');
-  microscopyAnalysisPanelModule?.renderMicroscopyAnalysisPanel(host);
+function writeDisplayStack(host, slug, stack, sliceIdx, writes) {
+  return hostWritesFor(host, writes)?.displayStack?.(host, slug, stack, sliceIdx) || false;
 }
 
-function renderMicroscopyAnalysisPanelAsync(host) {
-  loadMicroscopyAnalysisPanel()
-    .then((mod) => mod.renderMicroscopyAnalysisPanel(host));
+function cloneDataset(dataset) {
+  return dataset == null ? dataset : JSON.parse(JSON.stringify(dataset));
 }
 
 function axisSize(dataset, name, fallback = 1) {
@@ -120,31 +108,33 @@ function microscopyCoverageForPosition(series, c, t, host = state) {
   );
 }
 
-function replaceActiveMicroscopyRawVolume(series, volume, host = state) {
+function replaceActiveMicroscopyRawVolume(series, volume, host = state, writes) {
   const slug = String(series?.slug || '');
-  if (host === state) {
+  if (isLiveViewerHost(host)) {
     clearLocalRawVolume(slug);
     if (volume) cacheLocalRawVolume(slug, volume);
     invalidateVoxelCache({ dropData: true });
     resetThreeRuntimeSession();
-  } else {
-    host._localRawVolumes ||= {};
-    if (volume) host._localRawVolumes[slug] = volume;
-    else delete host._localRawVolumes[slug];
+    return;
   }
+  hostWritesFor(host, writes)?.runtimeMapEntry?.(host, '_localRawVolumes', slug, volume || undefined);
 }
 
-function setMicroscopyVolumeCapability(series, { eligible, reason = '', coverage, zMm = 0 } = {}) {
+function setMicroscopyVolumeCapability(series, { eligible, reason = '', coverage, zMm = 0 } = {}, host = state, writes) {
   const firstZ = coverage?.firstZ || 0;
   const lastZ = coverage?.lastZ || firstZ;
-  series.firstIPP = [0, 0, zMm > 0 ? firstZ * zMm : 0];
-  series.lastIPP = [0, 0, zMm > 0 ? lastZ * zMm : 0];
-  series.sliceSpacingRegular = coverage?.complete === true;
-  series.geometryKind = eligible ? 'volumeStack' : 'microscopyStack';
-  series.reconstructionCapability = eligible ? 'display-volume' : '2d-only';
-  series.renderability = eligible ? 'volume' : '2d';
-  series.microscopy.volumeEligible = !!eligible;
-  series.microscopy.volumeBlockReason = eligible ? '' : reason;
+  return writeSeriesRecord(host, series, {
+    firstIPP: [0, 0, zMm > 0 ? firstZ * zMm : 0],
+    lastIPP: [0, 0, zMm > 0 ? lastZ * zMm : 0],
+    sliceSpacingRegular: coverage?.complete === true,
+    geometryKind: eligible ? 'volumeStack' : 'microscopyStack',
+    reconstructionCapability: eligible ? 'display-volume' : '2d-only',
+    renderability: eligible ? 'volume' : '2d',
+    microscopy: {
+      volumeEligible: !!eligible,
+      volumeBlockReason: eligible ? '' : reason,
+    },
+  }, writes) || series;
 }
 
 function assessManualMicroscopyVolume(series, zMm, host = state) {
@@ -187,39 +177,45 @@ function assessManualMicroscopyVolume(series, zMm, host = state) {
   }
 }
 
-function setActiveMicroscopyRawVolume(series, c, t, host = state) {
+function setActiveMicroscopyRawVolume(series, c, t, host = state, writes) {
   const planes = microscopyPlanesForPosition(series, c, t, host);
   let volume = null;
+  let nextSeries = series;
   if (series?.microscopy?.volumeEligible === true) {
     const coverage = microscopyCoverageForPosition(series, c, t, host);
     if (!Array.isArray(planes)) {
-      setMicroscopyVolumeCapability(series, {
+      nextSeries = setMicroscopyVolumeCapability(series, {
         eligible: false,
         reason: 'volume_source_unavailable',
         coverage,
         zMm: Number(series.sliceSpacing || series.sliceThickness || 0),
-      });
+      }, host, writes);
     } else {
       try {
         volume = microscopyRawVolumeForPlanes(planes, series.width, series.height, declaredMicroscopySizeZ(series));
       } catch (error) {
-        setMicroscopyVolumeCapability(series, {
+        nextSeries = setMicroscopyVolumeCapability(series, {
           eligible: false,
           reason: coverage.complete
             ? microscopyVolumeFailureReason(error)
             : 'incomplete_z_coverage',
           coverage,
           zMm: Number(series.sliceSpacing || series.sliceThickness || 0),
-        });
+        }, host, writes);
       }
     }
   }
-  replaceActiveMicroscopyRawVolume(series, volume, host);
+  replaceActiveMicroscopyRawVolume(nextSeries, volume, host, writes);
   return volume;
 }
 
-function requestCompositeRedraw(host) {
-  if (Array.isArray(host?.imgs)) host.imgs = host.imgs.slice();
+function requestCompositeRedraw(host, writes) {
+  if (!Array.isArray(host?.imgs)) {
+    afterStackChange();
+    return;
+  }
+  if (isLiveViewerHost(host)) setSeriesImageStacks({ imgs: host.imgs.slice() });
+  else hostWritesFor(host, writes)?.displayStack?.(host, '', host.imgs.slice(), host.sliceIdx);
   afterStackChange();
 }
 
@@ -248,38 +244,51 @@ export function canSetMicroscopyChannelDisplayRange(series, channelIndex, range,
   return stackStats.total > 0 && stackStats.raw === stackStats.total;
 }
 
-export function setMicroscopyChannelDisplayRange(series, channelIndex, range, host = state) {
+export function setMicroscopyChannelDisplayRange(series, channelIndex, range, host = state, writes) {
   if (!canSetMicroscopyChannelDisplayRange(series, channelIndex, range, host)) return false;
   const nextRange = finiteDisplayRange(range);
   const c = Math.max(0, Math.floor(Number(channelIndex) || 0));
-  const channel = series.microscopyDataset.channels?.find(item => Number(item?.index) === c);
   const stacks = host._localMicroscopyStacks?.[series.slug] || {};
   const stackStats = displayRangeStackStats(series, c, host);
   const updated = applyDisplayRangeToChannelStacks(stacks, c, nextRange);
   if (updated !== stackStats.total) return false;
-  channel.displayRange = nextRange;
-  channel.displayRangeSource = 'user';
-  return true;
+  return !!writeSeriesRecord(host, series, {
+    microscopyDataset: {
+      ...cloneDataset(series.microscopyDataset),
+      channels: (series.microscopyDataset.channels || []).map((item) => (
+        Number(item?.index) === c
+          ? { ...item, displayRange: nextRange, displayRangeSource: 'user' }
+          : item
+      )),
+    },
+  }, writes);
 }
 
-export function setMicroscopyChannelDisplayColor(series, channelIndex, color) {
+export function setMicroscopyChannelDisplayColor(series, channelIndex, color, host = state, writes) {
   if (!series?.microscopyDataset) return false;
   const c = Math.max(0, Math.floor(Number(channelIndex) || 0));
   const channel = series.microscopyDataset.channels?.find(item => Number(item?.index) === c);
   const normalized = String(color || '').trim().toUpperCase();
   if (!channel || !/^#[0-9A-F]{6}$/.test(normalized)) return false;
-  channel.displayColor = normalized;
-  channel.displayColorSource = 'user';
-  return true;
+  return !!writeSeriesRecord(host, series, {
+    microscopyDataset: {
+      ...cloneDataset(series.microscopyDataset),
+      channels: (series.microscopyDataset.channels || []).map((item) => (
+        Number(item?.index) === c
+          ? { ...item, displayColor: normalized, displayColorSource: 'user' }
+          : item
+      )),
+    },
+  }, writes);
 }
 
-export function microscopyHyperstackState(host = state, activeSeries = host?.manifest?.series?.[host.seriesIdx]) {
+export function microscopyHyperstackState(host = state, activeSeries = host?.manifest?.series?.[host.seriesIdx], writes) {
   if (!activeSeries || activeSeries.imageDomain !== 'microscopy') return null;
   const dataset = activeSeries.microscopyDataset || null;
   const sizeC = Math.max(1, axisSize(dataset, 'c', Number(activeSeries.microscopy?.sizeC || 1)));
   const sizeT = Math.max(1, axisSize(dataset, 't', Number(activeSeries.microscopy?.sizeT || 1)));
   const current = microscopyPosition(activeSeries);
-  const composite = ensureMicroscopyComposite(activeSeries, sizeC);
+  const composite = ensureMicroscopyComposite(activeSeries, sizeC, host, writes);
   return {
     current,
     composite,
@@ -347,7 +356,7 @@ function numberInput({ id, value, disabled, ariaLabel, onChange }) {
   return input;
 }
 
-function displayRangeRow(model, series, host) {
+function displayRangeRow(model, series, host, writes) {
   const channel = model.channels[model.current.c];
   const range = finiteDisplayRange(channel?.displayRange);
   const stackStats = displayRangeStackStats(series, channel.index, host);
@@ -372,12 +381,12 @@ function displayRangeRow(model, series, host) {
   }
   function apply() {
     const nextRange = [Number(minInput.value), Number(maxInput.value)];
-    if (!setMicroscopyChannelDisplayRange(series, channel.index, nextRange, host)) {
+    if (!setMicroscopyChannelDisplayRange(series, channel.index, nextRange, host, writes)) {
       resetInputs();
       return;
     }
-    renderMicroscopyHyperstackControls(host);
-    requestCompositeRedraw(host);
+    renderMicroscopyHyperstackControls(host, writes);
+    requestCompositeRedraw(host, writes);
   }
   const group = document.createElement('div');
   group.className = 'hyperstack-range-group';
@@ -392,7 +401,7 @@ function displayRangeRow(model, series, host) {
   return row;
 }
 
-function colorInputRow(model, series, host) {
+function colorInputRow(model, series, host, writes) {
   const channel = model.channels[model.current.c];
   const input = document.createElement('input');
   input.id = 'microscopy-channel-color';
@@ -401,12 +410,12 @@ function colorInputRow(model, series, host) {
   input.value = channel.color || '#FFFFFF';
   input.setAttribute('aria-label', 'Microscopy channel display color');
   input.addEventListener('change', () => {
-    if (!setMicroscopyChannelDisplayColor(series, channel.index, input.value)) {
+    if (!setMicroscopyChannelDisplayColor(series, channel.index, input.value, host, writes)) {
       input.value = channel.color || '#FFFFFF';
       return;
     }
-    renderMicroscopyHyperstackControls(host);
-    requestCompositeRedraw(host);
+    renderMicroscopyHyperstackControls(host, writes);
+    requestCompositeRedraw(host, writes);
   });
   const row = document.createElement('div');
   row.className = 'hyperstack-row';
@@ -451,11 +460,16 @@ function axisByName(dataset = {}, name) {
   return dataset.axes?.find((axis) => axis?.name === name) || null;
 }
 
-function removeSourceWarnings(series = {}, codes = []) {
-  if (!series?.microscopyDataset?.source) return;
+function stripSourceWarnings(dataset, codes = []) {
+  if (!dataset?.source) return dataset;
   const blocked = new Set(codes);
-  series.microscopyDataset.source.warnings = (series.microscopyDataset.source.warnings || [])
-    .filter((warning) => !blocked.has(warning));
+  return {
+    ...dataset,
+    source: {
+      ...dataset.source,
+      warnings: (dataset.source.warnings || []).filter((warning) => !blocked.has(warning)),
+    },
+  };
 }
 
 function setMetadataRowValue(label, value) {
@@ -483,6 +497,7 @@ export function applyManualMicroscopyCalibration(
   series,
   { xUmPerPx, yUmPerPx, zUm = null } = {},
   host = state,
+  writes,
 ) {
   if (!series?.microscopyDataset) return false;
   const x = Number(xUmPerPx);
@@ -495,26 +510,14 @@ export function applyManualMicroscopyCalibration(
     ? Number(series.sliceSpacing || series.sliceThickness || 0)
     : 0;
   const nextZMm = z > 0 ? z / 1000 : existingZMm;
-  series.microscopy = series.microscopy || {};
   const assessment = assessManualMicroscopyVolume(series, nextZMm, host);
-  const activeC = Math.max(0, Math.floor(Number(series.microscopy.channelIndex || 0)));
-  const activeT = Math.max(0, Math.floor(Number(series.microscopy.timeIndex || 0)));
+  const activeC = Math.max(0, Math.floor(Number(series.microscopy?.channelIndex || 0)));
+  const activeT = Math.max(0, Math.floor(Number(series.microscopy?.timeIndex || 0)));
   const activeStack = stackForPosition(series, activeC, activeT, host);
-  series.pixelSpacing = [rowMm, colMm];
-  series._spacingKnown = true;
-  series.microscopy.calibrationSource = 'manual';
-  series.microscopy.physicalUnit = 'µm';
-  series.microscopy.physicalSizeX = x;
-  series.microscopy.physicalSizeY = y;
-  if (z > 0) {
-    series.sliceSpacing = nextZMm;
-    series.sliceThickness = nextZMm;
-    series._sliceSpacingKnown = true;
-    series.microscopy.physicalSizeZ = z;
-  }
-  const axisX = axisByName(series.microscopyDataset, 'x');
-  const axisY = axisByName(series.microscopyDataset, 'y');
-  const axisZ = axisByName(series.microscopyDataset, 'z');
+  const dataset = cloneDataset(series.microscopyDataset) || {};
+  const axisX = axisByName(dataset, 'x');
+  const axisY = axisByName(dataset, 'y');
+  const axisZ = axisByName(dataset, 'z');
   if (axisX) {
     axisX.scale = x;
     axisX.unit = 'µm';
@@ -530,19 +533,38 @@ export function applyManualMicroscopyCalibration(
     axisZ.unit = 'µm';
     axisZ.known = true;
   }
-  removeSourceWarnings(series, [
-    'missing_xy_physical_size',
-    'unsupported_x_physical_unit',
-    'unsupported_y_physical_unit',
-    ...(z > 0 ? ['missing_z_physical_size', 'unsupported_z_physical_unit'] : []),
-  ]);
-  if (Array.isArray(activeStack)) series.slices = activeStack.length;
-  setMicroscopyVolumeCapability(series, {
+  const microscopy = {
+    calibrationSource: 'manual',
+    physicalUnit: 'µm',
+    physicalSizeX: x,
+    physicalSizeY: y,
+  };
+  if (z > 0) microscopy.physicalSizeZ = z;
+  const patch = {
+    pixelSpacing: [rowMm, colMm],
+    _spacingKnown: true,
+    microscopy,
+    microscopyDataset: stripSourceWarnings(dataset, [
+      'missing_xy_physical_size',
+      'unsupported_x_physical_unit',
+      'unsupported_y_physical_unit',
+      ...(z > 0 ? ['missing_z_physical_size', 'unsupported_z_physical_unit'] : []),
+    ]),
+  };
+  if (z > 0) {
+    patch.sliceSpacing = nextZMm;
+    patch.sliceThickness = nextZMm;
+    patch._sliceSpacingKnown = true;
+  }
+  if (Array.isArray(activeStack)) patch.slices = activeStack.length;
+  let nextSeries = writeSeriesRecord(host, series, patch, writes);
+  if (!nextSeries) return false;
+  nextSeries = setMicroscopyVolumeCapability(nextSeries, {
     ...assessment,
     zMm: nextZMm,
-  });
-  replaceActiveMicroscopyRawVolume(series, assessment.rawVolume, host);
-  return true;
+  }, host, writes) || nextSeries;
+  replaceActiveMicroscopyRawVolume(nextSeries, assessment.rawVolume, host, writes);
+  return nextSeries;
 }
 
 function calibrationRow(series = {}) {
@@ -568,7 +590,7 @@ function calibrationInput({ id, placeholder, value = '' }) {
   return input;
 }
 
-function manualCalibrationRow(series, host) {
+function manualCalibrationRow(series, host, writes) {
   const row = document.createElement('div');
   row.className = 'hyperstack-row';
   const label = document.createElement('label');
@@ -585,17 +607,17 @@ function manualCalibrationRow(series, host) {
   apply.className = 'roi-results-export';
   apply.textContent = 'Apply';
   apply.addEventListener('click', () => {
-    const ok = applyManualMicroscopyCalibration(series, {
+    const next = applyManualMicroscopyCalibration(series, {
       xUmPerPx: x.value,
       yUmPerPx: y.value,
       zUm: z.value,
-    }, host);
-    setMicroscopyWorkflowStatus(ok
+    }, host, writes);
+    setMicroscopyWorkflowStatus(next
       ? 'Calibration applied'
       : 'Set positive X and Y micrometers per pixel to calibrate this stack');
-    if (ok) refreshMetadataCalibrationRows(series);
-    renderMicroscopyHyperstackControls(host);
-    requestCompositeRedraw(host);
+    if (next) refreshMetadataCalibrationRows(next);
+    renderMicroscopyHyperstackControls(host, writes);
+    requestCompositeRedraw(host, writes);
   });
   group.append(x, y, z, apply);
   row.append(label, group);
@@ -613,7 +635,7 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function recipeActionsRow(model, series, host) {
+function recipeActionsRow(model, series, host, writes) {
   const row = document.createElement('div');
   row.className = 'hyperstack-row';
   const label = document.createElement('label');
@@ -631,7 +653,7 @@ function recipeActionsRow(model, series, host) {
     const recipe = captureMicroscopyWorkflowRecipe(host);
     if (!recipe) {
       setMicroscopyWorkflowStatus('Open a microscopy series before saving a recipe');
-      renderMicroscopyHyperstackControls(host);
+      renderMicroscopyHyperstackControls(host, writes);
       return;
     }
     const slug = String(series.slug || 'microscopy').replace(/[^a-z0-9_.-]+/gi, '_');
@@ -640,7 +662,7 @@ function recipeActionsRow(model, series, host) {
       `voxellab-microscopy-workflow-${slug}.json`,
     );
     setMicroscopyWorkflowStatus('Workflow recipe saved');
-    renderMicroscopyHyperstackControls(host);
+    renderMicroscopyHyperstackControls(host, writes);
   });
   const replay = document.createElement('button');
   replay.id = 'microscopy-recipe-import';
@@ -662,14 +684,14 @@ function recipeActionsRow(model, series, host) {
       recipe = JSON.parse(await file.text());
     } catch {
       setMicroscopyWorkflowStatus('Recipe file is not valid JSON');
-      renderMicroscopyHyperstackControls(host);
+      renderMicroscopyHyperstackControls(host, writes);
       return;
     }
     const { applyMicroscopyWorkflowRecipe } = await import('./microscopy-workflow-recipe.js');
-    const result = applyMicroscopyWorkflowRecipe(recipe, host);
+    const result = applyMicroscopyWorkflowRecipe(recipe, host, writes);
     setMicroscopyWorkflowStatus(result.ok ? 'Workflow recipe replayed' : result.message);
-    renderMicroscopyHyperstackControls(host);
-    requestCompositeRedraw(host);
+    renderMicroscopyHyperstackControls(host, writes);
+    requestCompositeRedraw(host, writes);
   });
   group.append(save, replay, input);
   row.append(label, group);
@@ -713,7 +735,7 @@ function checkboxRow({ id, text, checked, disabled = false, onChange }) {
   return label;
 }
 
-function compositeChannelList(model, series, host) {
+function compositeChannelList(model, series, host, writes) {
   const list = document.createElement('div');
   list.className = 'hyperstack-composite-list';
   for (const channel of model.channels) {
@@ -729,12 +751,12 @@ function compositeChannelList(model, series, host) {
           input.checked = true;
           return;
         }
-        if (!setMicroscopyCompositeChannelEnabled(series, channel.index, input.checked, model.sizeC)) {
+        if (!setMicroscopyCompositeChannelEnabled(series, channel.index, input.checked, model.sizeC, host, writes)) {
           input.checked = true;
           return;
         }
-        renderMicroscopyHyperstackControls(host);
-        requestCompositeRedraw(host);
+        renderMicroscopyHyperstackControls(host, writes);
+        requestCompositeRedraw(host, writes);
       },
     });
     const swatch = document.createElement('span');
@@ -819,7 +841,7 @@ function selectRow(label, select) {
   return row;
 }
 
-export function activateMicroscopyStackPosition(c, t, host = state) {
+export function activateMicroscopyStackPosition(c, t, host = state, writes) {
   const series = host?.manifest?.series?.[host.seriesIdx];
   if (!series || series.imageDomain !== 'microscopy') return false;
   const nextC = Math.max(0, Math.floor(Number(c || 0)));
@@ -827,43 +849,46 @@ export function activateMicroscopyStackPosition(c, t, host = state) {
   const nextStack = stackForPosition(series, nextC, nextT, host);
   if (!nextStack) return false;
   const channel = series.microscopyDataset?.channels?.find((item) => Number(item?.index) === nextC);
-  series.microscopy.channelIndex = nextC;
-  series.microscopy.channelName = channel?.name || `Channel ${nextC + 1}`;
-  series.microscopy.timeIndex = nextT;
-  host._localStacks[series.slug] = nextStack;
-  host.imgs = nextStack;
-  series.slices = nextStack.length;
-  host.sliceIdx = Math.max(0, Math.min(host.sliceIdx, nextStack.length - 1));
-  const coverage = microscopyCoverageForPosition(series, nextC, nextT, host);
-  setMicroscopyVolumeCapability(series, {
-    eligible: series.microscopy.volumeEligible === true && coverage.complete,
-    reason: coverage.complete ? series.microscopy.volumeBlockReason : 'incomplete_z_coverage',
+  let nextSeries = writeSeriesRecord(host, series, {
+    slices: nextStack.length,
+    microscopy: {
+      channelIndex: nextC,
+      channelName: channel?.name || `Channel ${nextC + 1}`,
+      timeIndex: nextT,
+    },
+  }, writes);
+  if (!nextSeries) return false;
+  writeDisplayStack(host, nextSeries.slug, nextStack, Math.max(0, Math.min(host.sliceIdx, nextStack.length - 1)), writes);
+  const coverage = microscopyCoverageForPosition(nextSeries, nextC, nextT, host);
+  nextSeries = setMicroscopyVolumeCapability(nextSeries, {
+    eligible: nextSeries.microscopy.volumeEligible === true && coverage.complete,
+    reason: coverage.complete ? nextSeries.microscopy.volumeBlockReason : 'incomplete_z_coverage',
     coverage,
-    zMm: Number(series.sliceSpacing || series.sliceThickness || 0),
-  });
-  setActiveMicroscopyRawVolume(series, nextC, nextT, host);
-  renderMicroscopyHyperstackControls(host);
+    zMm: Number(nextSeries.sliceSpacing || nextSeries.sliceThickness || 0),
+  }, host, writes);
+  setActiveMicroscopyRawVolume(nextSeries, nextC, nextT, host, writes);
+  renderMicroscopyHyperstackControls(host, writes);
   afterStackChange();
   return true;
 }
 
-export function stepMicroscopyStackPosition({ channelDelta = 0, timeDelta = 0 } = {}, host = state) {
+export function stepMicroscopyStackPosition({ channelDelta = 0, timeDelta = 0 } = {}, host = state, writes) {
   const series = host?.manifest?.series?.[host.seriesIdx];
-  const model = microscopyHyperstackState(host, series);
+  const model = microscopyHyperstackState(host, series, writes);
   if (!model) return false;
   const nextC = Math.max(0, Math.min(model.sizeC - 1, model.current.c + Math.trunc(Number(channelDelta) || 0)));
   const nextT = Math.max(0, Math.min(model.sizeT - 1, model.current.t + Math.trunc(Number(timeDelta) || 0)));
   if (nextC === model.current.c && nextT === model.current.t) return false;
-  return activateMicroscopyStackPosition(nextC, nextT, host);
+  return activateMicroscopyStackPosition(nextC, nextT, host, writes);
 }
 
-export function renderMicroscopyHyperstackControls(host = state) {
+export function renderMicroscopyHyperstackControls(host = state, writes) {
   const panel = $('microscopy-stack-panel');
   const root = $('microscopy-stack-controls');
   if (!panel || !root) return null;
 
   const series = host?.manifest?.series?.[host.seriesIdx];
-  const model = microscopyHyperstackState(host, series);
+  const model = microscopyHyperstackState(host, series, writes);
   if (!model) {
     root.replaceChildren();
     panel.classList.add('panel-init-hidden');
@@ -888,7 +913,7 @@ export function renderMicroscopyHyperstackControls(host = state) {
   }
   channelSelect.disabled = model.sizeC <= 1;
   channelSelect.addEventListener('change', () => {
-    if (!activateMicroscopyStackPosition(Number(channelSelect.value), model.current.t, host)) {
+    if (!activateMicroscopyStackPosition(Number(channelSelect.value), model.current.t, host, writes)) {
       channelSelect.value = String(model.current.c);
     }
   });
@@ -906,33 +931,33 @@ export function renderMicroscopyHyperstackControls(host = state) {
   }
   timeSelect.disabled = model.sizeT <= 1;
   timeSelect.addEventListener('change', () => {
-    if (!activateMicroscopyStackPosition(model.current.c, Number(timeSelect.value), host)) {
+    if (!activateMicroscopyStackPosition(model.current.c, Number(timeSelect.value), host, writes)) {
       timeSelect.value = String(model.current.t);
     }
   });
 
   list.append(selectRow('Channel', channelSelect));
   list.append(channelMetaRow(model.channels[model.current.c]));
-  list.append(colorInputRow(model, series, host));
-  list.append(displayRangeRow(model, series, host));
+  list.append(colorInputRow(model, series, host, writes));
+  list.append(displayRangeRow(model, series, host, writes));
   if (model.sizeC > 1) {
     list.append(checkboxRow({
       id: 'microscopy-composite-toggle',
       text: 'Composite',
       checked: model.composite.enabled,
       onChange(input) {
-        setMicroscopyCompositeEnabled(series, input.checked, model.sizeC);
-        renderMicroscopyHyperstackControls(host);
-        requestCompositeRedraw(host);
+        setMicroscopyCompositeEnabled(series, input.checked, model.sizeC, host, writes);
+        renderMicroscopyHyperstackControls(host, writes);
+        requestCompositeRedraw(host, writes);
       },
     }));
-    if (model.composite.enabled) list.append(compositeChannelList(model, series, host));
+    if (model.composite.enabled) list.append(compositeChannelList(model, series, host, writes));
     if (splitPreviewSources(model, series, host).length > 1) list.append(splitPreviewRow(model, series, host));
   }
   if (model.sizeT > 1) list.append(selectRow('Time', timeSelect));
   list.append(calibrationRow(series));
-  if (!hasKnownCalibration(series)) list.append(manualCalibrationRow(series, host));
-  list.append(recipeActionsRow(model, series, host));
+  if (!hasKnownCalibration(series)) list.append(manualCalibrationRow(series, host, writes));
+  list.append(recipeActionsRow(model, series, host, writes));
   list.append(recipeStatusRow());
 
   const status = document.createElement('div');
@@ -942,11 +967,12 @@ export function renderMicroscopyHyperstackControls(host = state) {
   root.replaceChildren(list);
   enhanceSelectLikeDropdowns(root);
   signalPanelReady('microscopy-stack');
-  renderMicroscopyAnalysisPanelAsync(host);
+  renderMicroscopyAnalysisPanel(host);
   return model;
 }
 
 export function initMicroscopyHyperstackControls({ onStackChange = () => {} } = {}) {
   afterStackChange = onStackChange;
+  initMicroscopyAnalysisPanel({ onRedraw: afterStackChange });
   renderMicroscopyHyperstackControls(state);
 }

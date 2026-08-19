@@ -1,7 +1,7 @@
 import { state, subscribe } from './core/state.js';
 import { $ } from './dom.js';
 import { viewerAiFlags } from './config.js';
-import { setAskMarquee, setAskMode } from './core/state/viewer-tool-commands.js';
+import { getAskSession, setAskMarquee, setAskMode } from './ask-session.js';
 
 let _cancelPendingOpen = null;
 
@@ -14,7 +14,7 @@ function cancelPendingOpen() {
 function openStudyAskWhenReady() {
   cancelPendingOpen();
   const open = () => {
-    if (!state.askMode || state.mode !== '2d' || !state.loaded) return;
+    if (!getAskSession().mode || state.mode !== '2d' || !state.loaded) return;
     import('./consult-ask.js')
       .then((m) => m.openStudyAsk())
       .catch((err) => console.error('[ask] failed to open composer', err));
@@ -39,7 +39,7 @@ export function toggleAskMode() {
     syncAskPickingUi();
     return false;
   }
-  const on = setAskMode(!state.askMode);
+  const on = setAskMode(!getAskSession().mode);
   $('btn-ask').classList.toggle('active', on);
   syncAskPickingUi();
   if (on) openStudyAskWhenReady();
@@ -52,7 +52,7 @@ export function toggleAskMode() {
 export function syncAskPickingUi() {
   const wrap = $('canvas-wrap');
   const xform = $('view-xform');
-  const picking = state.askMode && state.askPen && state.mode === '2d' && state.loaded;
+  const picking = getAskSession().mode && getAskSession().pen && state.mode === '2d' && state.loaded;
   if (wrap) wrap.classList.toggle('ask-picking', picking);
   if (xform) xform.classList.toggle('measuring', picking || state.measureMode || state.annotateMode);
   const hint = $('ask-mode-hint');

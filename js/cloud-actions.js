@@ -1,4 +1,4 @@
-import { geometryKindForSeries, reconstructionCapabilityForSeries } from './series/series-capabilities.js';
+import { geometryKindForSeries, reconstructionCapabilityForSeries } from './core/series-capabilities.js';
 
 const CLOUD_ACTIONS = Object.freeze([
   Object.freeze({

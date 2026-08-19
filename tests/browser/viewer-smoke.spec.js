@@ -245,10 +245,10 @@ test('loads a local-first volume fixture and paints the main 2D canvas', async (
   const obliqueBeforeAngles = await page.locator('#mpr-ob').screenshot();
   await page.locator('#ob-yaw-val').fill('');
   await expect(page.locator('#ob-yaw-val')).toHaveValue('');
-  expect(await page.evaluate(async () => (await import('/js/core/state.js')).state.obYaw)).toBe(0);
+  expect(await page.evaluate(async () => (await import('/js/core/state.js')).state.mpr.obYaw)).toBe(0);
   await page.locator('#ob-yaw-val').fill('-45');
   await expect(page.locator('#ob-yaw-val')).toHaveValue('-45');
-  expect(await page.evaluate(async () => (await import('/js/core/state.js')).state.obYaw)).toBe(-45);
+  expect(await page.evaluate(async () => (await import('/js/core/state.js')).state.mpr.obYaw)).toBe(-45);
   await page.locator('#ob-yaw').fill('45');
   await page.locator('#ob-pitch').fill('36.3');
   await expect(page.locator('#ob-yaw-val')).toHaveValue('45');
@@ -318,10 +318,10 @@ test('loads a local-first volume fixture and paints the main 2D canvas', async (
   await expect.poll(() => page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
     return {
-      enabled: state.clipPlaneEnabled,
-      yaw: state.obYaw,
-      pitch: state.obPitch,
-      depth: state.clipPlaneDepth,
+      enabled: state.three.clipPlaneEnabled,
+      yaw: state.mpr.obYaw,
+      pitch: state.mpr.obPitch,
+      depth: state.three.clipPlaneDepth,
     };
   })).toEqual({ enabled: true, yaw: 45, pitch: 36.3, depth: 0.37 });
   await page.waitForTimeout(250);

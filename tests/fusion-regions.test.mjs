@@ -38,14 +38,20 @@ test('loadFusion reuses the active peer stack and voxel cache', async (t) => {
   state.seriesIdx = 0;
   state.sliceIdx = 1;
   state.mode = '2d';
-  state.fusionSlug = 'fusion_peer';
+  state.overlays.fusionSlug = 'fusion_peer';
   state.fusionImgs = existing;
   state.fusionVoxels = voxels;
   const existingFusionImgs = state.fusionImgs;
 
   await loadFusion('fusion_peer');
 
-  assert.equal(state.fusionSlug, 'fusion_peer');
+  assert.equal(state.overlays.fusionSlug, 'fusion_peer');
   assert.equal(state.fusionImgs, existingFusionImgs);
   assert.equal(state.fusionVoxels, voxels);
+});
+
+test('fusion-loader does not import sync.js', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../js/fusion-loader.js', import.meta.url), 'utf8');
+  assert.equal(/from ['"].*sync\.js['"]/.test(source), false);
 });

@@ -34,6 +34,7 @@ from ask_envelopes import (
     EnvelopeValidationError,
     normalize_ask_entry,
     normalize_ask_result,
+    normalize_ask_sidecar,
     normalize_consult_document,
     normalize_consult_result,
 )
@@ -319,11 +320,7 @@ def _load_asks(slug: str) -> dict:
         data = json.loads(p.read_text())
     except Exception as exc:
         raise EnvelopeValidationError("ask-sidecar", "json_invalid") from exc
-    if not isinstance(data, dict):
-        raise EnvelopeValidationError("ask-sidecar", "not_object")
-    if not isinstance(data.get("entries", []), list):
-        raise EnvelopeValidationError("ask-sidecar", "entries_not_array")
-    return data
+    return normalize_ask_sidecar(data)
 
 
 def _save_asks(slug: str, data: dict) -> None:

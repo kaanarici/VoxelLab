@@ -7,7 +7,7 @@
 
 import { state } from '../core/state.js';
 import { geometryFromSeries } from '../core/geometry.js';
-import { regionLabelName } from '../region-meta.js';
+import { regionLabelName } from '../core/region-meta.js';
 import { notify } from '../notify.js';
 import { allLabelsFromMeta } from '../atlas/label-selection.js';
 import { ensureActiveOverlayVolumes, ensureRegionVoxelsSync } from '../overlay/overlay-volumes.js';
@@ -90,7 +90,7 @@ export function exportLabelMesh(series = state.manifest?.series?.[state.seriesId
   }
   const affine = geometryFromSeries(series).affineLps;
   const mesh = buildLabelMesh(series, voxels, affine, Number(label));
-  const name = regionLabelName(state.regionMeta, label) || `label-${label}`;
+  const name = regionLabelName(state.overlays.regionMeta, label) || `label-${label}`;
   if (!mesh) return finishExport(exportOutcome(false, `${name} has no exportable surface voxels.`, { reason: 'empty-label' }), opts);
   const data = encode(mesh, format, name);
   const filename = `${slugify(series.slug || 'series')}-${slugify(name)}.${format}`;
@@ -114,14 +114,14 @@ export function exportStudyMesh(series = state.manifest?.series?.[state.seriesId
     return finishExport(exportOutcome(false, 'Segmentation labels are still loading or unavailable for this series.', { reason: 'labels-unavailable' }), opts);
   }
   const affine = geometryFromSeries(series).affineLps;
-  const labels = [...allLabelsFromMeta(state.regionMeta)].sort((a, b) => a - b);
+  const labels = [...allLabelsFromMeta(state.overlays.regionMeta)].sort((a, b) => a - b);
   if (!labels.length) {
     return finishExport(exportOutcome(false, 'No anatomy labels are available for mesh export.', { reason: 'no-labels' }), opts);
   }
   const parts = [];
   for (const label of labels) {
     const mesh = buildLabelMesh(series, voxels, affine, label);
-    if (mesh) parts.push({ ...mesh, name: regionLabelName(state.regionMeta, label) || `label-${label}` });
+    if (mesh) parts.push({ ...mesh, name: regionLabelName(state.overlays.regionMeta, label) || `label-${label}` });
   }
   if (!parts.length) {
     return finishExport(exportOutcome(false, 'No anatomy structures have exportable surface voxels.', { reason: 'empty-labels' }), opts);

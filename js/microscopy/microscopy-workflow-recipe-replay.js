@@ -2,8 +2,9 @@
 // the active series followed by a transactional apply with full rollback.
 // Shared series-shape and numeric primitives are imported from recipe-encode.js.
 
+import { lengthUnitToMm, normalizeLengthUnit } from '../core/physical-units.js';
+import { seriesIdentityKey, seriesPersistenceKey } from '../core/series-identity.js';
 import { state } from '../core/state.js';
-import { setColormap, setWindowLevel } from '../core/state/viewer-commands.js';
 import {
   angleEntriesForSlice,
   nextDrawingEntryId,
@@ -11,17 +12,15 @@ import {
   setAngleEntriesForSlice,
   setRoiEntriesForSlice,
 } from '../overlay/annotation-graph.js';
-import { lengthUnitToMm, normalizeLengthUnit } from '../core/physical-units.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
 import {
   importRoiResultsBundle,
   roiResultRows,
   roiResultsBundleIncompatibleRowCount,
   validateRoiResultsBundleForSeries,
 } from '../roi/roi-results.js';
+import { hostWritesFor } from '../runtime/viewer-runtime.js';
 import { MICROSCOPY_WORKFLOW_RECIPE_SCHEMAS } from '../sidecar-schemas.js';
 import { replayAnalysisOp } from './microscopy-analysis.js';
-import { ensureMicroscopyComposite, setMicroscopyCompositeChannelEnabled, setMicroscopyCompositeEnabled } from './microscopy-channel-composite.js';
 import { applyDisplayRangeToChannelStacks, finiteDisplayRange } from './microscopy-display-range.js';
 import {
   activeSeries,
@@ -39,6 +38,48 @@ import {
 } from './microscopy-workflow-recipe-encode.js';
 
 const SUPPORTED_RECIPE_SCHEMAS = new Set(MICROSCOPY_WORKFLOW_RECIPE_SCHEMAS);
+
+function patchHostSeries(host, series, patch, writes) {
+  return writes.patchSeries(host, series, patch);
+}
+
+function setHostSliceIndex(host, sliceIdx, series, writes) {
+  return writes.sliceIndex(host, sliceIdx, series);
+}
+
+function setHostInvertDisplay(host, enabled, writes) {
+  return writes.invertDisplay(host, enabled);
+}
+
+function setHostWindowLevel(host, windowValue, levelValue, writes) {
+  return writes.windowLevel(host, windowValue, levelValue);
+}
+
+function setHostColormap(host, name, writes) {
+  return writes.colormap(host, name);
+}
+
+function writeDisplayStack(host, slug, stack, sliceIdx, writes) {
+  return writes.displayStack(host, slug, stack, sliceIdx);
+}
+
+function writeAnalysisMapEntry(host, mapKey, entryKey, value, writes) {
+  return writes.runtimeMapEntry(host, mapKey, entryKey, value);
+}
+
+function replaceAnalysisMap(host, mapKey, next, writes) {
+  return writes.replaceRuntimeMap(host, mapKey, next);
+}
+
+function refreshHostSeries(host, series) {
+  const list = host?.manifest?.series;
+  if (!Array.isArray(list) || !series) return series;
+  const direct = list.indexOf(series);
+  if (direct >= 0) return list[direct];
+  const key = seriesIdentityKey(series, host.manifest);
+  if (!key) return series;
+  return list.find((item) => seriesIdentityKey(item, host.manifest) === key) || series;
+}
 
 function isWorkflowRecipeRecord(value) {
   return Object.prototype.toString.call(value) === '[object Object]';
@@ -117,65 +158,74 @@ function calibrationSnapshot(series = {}) {
   };
 }
 
-function restoreCalibrationSnapshot(series = {}, snapshot = {}) {
-  if (snapshot.pixelSpacing) series.pixelSpacing = snapshot.pixelSpacing.slice();
-  else delete series.pixelSpacing;
-  series.sliceSpacing = snapshot.sliceSpacing;
-  series.sliceThickness = snapshot.sliceThickness;
-  series._spacingKnown = snapshot.spacingKnown;
-  series._sliceSpacingKnown = snapshot.sliceSpacingKnown;
-  series.microscopy = cloneJson(snapshot.microscopy || {});
-  series.microscopyDataset = cloneJson(snapshot.microscopyDataset || {});
+function restoreCalibrationSnapshot(host, series = {}, snapshot = {}, writes) {
+  return patchHostSeries(host, series, {
+    pixelSpacing: snapshot.pixelSpacing ? snapshot.pixelSpacing.slice() : null,
+    sliceSpacing: snapshot.sliceSpacing,
+    sliceThickness: snapshot.sliceThickness,
+    _spacingKnown: snapshot.spacingKnown,
+    _sliceSpacingKnown: snapshot.sliceSpacingKnown,
+    microscopy: cloneJson(snapshot.microscopy || {}),
+    microscopyDataset: cloneJson(snapshot.microscopyDataset || {}),
+  }, writes) || series;
 }
 
 function axisByName(dataset = {}, name) {
   return dataset.axes?.find((axis) => axis?.name === name) || null;
 }
 
-function applyRecipeCalibration(series = {}, recipe = {}) {
-  if (!canApplyRecipeCalibration(recipe, series)) return false;
+function applyRecipeCalibration(host, series = {}, recipe = {}, writes) {
+  if (!canApplyRecipeCalibration(recipe, series)) return series;
   const calibration = recipe.calibration || {};
   const rowMm = finitePositiveNumber(calibration.rowMm);
   const colMm = finitePositiveNumber(calibration.colMm);
-  if (rowMm == null || colMm == null) return false;
+  if (rowMm == null || colMm == null) return series;
   const unit = normalizeLengthUnit(calibration.displayUnit || series.microscopy?.physicalUnit || 'µm');
   const unitMm = lengthUnitToMm(unit);
   const xUnit = colMm / unitMm;
   const yUnit = rowMm / unitMm;
   const zMm = calibration.zKnown ? finitePositiveNumber(calibration.zMm) : null;
   const zUnit = zMm == null ? null : zMm / unitMm;
-  series.pixelSpacing = [rowMm, colMm];
-  series._spacingKnown = true;
-  series.microscopy = series.microscopy || {};
-  series.microscopy.calibrationSource = 'manual';
-  series.microscopy.physicalUnit = unit;
-  series.microscopy.physicalSizeX = xUnit;
-  series.microscopy.physicalSizeY = yUnit;
-  if (zMm != null) {
-    series.sliceSpacing = zMm;
-    series.sliceThickness = zMm;
-    series._sliceSpacingKnown = true;
-    series.microscopy.physicalSizeZ = zUnit;
-  }
+  const dataset = cloneJson(series.microscopyDataset || {});
   for (const [name, scale] of [['x', xUnit], ['y', yUnit], ['z', zUnit]]) {
     if (scale == null) continue;
-    const axis = axisByName(series.microscopyDataset, name);
+    const axis = axisByName(dataset, name);
     if (!axis) continue;
     axis.scale = scale;
     axis.unit = unit;
     axis.known = true;
   }
-  if (series.microscopyDataset?.source) {
+  if (dataset?.source) {
     const resolved = new Set([
       'missing_xy_physical_size',
       'unsupported_x_physical_unit',
       'unsupported_y_physical_unit',
       ...(zMm != null ? ['missing_z_physical_size', 'unsupported_z_physical_unit'] : []),
     ]);
-    series.microscopyDataset.source.warnings = (series.microscopyDataset.source.warnings || [])
-      .filter((warning) => !resolved.has(warning));
+    dataset.source = {
+      ...dataset.source,
+      warnings: (dataset.source.warnings || []).filter((warning) => !resolved.has(warning)),
+    };
   }
-  return true;
+  const microscopy = {
+    calibrationSource: 'manual',
+    physicalUnit: unit,
+    physicalSizeX: xUnit,
+    physicalSizeY: yUnit,
+  };
+  if (zMm != null) microscopy.physicalSizeZ = zUnit;
+  const patch = {
+    pixelSpacing: [rowMm, colMm],
+    _spacingKnown: true,
+    microscopy,
+    microscopyDataset: dataset,
+  };
+  if (zMm != null) {
+    patch.sliceSpacing = zMm;
+    patch.sliceThickness = zMm;
+    patch._sliceSpacingKnown = true;
+  }
+  return patchHostSeries(host, series, patch, writes) || series;
 }
 
 function stackForPosition(series, channelIndex, timeIndex, host = state) {
@@ -183,17 +233,20 @@ function stackForPosition(series, channelIndex, timeIndex, host = state) {
   return stacks?.[`${channelIndex}|${timeIndex}`] || null;
 }
 
-function activateStackPosition(series, channelIndex, timeIndex, host = state) {
+function activateStackPosition(series, channelIndex, timeIndex, host = state, writes) {
   const stack = stackForPosition(series, channelIndex, timeIndex, host);
-  if (!stack) return false;
+  if (!stack) return null;
   const channel = series.microscopyDataset?.channels?.find((item) => Number(item?.index) === channelIndex);
-  series.microscopy.channelIndex = channelIndex;
-  series.microscopy.channelName = channel?.name || `Channel ${channelIndex + 1}`;
-  series.microscopy.timeIndex = timeIndex;
-  host._localStacks[series.slug] = stack;
-  host.imgs = stack;
-  host.sliceIdx = Math.max(0, Math.min(host.sliceIdx, stack.length - 1));
-  return true;
+  const next = patchHostSeries(host, series, {
+    microscopy: {
+      channelIndex,
+      channelName: channel?.name || `Channel ${channelIndex + 1}`,
+      timeIndex,
+    },
+  }, writes);
+  if (!next) return null;
+  writeDisplayStack(host, next.slug, stack, Math.max(0, Math.min(host.sliceIdx, stack.length - 1)), writes);
+  return next;
 }
 
 function displayRangeStackStats(series, channelIndex, host = state) {
@@ -216,25 +269,47 @@ function canSetDisplayRange(series, channelIndex, range, host = state) {
   return stats.total > 0 && stats.raw === stats.total;
 }
 
-function setChannelDisplayColor(series, channelIndex, color) {
-  const channel = series?.microscopyDataset?.channels?.find((item) => Number(item?.index) === channelIndex);
-  const normalized = String(color || '').trim().toUpperCase();
-  if (!channel || !/^#[0-9A-F]{6}$/.test(normalized)) return false;
-  channel.displayColor = normalized;
-  channel.displayColorSource = 'user';
-  return true;
+function patchDatasetChannel(host, series, channelIndex, fields, writes) {
+  const dataset = cloneJson(series.microscopyDataset || {});
+  dataset.channels = (dataset.channels || []).map((item) => (
+    Number(item?.index) === channelIndex ? { ...item, ...fields } : item
+  ));
+  return patchHostSeries(host, series, { microscopyDataset: dataset }, writes) || series;
 }
 
-function setChannelDisplayRange(series, channelIndex, range, host = state) {
+function setChannelDisplayColor(host, series, channelIndex, color, writes) {
+  const channel = series?.microscopyDataset?.channels?.find((item) => Number(item?.index) === channelIndex);
+  const normalized = String(color || '').trim().toUpperCase();
+  if (!channel || !/^#[0-9A-F]{6}$/.test(normalized)) return null;
+  return patchDatasetChannel(host, series, channelIndex, {
+    displayColor: normalized,
+    displayColorSource: 'user',
+  }, writes);
+}
+
+function setChannelDisplayRange(host, series, channelIndex, range, writes) {
   const next = finiteDisplayRange(range);
   const channel = series?.microscopyDataset?.channels?.find((item) => Number(item?.index) === channelIndex);
-  if (!channel || !next || !canSetDisplayRange(series, channelIndex, next, host)) return false;
+  if (!channel || !next || !canSetDisplayRange(series, channelIndex, next, host)) return null;
   const updated = applyDisplayRangeToChannelStacks(host._localMicroscopyStacks?.[series.slug] || {}, channelIndex, next);
   const stats = displayRangeStackStats(series, channelIndex, host);
-  if (updated !== stats.total) return false;
-  channel.displayRange = next;
-  channel.displayRangeSource = 'user';
-  return true;
+  if (updated !== stats.total) return null;
+  return patchDatasetChannel(host, series, channelIndex, {
+    displayRange: next,
+    displayRangeSource: 'user',
+  }, writes);
+}
+
+function compositeSnapshot(series, sizeC) {
+  const channels = Array.from({ length: sizeC }, (_, index) => series?.microscopy?.composite?.channels?.[index] !== false);
+  return {
+    enabled: !!series?.microscopy?.composite?.enabled && sizeC > 1,
+    channels,
+  };
+}
+
+function writeComposite(host, series, composite, writes) {
+  return patchHostSeries(host, series, { microscopy: { composite } }, writes);
 }
 
 // Per-channel color + display-range snapshot used to roll back a partial apply.
@@ -517,10 +592,10 @@ export function validateAnalysisOps(recipe, series, dims = null) {
   return { ok: true, code: '', message: '' };
 }
 
-function applyEmbeddedRoiResults(recipe, series, host = state) {
+function applyEmbeddedRoiResults(recipe, series, host = state, writes) {
   const bundle = embeddedRoiResultsBundle(recipe);
   if (!bundle) return { ok: true, code: '', message: '' };
-  const result = importRoiResultsBundle(bundle, host);
+  const result = importRoiResultsBundle(bundle, host, writes);
   const expectedIds = new Set(bundle.rows.map((row) => row?.roiObjectId).filter(Boolean));
   const liveIds = new Set(roiResultRows(host, series).map((row) => row.objectId));
   const alreadyPresent = expectedIds.size > 0 && [...expectedIds].every((id) => liveIds.has(id));
@@ -534,7 +609,7 @@ function applyEmbeddedRoiResults(recipe, series, host = state) {
   };
 }
 
-function applyEmbeddedAngleMeasurements(recipe, series, host = state) {
+function applyEmbeddedAngleMeasurements(recipe, series, host = state, writes) {
   const rows = embeddedAngleRows(recipe);
   if (!rows.length) return { ok: true, code: '', message: '' };
   const bySlice = new Map();
@@ -595,15 +670,23 @@ function applyEmbeddedAngleMeasurements(recipe, series, host = state) {
         source: 'VoxelLab microscopy workflow recipe',
       });
     }
-    setAngleEntriesForSlice(host, series, sliceIndex, next);
+    setAngleEntriesForSlice(host, series, sliceIndex, next, writes);
   }
   return { ok: true, code: '', message: '' };
 }
 
-export function applyMicroscopyWorkflowRecipe(recipe, host = state) {
+export function applyMicroscopyWorkflowRecipe(recipe, host = state, writes) {
+  writes = hostWritesFor(host, writes);
+  if (!writes) {
+    return {
+      ok: false,
+      code: 'isolated_host_writes_required',
+      message: 'Isolated recipe replay requires isolated host writes.',
+    };
+  }
   const check = validateMicroscopyWorkflowRecipe(recipe, host);
   if (!check.ok) return check;
-  const series = activeSeries(host);
+  let series = activeSeries(host);
   const stack = recipe.stack || {};
   const channelIndex = finiteInteger(stack.channelIndex, 0);
   const timeIndex = finiteInteger(stack.timeIndex, 0);
@@ -611,7 +694,7 @@ export function applyMicroscopyWorkflowRecipe(recipe, host = state) {
   const channels = Array.isArray(recipe.channels) ? recipe.channels : [];
   const compositeEnabled = !!stack.compositeEnabled;
   const sizeC = channelCount(series);
-  const previousComposite = ensureMicroscopyComposite(series, sizeC);
+  const previousComposite = compositeSnapshot(series, sizeC);
   const previous = {
     window: host.window,
     level: host.level,
@@ -621,73 +704,68 @@ export function applyMicroscopyWorkflowRecipe(recipe, host = state) {
     channelIndex: series.microscopy?.channelIndex || 0,
     timeIndex: series.microscopy?.timeIndex || 0,
     calibration: calibrationSnapshot(series),
-    composite: {
-      ...previousComposite,
-      channels: previousComposite.channels.slice(),
-    },
+    composite: previousComposite,
     channels: channelStateSnapshot(series, sizeC),
     analysisLog: cloneJson(host?._microscopyAnalysisLog || {}),
     analysisResults: cloneJson(host?._microscopyAnalysisResults || {}),
   };
   const createdAnalysis = [];
   const rollback = () => {
-    restoreCalibrationSnapshot(series, previous.calibration);
-    setWindowLevel(previous.window, previous.level);
-    setColormap(previous.colormap);
-    host.invertDisplay = !!previous.invertDisplay;
-    activateStackPosition(series, previous.channelIndex, previous.timeIndex, host);
-    host.sliceIdx = Math.max(0, previous.sliceIdx);
-    setMicroscopyCompositeEnabled(series, !!previous.composite.enabled, sizeC);
-    for (let i = 0; i < previous.composite.channels.length; i += 1) {
-      const nextEnabled = previous.composite.channels[i] !== false;
-      const currentEnabled = series.microscopy?.composite?.channels?.[i] !== false;
-      if (currentEnabled === nextEnabled) continue;
-      setMicroscopyCompositeChannelEnabled(series, i, nextEnabled, sizeC);
-    }
+    series = restoreCalibrationSnapshot(host, series, previous.calibration, writes);
+    setHostWindowLevel(host, previous.window, previous.level, writes);
+    setHostColormap(host, previous.colormap, writes);
+    setHostInvertDisplay(host, !!previous.invertDisplay, writes);
+    series = activateStackPosition(series, previous.channelIndex, previous.timeIndex, host, writes) || refreshHostSeries(host, series);
+    setHostSliceIndex(host, Math.max(0, previous.sliceIdx), series, writes);
+    series = writeComposite(host, series, previous.composite, writes) || refreshHostSeries(host, series);
     for (const channel of previous.channels) {
-      if (channel.color) setChannelDisplayColor(series, channel.index, channel.color);
-      if (channel.displayRange) setChannelDisplayRange(series, channel.index, channel.displayRange, host);
+      if (channel.color) series = setChannelDisplayColor(host, series, channel.index, channel.color, writes) || series;
+      if (channel.displayRange) series = setChannelDisplayRange(host, series, channel.index, channel.displayRange, writes) || series;
     }
     for (const { sliceIdx, ids } of createdAnalysis) {
       const kept = roiEntriesForSlice(host, series, sliceIdx).filter((entry) => !ids.has(entry.importedObjectId));
-      setRoiEntriesForSlice(host, series, sliceIdx, kept);
+      setRoiEntriesForSlice(host, series, sliceIdx, kept, writes);
     }
-    host._microscopyAnalysisLog = previous.analysisLog;
-    host._microscopyAnalysisResults = previous.analysisResults;
+    replaceAnalysisMap(host, '_microscopyAnalysisLog', previous.analysisLog, writes);
+    replaceAnalysisMap(host, '_microscopyAnalysisResults', previous.analysisResults, writes);
   };
   try {
-    applyRecipeCalibration(series, recipe);
-    setWindowLevel(Number(recipe.view?.window || host.window), Number(recipe.view?.level || host.level));
-    setColormap(String(recipe.view?.colormap || 'grayscale'));
-    host.invertDisplay = !!recipe.view?.invertDisplay;
-    if (!activateStackPosition(series, channelIndex, timeIndex, host)) {
-      throw new Error('missing_stack_position');
+    series = applyRecipeCalibration(host, series, recipe, writes);
+    setHostWindowLevel(host, Number(recipe.view?.window || host.window), Number(recipe.view?.level || host.level), writes);
+    setHostColormap(host, String(recipe.view?.colormap || 'grayscale'), writes);
+    setHostInvertDisplay(host, !!recipe.view?.invertDisplay, writes);
+    const activated = activateStackPosition(series, channelIndex, timeIndex, host, writes);
+    if (!activated) throw new Error('missing_stack_position');
+    series = activated;
+    setHostSliceIndex(host, Math.max(0, Math.min(depthCount(series) - 1, sliceIndex)), series, writes);
+    const desiredChannels = Array.from(
+      { length: sizeC },
+      (_, index) => (Array.isArray(stack.compositeChannels) ? stack.compositeChannels[index] : true) !== false,
+    );
+    if (compositeEnabled && sizeC > 1 && desiredChannels.every((value) => !value)) {
+      throw new Error('unsupported_mode');
     }
-    host.sliceIdx = Math.max(0, Math.min(depthCount(series) - 1, sliceIndex));
-    setMicroscopyCompositeEnabled(series, compositeEnabled, sizeC);
-    if (compositeEnabled) {
-      const desired = Array.isArray(stack.compositeChannels) ? stack.compositeChannels : [];
-      for (let i = 0; i < sizeC; i += 1) {
-        const nextEnabled = desired[i] !== false;
-        const currentEnabled = series.microscopy?.composite?.channels?.[i] !== false;
-        if (currentEnabled === nextEnabled) continue;
-        if (!setMicroscopyCompositeChannelEnabled(series, i, nextEnabled, sizeC)) {
-          throw new Error('unsupported_mode');
-        }
-      }
-    }
+    series = writeComposite(host, series, {
+      enabled: compositeEnabled && sizeC > 1,
+      channels: compositeEnabled ? desiredChannels : previousComposite.channels,
+    }, writes) || series;
+    series = refreshHostSeries(host, series);
     for (const channel of channels) {
-      if (channel.color && !setChannelDisplayColor(series, channel.index, channel.color)) {
-        throw new Error('invalid_channel_color');
+      if (channel.color) {
+        const next = setChannelDisplayColor(host, series, channel.index, channel.color, writes);
+        if (!next) throw new Error('invalid_channel_color');
+        series = next;
       }
       const range = finiteDisplayRange(channel.displayRange);
-      if (range && !setChannelDisplayRange(series, channel.index, range, host)) {
-        throw new Error('unsupported_display_range');
+      if (range) {
+        const next = setChannelDisplayRange(host, series, channel.index, range, writes);
+        if (!next) throw new Error('unsupported_display_range');
+        series = next;
       }
     }
-    const embeddedResults = applyEmbeddedRoiResults(recipe, series, host);
+    const embeddedResults = applyEmbeddedRoiResults(recipe, series, host, writes);
     if (!embeddedResults.ok) throw new Error(embeddedResults.code || 'roi_results_replay_failed');
-    const embeddedAngles = applyEmbeddedAngleMeasurements(recipe, series, host);
+    const embeddedAngles = applyEmbeddedAngleMeasurements(recipe, series, host, writes);
     if (!embeddedAngles.ok) throw new Error(embeddedAngles.code || 'angle_measurements_replay_failed');
     const analysisOps = Array.isArray(recipe.analysisOps) ? recipe.analysisOps : [];
     for (const descriptor of analysisOps) {
@@ -695,7 +773,7 @@ export function applyMicroscopyWorkflowRecipe(recipe, host = state) {
       const expected = new Set(descriptor?.outputRoiObjectIds || []);
       const liveIds = new Set(roiResultRows(host, series).map((row) => row.objectId));
       if (createsRoiEntries && expected.size > 0 && [...expected].every((id) => liveIds.has(id))) continue; // idempotent re-apply
-      const res = replayAnalysisOp(host, series, descriptor);
+      const res = replayAnalysisOp(host, series, descriptor, { writes });
       if (!res?.ok) throw new Error('analysis_op_replay_failed');
       if (createsRoiEntries) {
         createdAnalysis.push({ sliceIdx: finiteInteger(descriptor?.inputs?.z, 0), ids: new Set(res.objectIds || []) });
@@ -703,8 +781,7 @@ export function applyMicroscopyWorkflowRecipe(recipe, host = state) {
     }
     const analysisIdentity = seriesPersistenceKey(series, host?.manifest || {});
     if (analysisOps.length && analysisIdentity) {
-      if (!host._microscopyAnalysisLog) host._microscopyAnalysisLog = {};
-      host._microscopyAnalysisLog[analysisIdentity] = analysisOps.slice();
+      writeAnalysisMapEntry(host, '_microscopyAnalysisLog', analysisIdentity, analysisOps.slice(), writes);
     }
     return { ok: true, code: '', message: '' };
   } catch (error) {

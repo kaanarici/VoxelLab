@@ -1,7 +1,6 @@
 // Browser-side DICOM / NIfTI import: parsing lives in dicom-import-parse.js.
 // This file wires parsed stacks into the manifest + sidebar.
 
-import { state } from '../core/state.js';
 import { notify } from '../notify.js';
 import { notifyProjectsChanged } from '../projects/projects-sidebar.js';
 import {
@@ -9,16 +8,32 @@ import {
   mergeSeriesIntoManifest,
   registerProjectionSet,
 } from '../series/series-contract.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
+import { state } from '../core/state.js';
+import { setManifestCollections } from '../core/state/viewer-commands.js';
 import { cacheLocalRawVolume, clearLocalRawVolume } from '../local-raw-volume-cache.js';
+import {
+  deleteLocalRuntimeMapEntry,
+  setLocalRuntimeMapEntry,
+} from '../runtime/viewer-runtime.js';
 import { createLocalByteSlice } from '../series/local-byte-slice.js';
 import { retryPendingDerivedObjects } from './dicom-derived-import.js';
 
 export { iterateDICOMFileGroups, parseDICOMFiles, parseDICOMFileGroups, parseNIfTI, parseNIfTISeries } from './dicom-import-parse.js';
 export { buildDICOMSeriesResult } from './dicom-import-parse.js';
 
+function mergeSeriesForManifest(manifest, entry) {
+  if (manifest === state.manifest && Array.isArray(state.manifest?.series)) {
+    const series = state.manifest.series.slice();
+    const idx = mergeSeriesIntoManifest({ ...state.manifest, series }, entry);
+    setManifestCollections({ series });
+    return idx;
+  }
+  return mergeSeriesIntoManifest(manifest, entry);
+}
+
 export function injectManifestSeries(manifest, entry) {
-  const idx = mergeSeriesIntoManifest(manifest, entry);
+  const idx = mergeSeriesForManifest(manifest, entry);
   const retried = retryPendingDerivedObjects(manifest);
   const attached = retried.filter(result => !result.skipped);
   const rejected = retried.filter(result => result.skipped);
@@ -66,25 +81,25 @@ export function injectLocalSeries(manifest, entry, sliceSources, rawVolume, loca
     seriesPersistenceKey(displayEntry, manifest),
   ].filter(Boolean));
   for (const key of analysisKeys) {
-    if (state._microscopyAnalysisLog) delete state._microscopyAnalysisLog[key];
-    if (state._microscopyAnalysisResults) delete state._microscopyAnalysisResults[key];
+    deleteLocalRuntimeMapEntry('_microscopyAnalysisLog', key);
+    deleteLocalRuntimeMapEntry('_microscopyAnalysisResults', key);
   }
 
-  state._localStacks[slug] = imgs;
-  if (state._localMicroscopyStacks) delete state._localMicroscopyStacks[slug];
-  if (state._localMicroscopyPlanes) delete state._localMicroscopyPlanes[slug];
+  setLocalRuntimeMapEntry('_localStacks', slug, imgs);
+  deleteLocalRuntimeMapEntry('_localMicroscopyStacks', slug);
+  deleteLocalRuntimeMapEntry('_localMicroscopyPlanes', slug);
   clearLocalRawVolume(slug);
   if (localStacks && displayEntry.microscopy) {
     const stacks = {};
     for (const [key, canvases] of Object.entries(localStacks)) {
       stacks[key] = localSliceSourcesToImages(canvases, displayEntry.width, displayEntry.height);
     }
-    state._localMicroscopyStacks[slug] = stacks;
+    setLocalRuntimeMapEntry('_localMicroscopyStacks', slug, stacks);
     const activeKey = `${displayEntry.microscopy.channelIndex || 0}|${displayEntry.microscopy.timeIndex || 0}`;
-    state._localStacks[slug] = stacks[activeKey] || imgs;
+    setLocalRuntimeMapEntry('_localStacks', slug, stacks[activeKey] || imgs);
     // Retain raw single-channel planes (uint16-aware) for raw-domain analysis. Skipped when
     // retention exceeded the byte budget (rawPlanes === null) — analysis then fails closed.
-    if (rawPlanes) state._localMicroscopyPlanes[slug] = rawPlanes;
+    if (rawPlanes) setLocalRuntimeMapEntry('_localMicroscopyPlanes', slug, rawPlanes);
   }
   if (rawVolume) {
     cacheLocalRawVolume(slug, rawVolume);

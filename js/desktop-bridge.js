@@ -210,7 +210,8 @@ export function wireDesktopBridge(selectSeries) {
         await showStudyUploadModal(selectSeries);
         return;
       }
-      const { showStudyUploadModal, handleLocalImport } = await import('./projects/study-upload-modal.js');
+      const { showStudyUploadModal } = await import('./projects/study-upload-modal.js');
+      const { handleLocalImport } = await import('./intake/run-local-import.js');
       if (!isCurrentIntake()) return;
       isModalSessionActive = await showStudyUploadModal(selectSeries);
       if (!isModalSessionActive?.() || !isCurrentIntake()) return;

@@ -1,24 +1,15 @@
 // UI labels for imaging capabilities; geometry rules live in geometry.js.
 
 import {
+  GEOMETRY_KIND_CAPABILITY,
+  PROJECTION_MODALITIES,
+  SLICE_AXIS_ALIGNMENT_MIN,
+} from './contracts.js';
+import {
   classifyGeometryKind,
   isOrthonormalImagePlane,
   sliceAxisAlignmentFromSeries,
-} from '../core/geometry.js';
-
-// Shape: modalities whose files are projection images, not voxel-grid slices.
-const PROJECTION_MODALITIES = new Set(['CR', 'DX', 'MG', 'XA', 'RF']);
-
-export const GEOMETRY_KIND_CAPABILITY = Object.freeze({
-  volumeStack: 'display-volume',
-  derivedVolume: 'display-volume',
-  projectionSet: 'requires-reconstruction',
-  ultrasoundSource: 'requires-reconstruction',
-  singleProjection: '2d-only',
-  imageStack: '2d-only',
-  singleImage: '2d-only',
-  microscopyStack: '2d-only',
-});
+} from './geometry.js';
 
 export function geometryKindForSeries(series) {
   if (series?.frameOfReferenceUIDConsistent === false) {
@@ -70,7 +61,7 @@ export function canUseMpr3D(series) {
 
   // Minimum viable geometry fields for MPR/3D rendering.
   const spacing = series?.pixelSpacing || [];
-  return sliceAxisAlignmentFromSeries(series) >= 0.9999
+  return sliceAxisAlignmentFromSeries(series) >= SLICE_AXIS_ALIGNMENT_MIN
     && Number(series?.width || 0) > 0
     && Number(series?.height || 0) > 0
     && Array.isArray(series?.orientation) && series.orientation.length >= 6

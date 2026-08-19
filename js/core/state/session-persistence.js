@@ -5,7 +5,7 @@
 // it on boot. Keyed by `seriesIdentityKey` so it survives reloads and re-orders.
 
 import { state } from '../state.js';
-import { seriesIdentityKey } from '../../series/series-identity.js';
+import { seriesIdentityKey } from '../series-identity.js';
 
 const STORAGE_KEY = 'mri-viewer/session/v1';
 // Cap stored per-series entries so a long-lived install can't grow the blob

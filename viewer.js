@@ -3,6 +3,7 @@
 // local-backend UI gating: js/local-backend-mode.js; auto W/L: js/auto-window-level.js.
 
 import { state } from './js/core/state.js';
+import { OVERLAY_ENABLE_KINDS } from './js/core/viewer-session-shape.js';
 import { $, clientToCanvasPx as _clientToCanvasPx, closeModal, openModal } from './js/dom.js';
 import { updateClipReadouts } from './js/clip-readouts.js';
 import { renderVolumes } from './js/volume/volumes-panel.js';
@@ -39,7 +40,6 @@ import { loadConfig, viewerAiFlags } from './js/config.js';
 import { initProjects, renderProjectsSidebar, expandFolderForSeries } from './js/projects/projects-sidebar.js';
 import { isMprActive, is3dActive } from './js/core/mode-flags.js';
 import { initReactiveSync } from './js/sync.js';
-import { initOverlayStack } from './js/overlay/overlay-stack.js';
 import {
   initAnalysisFindings,
   renderFindings,
@@ -58,6 +58,7 @@ import {
   persistedInitialSeriesIndex,
   persistSessionNow,
 } from './js/core/state/session-persistence.js';
+import { hydrateDrawingBags } from './js/overlay/annotation-graph.js';
 import {
   initVolume3D,
   updateUniforms,
@@ -65,7 +66,6 @@ import {
   ensureThree,
   buildVolume,
   syncThreeSurfaceState,
-  updateLabelTexture,
 } from './js/volume/volume-3d.js';
 import {
   initSliceView,
@@ -145,27 +145,22 @@ async function renderMicroscopyHyperstackControls(host = state) {
   return mod.renderMicroscopyHyperstackControls(host);
 }
 
-initOverlayStack({
-  is3dActive,
-  ensureVoxels,
-  updateLabelTexture,
-});
 initAnalysisFindings({
   drawSlice,
   renderScrubTicks,
 });
 
 function syncOverlayOpacityUI() {
-  const visible = state.useSeg || state.useRegions || state.useSym;
+  const visible = OVERLAY_ENABLE_KINDS.some((kind) => state.overlays[kind]);
   const wrap = $('overlay-opacity-wrap');
   if (wrap) wrap.hidden = !visible;
   // The toolbar "Opacity" slider and the 3D-panel "Color" slider both edit
-  // state.overlayOpacity (overlay color strength) — keep them mirrored.
-  const tb = $('overlay-opacity'); if (tb) tb.value = state.overlayOpacity;
+  // state.overlays.overlayOpacity (overlay color strength) — keep them mirrored.
+  const tb = $('overlay-opacity'); if (tb) tb.value = state.overlays.overlayOpacity;
   const row = $('anatomy-group'); if (row) row.hidden = !visible;
-  const sl = $('s-anatomy-color'); if (sl) sl.value = state.overlayOpacity;
+  const sl = $('s-anatomy-color'); if (sl) sl.value = state.overlays.overlayOpacity;
   const ro = $('readout-anatomy-color');
-  if (ro) ro.textContent = Math.round(state.overlayOpacity * 100) + '%';
+  if (ro) ro.textContent = Math.round(state.overlays.overlayOpacity * 100) + '%';
   syncPanelRangeFills();
   syncWlToolGroupVisibility();
   cleanToolbarSeparators();
@@ -195,6 +190,7 @@ async function init() {
   const res = await fetch('./data/manifest.json');
   setManifest(await res.json());
   hydrateSeriesViewMemory();
+  hydrateDrawingBags();
   const cfg = await loadConfig();
 
   if (state.manifest?.series?.length) {
@@ -345,9 +341,9 @@ async function init() {
     { id: 'clear',     label: 'Clear slice drawings', icon: 'i-x',  section: 'Tools',                  keywords: 'delete remove',    action: () => $('btn-clear').click() },
     // Overlays
     { id: 'brain',     label: 'Brain (skull strip)', icon: 'i-brain',  section: 'Overlays', shortcut: 'B', keywords: 'skull strip',    action: () => $('btn-brain').click() },
-    { id: 'seg',       label: 'Tissue segmentation', icon: 'i-layers', section: 'Overlays', shortcut: 'T', keywords: 'csf gm wm',     action: () => $('btn-seg').click() },
-    { id: 'regions',   label: 'Anatomy overlay',  icon: 'i-map',     section: 'Overlays',                keywords: 'parcellation',    action: () => $('btn-regions').click() },
-    { id: 'sym',       label: 'Symmetry heatmap', icon: 'i-flip',    section: 'Overlays', shortcut: 'Y', keywords: 'asymmetry',       action: () => $('btn-sym').click() },
+    { id: 'tissue',    label: 'Tissue segmentation', icon: 'i-layers', section: 'Overlays', shortcut: 'T', keywords: 'csf gm wm',     action: () => $('btn-seg').click() },
+    { id: 'labels',    label: 'Anatomy overlay',  icon: 'i-map',     section: 'Overlays',                keywords: 'parcellation',    action: () => $('btn-regions').click() },
+    { id: 'heatmap',   label: 'Symmetry heatmap', icon: 'i-flip',    section: 'Overlays', shortcut: 'Y', keywords: 'asymmetry',       action: () => $('btn-sym').click() },
     // View
     { id: 'compare',   label: 'Compare mode',     icon: 'i-columns', section: 'View', shortcut: 'C',   keywords: 'side by side',     action: () => $('btn-compare').click() },
     { id: 'mpr',       label: 'MPR mode',         icon: 'i-grid',    section: 'View', shortcut: 'M',   keywords: 'multiplanar',      action: () => $('btn-mpr').click() },

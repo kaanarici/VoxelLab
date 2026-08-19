@@ -1621,6 +1621,7 @@ def test_end_headers_adds_localhost_cors_and_csp(monkeypatch) -> None:
 def test_static_paths_allow_viewer_assets_and_only_required_node_modules() -> None:
     assert serve.allowed_static_path("/") is True
     assert serve.allowed_static_path("/js/bootstrap.js") is True
+    assert serve.allowed_static_path("/schemas/enums.json") is True
     assert serve.allowed_static_path("/data/manifest.json") is True
     assert serve.allowed_static_path("/node_modules/dcmjs/build/dcmjs.es.js") is True
     assert serve.allowed_static_path("/node_modules/three/examples/jsm/controls/TrackballControls.js") is True

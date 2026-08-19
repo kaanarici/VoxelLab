@@ -28,8 +28,8 @@ const {
 } = await import('../js/microscopy/microscopy-import.js');
 const { rawPlaneFor } = await import('../js/microscopy/microscopy-plane-store.js');
 const { normalizeSeriesEntryForManifest } = await import('../js/series/series-contract.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
-const { canUseMpr3D } = await import('../js/series/series-capabilities.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
+const { canUseMpr3D } = await import('../js/core/series-capabilities.js');
 const {
   formatAreaFromMm2,
   formatLengthFromMm,

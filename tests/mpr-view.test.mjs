@@ -11,6 +11,7 @@ globalThis.localStorage = {
 };
 
 const { state } = await import('../js/core/state.js');
+const { getMprViewport, setMprViewport } = await import('../js/core/state/viewer-commands.js');
 const { setNoteEntriesForSlice } = await import('../js/overlay/annotation-graph.js');
 const {
   initMprView,
@@ -104,23 +105,23 @@ function installMprDom(width, height) {
   };
 }
 
-function setSeriesState({ slug = 'mpr_case', width = 8, height = 6, slices = 5 } = {}) {
+function setSeriesState({ slug = 'mpr_case', width = 8, height = 6, slices = 5, hasSeg = false, hasRegions = false, hasSym = false } = {}) {
   const voxelCount = width * height * slices;
   // Shape: active manifest with one MPR-capable series.
   state.manifest = {
-    series: [{ slug, width, height, slices, rowSpacing: 1, colSpacing: 1, sliceSpacing: 1 }],
+    series: [{ slug, width, height, slices, rowSpacing: 1, colSpacing: 1, sliceSpacing: 1, hasSeg, hasRegions, hasSym }],
   };
   state.seriesIdx = 0;
   state.mode = 'mpr';
   state.sliceIdx = 0;
   state.loaded = true;
-  state.mprX = Math.floor(width / 2);
-  state.mprY = Math.floor(height / 2);
-  state.mprZ = Math.floor(slices / 2);
-  state.mprQuality = 'quality';
+  state.mpr.x = Math.floor(width / 2);
+  state.mpr.y = Math.floor(height / 2);
+  state.mpr.z = Math.floor(slices / 2);
+  state.mpr.quality = 'quality';
   state.mpr.projectionMode = 'thin';
   state.mpr.slabThicknessMm = 0;
-  state.mprGpuEnabled = false;
+  state.mpr.gpuEnabled = false;
   state.mpr.viewports = {
     ax: { zoom: 1, tx: 0, ty: 0 },
     co: { zoom: 1, tx: 0, ty: 0 },
@@ -131,17 +132,17 @@ function setSeriesState({ slug = 'mpr_case', width = 8, height = 6, slices = 5 }
   state.level = 60;
   state.colormap = 'grayscale';
   state.invertDisplay = false;
-  state.overlayOpacity = 0.5;
-  state.fusionOpacity = 0.5;
-  state.obYaw = 0;
-  state.obPitch = 0;
-  state.useSeg = false;
-  state.useRegions = false;
-  state.useSym = false;
-  state.fusionSlug = '';
+  state.overlays.overlayOpacity = 0.5;
+  state.overlays.fusionOpacity = 0.5;
+  state.mpr.obYaw = 0;
+  state.mpr.obPitch = 0;
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+  state.overlays.heatmap = false;
+  state.overlays.fusionSlug = '';
   state.segVoxels = null;
   state.regionVoxels = null;
-  state.regionMeta = null;
+  state.overlays.regionMeta = null;
   state.symVoxels = null;
   state.fusionVoxels = null;
   state.hrVoxels = new Float32Array(voxelCount).fill(0.4);
@@ -199,8 +200,8 @@ test('drawMPR sizes the axial pane and crosshair from physical row/column spacin
   setSeriesState({ slug: 'axial_spacing', width: 8, height: 6, slices: 5 });
   // Shape: anisotropic in-plane voxels where rows are 2 mm tall and columns are 1 mm wide.
   state.manifest.series[0].pixelSpacing = [2, 1];
-  state.mprX = 4;
-  state.mprY = 3;
+  state.mpr.x = 4;
+  state.mpr.y = 3;
   initMprView({ ensureVoxels: () => false, isMprActive: () => true });
 
   drawMPR();
@@ -350,7 +351,7 @@ test('drawObliqueCell preserves display aspect when the backing raster is capped
 test('drawMPR sends a changed display LUT key through the GPU path', () => {
   installMprDom(8, 6);
   setSeriesState({ slug: 'gpu_lut_key', width: 8, height: 6, slices: 5 });
-  state.mprGpuEnabled = true;
+  state.mpr.gpuEnabled = true;
   const seenKeys = [];
   __setMprGpuApiForTests({
     canUseGpuMpr: () => true,
@@ -369,7 +370,7 @@ test('drawMPR sends a changed display LUT key through the GPU path', () => {
 
   assert.equal(new Set(seenKeys).size, 3, 'GPU MPR should see a distinct LUT key for invert and colormap changes');
   __setMprGpuApiForTests(null);
-  state.mprGpuEnabled = true;
+  state.mpr.gpuEnabled = true;
   state.invertDisplay = false;
   state.colormap = 'grayscale';
 });
@@ -404,14 +405,14 @@ test('MPR cache bookkeeping: reuse, invalidation, and byte-budget bound', () => 
   assert.equal(second.entries, first.entries, 'identical redraw should reuse cache entries');
   assert.equal(second.bytes, first.bytes, 'identical redraw should not grow cache bytes');
 
-  state.mprX = state.mprX + 1;
+  state.mpr.x = state.mpr.x + 1;
   drawMPR();
   const third = getMprCellCacheStats();
   assert.ok(third.entries > second.entries, 'changing axis plane should invalidate and add a new cache entry');
 
   for (let i = 0; i < 160; i++) {
-    state.mprX = i % state.manifest.series[0].width;
-    state.mprY = (i * 7) % state.manifest.series[0].height;
+    state.mpr.x = i % state.manifest.series[0].width;
+    state.mpr.y = (i * 7) % state.manifest.series[0].height;
     drawMPR();
   }
   const budgeted = getMprCellCacheStats();
@@ -430,18 +431,18 @@ test('interactive MPR draw path keeps fast quality until settle redraw', async (
   initMprView({ ensureVoxels: () => false, isMprActive: () => true });
 
   beginMprInteraction({ axis: 'x', reason: 'test' });
-  assert.equal(state.mprQuality, 'fast', 'interaction start should switch MPR to fast quality');
+  assert.equal(state.mpr.quality, 'fast', 'interaction start should switch MPR to fast quality');
 
-  state.mprX = state.mprX + 1;
+  state.mpr.x = state.mpr.x + 1;
   drawMPRInteractive();
   assert.equal(
-    state.mprQuality,
+    state.mpr.quality,
     'fast',
     'interactive axis-update draw should stay in fast mode until settle timer fires',
   );
 
   await new Promise((resolve) => globalThis.setTimeout(resolve, 180));
-  assert.equal(state.mprQuality, 'quality', 'interaction settle should restore quality mode');
+  assert.equal(state.mpr.quality, 'quality', 'interaction settle should restore quality mode');
 });
 
 test('interactive x/y scrubbing redraws only the plane that actually changes', () => {
@@ -460,7 +461,7 @@ test('interactive x/y scrubbing redraws only the plane that actually changes', (
   };
 
   beginMprInteraction({ axis: 'x', reason: 'test' });
-  state.mprX += 1;
+  state.mpr.x += 1;
   drawMPRInteractive();
   assert.equal(ax.getContext().puts, baseCounts.ax, 'x scrub should not redraw axial image bytes');
   assert.equal(co.getContext().puts, baseCounts.co, 'x scrub should not redraw coronal image bytes');
@@ -472,7 +473,7 @@ test('interactive x/y scrubbing redraws only the plane that actually changes', (
     sa: sa.getContext().puts,
   };
   beginMprInteraction({ axis: 'y', reason: 'test' });
-  state.mprY += 1;
+  state.mpr.y += 1;
   drawMPRInteractive();
   assert.equal(ax.getContext().puts, xCounts.ax, 'y scrub should not redraw axial image bytes');
   assert.ok(co.getContext().puts > xCounts.co, 'y scrub should redraw coronal image bytes');
@@ -484,10 +485,10 @@ test('oblique interaction reuses the same fast then settle quality contract', as
   initMprView({ ensureVoxels: () => false, isMprActive: () => false });
 
   beginObliqueInteraction();
-  assert.equal(state.mprQuality, 'fast', 'oblique input should switch MPR to fast quality');
+  assert.equal(state.mpr.quality, 'fast', 'oblique input should switch MPR to fast quality');
 
   await new Promise((resolve) => globalThis.setTimeout(resolve, 180));
-  assert.equal(state.mprQuality, 'quality', 'oblique settle should restore quality mode');
+  assert.equal(state.mpr.quality, 'quality', 'oblique settle should restore quality mode');
 });
 
 test('oblique MPR keeps canvas dimensions stable through real interaction settle', async () => {
@@ -495,10 +496,10 @@ test('oblique MPR keeps canvas dimensions stable through real interaction settle
   setSeriesState({ slug: 'oblique_stable_size', width: 128, height: 128, slices: 80 });
   state.manifest.series[0].pixelSpacing = [1, 1];
   state.manifest.series[0].sliceSpacing = 2;
-  state.obPitch = 30;
+  state.mpr.obPitch = 30;
   initMprView({ ensureVoxels: () => false, isMprActive: () => true });
 
-  state.mprQuality = 'quality';
+  state.mpr.quality = 'quality';
   drawObliqueCell();
   const canvas = globalThis.document.getElementById('mpr-ob');
   const qualitySize = {
@@ -509,7 +510,7 @@ test('oblique MPR keeps canvas dimensions stable through real interaction settle
   };
 
   beginObliqueInteraction();
-  state.mprZ += 4;
+  state.mpr.z += 4;
   drawObliqueCell();
   const fastSize = {
     width: canvas.width,
@@ -535,7 +536,7 @@ test('Z scrub keeps oblique pane stable until the settled full MPR redraw', asyn
   setSeriesState({ slug: 'z_scrub_oblique_deferred', width: 128, height: 128, slices: 80 });
   state.manifest.series[0].pixelSpacing = [1, 1];
   state.manifest.series[0].sliceSpacing = 2;
-  state.obPitch = 30;
+  state.mpr.obPitch = 30;
   initMprView({ ensureVoxels: () => false, isMprActive: () => true });
 
   drawMPR();
@@ -548,7 +549,7 @@ test('Z scrub keeps oblique pane stable until the settled full MPR redraw', asyn
     styleHeight: canvas.style.height,
   };
 
-  state.mprZ += 4;
+  state.mpr.z += 4;
   drawMPRZScrub();
   const during = {
     puts: canvas.getContext().puts,
@@ -573,16 +574,16 @@ test('Z scrub keeps oblique pane stable until the settled full MPR redraw', asyn
 });
 
 test('getMprVolumeReadiness reports base and overlay readiness gates', () => {
-  setSeriesState({ slug: 'readiness_report', width: 6, height: 6, slices: 4 });
-  state.useSeg = true;
-  state.useRegions = true;
-  state.regionMeta = { colors: {}, legend: {} };
+  setSeriesState({ slug: 'readiness_report', width: 6, height: 6, slices: 4, hasSeg: true, hasRegions: true });
+  state.overlays.tissue = true;
+  state.overlays.labels = true;
+  state.overlays.regionMeta = { colors: {}, legend: {} };
   state.segVoxels = null;
   state.regionVoxels = null;
 
   assert.deepEqual(getMprVolumeReadiness(), {
     baseReady: true,
-    overlaysReady: { seg: false, regions: false, sym: true, fusion: true },
+    overlaysReady: { tissue: false, labels: false, heatmap: true, fusion: true },
   });
 });
 
@@ -590,9 +591,9 @@ test('drawMPR renders shared note points in orthogonal panes', () => {
   storage.clear();
   installMprDom(8, 6);
   setSeriesState({ slug: 'mpr_notes', width: 8, height: 6, slices: 5 });
-  state.mprX = 2;
-  state.mprY = 4;
-  state.mprZ = 3;
+  state.mpr.x = 2;
+  state.mpr.y = 4;
+  state.mpr.z = 3;
   setNoteEntriesForSlice('mpr_notes', 3, [{ id: 1, x: 2, y: 4, text: 'visible in all orthogonal panes' }]);
   initMprView({ ensureVoxels: () => false, isMprActive: () => true });
 
@@ -601,4 +602,18 @@ test('drawMPR renders shared note points in orthogonal panes', () => {
   assert.ok(globalThis.document.getElementById('mpr-ax').getContext().arcs > 0, 'axial pane should render the note on its native slice');
   assert.ok(globalThis.document.getElementById('mpr-co').getContext().arcs > 0, 'coronal pane should render the note at matching y/z');
   assert.ok(globalThis.document.getElementById('mpr-sa').getContext().arcs > 0, 'sagittal pane should render the note at matching x/z');
+});
+
+test('MPR pan goes through setMprViewport and leaves interaction flags off the document', () => {
+  installMprDom(8, 6);
+  setSeriesState({ slug: 'mpr_pan_cmd', width: 8, height: 6, slices: 5 });
+  initMprView({ ensureVoxels: () => false, isMprActive: () => true });
+  const before = getMprViewport('ax');
+  const next = setMprViewport('ax', { zoom: before.zoom, tx: before.tx + 12, ty: before.ty - 5 });
+  drawMPR();
+  assert.deepEqual(next, { zoom: 1, tx: 12, ty: -5 });
+  assert.deepEqual(state.mpr.viewports.ax, { zoom: 1, tx: 12, ty: -5 });
+  assert.equal('panning' in state.mpr.viewports.ax, false);
+  assert.equal('lastX' in state.mpr.viewports.ax, false);
+  assert.equal('moved' in state.mpr.viewports.ax, false);
 });

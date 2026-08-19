@@ -17,7 +17,7 @@ const { state } = await import('../js/core/state.js');
 const { queuePendingDerivedObject } = await import('../js/dicom/dicom-derived-import.js');
 const { buildMicroscopyEvidencePackage } = await import('../js/roi/microscopy-evidence-package.js');
 const { captureMicroscopyWorkflowRecipe } = await import('../js/microscopy/microscopy-workflow-recipe.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 
 function manifestWithSeries(series = []) {
   return { patient: 'anonymous', studyDate: '', series: [...series] };
@@ -150,6 +150,22 @@ test('injectManifestSeries updates an existing entry by slug instead of appendin
   assert.equal(manifest.series.length, 1);
   assert.equal(manifest.series[0].name, 'New Name');
   assert.equal(manifest.series[0].hasAnalysis, true);
+});
+
+test('injectManifestSeries replaces the live series list instead of mutating the live slot', () => {
+  const original = { slug: 'live_ingest', name: 'Old', hasAnalysis: true };
+  const originalList = [original];
+  state.manifest = manifestWithSeries(originalList);
+  state.manifest.series = originalList;
+
+  const idx = injectManifestSeries(state.manifest, { slug: 'live_ingest', name: 'New' });
+
+  assert.equal(idx, 0);
+  assert.notEqual(state.manifest.series, originalList);
+  assert.notEqual(state.manifest.series[0], original);
+  assert.equal(state.manifest.series[0].name, 'New');
+  assert.equal(state.manifest.series[0].hasAnalysis, true);
+  assert.equal(original.name, 'Old');
 });
 
 test('injectManifestSeries updates an existing entry by job identity alias', () => {

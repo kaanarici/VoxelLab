@@ -1,9 +1,12 @@
 // Ephemeral analysis overlay: a threshold-preview mask and/or labeled-particle mask drawn
-// on the active microscopy slice AFTER compositing, via the plugin overlay hook
-// (drawPluginOverlays). It never touches the 4 legacy overlay slots or the composite WebGL
-// shader. A per-plane (C/Z/T) staleness gate means navigating away simply stops drawing it.
+// on the active microscopy slice AFTER compositing, via the post-composite overlay hook
+// (drawPostCompositeOverlays). It does not use the tissue/labels/heatmap/fusion overlay
+// slots or the composite WebGL shader. A per-plane (C/Z/T) staleness gate means navigating
+// away simply stops drawing it. initAnalysisOverlay is a one-slot late bind through
+// setMicroscopyAnalysisOverlay, not a plugin-host init surface.
 
 import { state } from '../core/state.js';
+import { setMicroscopyAnalysisOverlay } from '../overlay/post-composite-overlays.js';
 import { overlayMask } from '../overlay/slimsam-overlay.js';
 
 let current = null; // { thresholdMask, labeledMask, width, height, c, z, t }
@@ -61,11 +64,9 @@ export function renderAnalysisOverlay(ctx, host = state, series = host?.manifest
   return true;
 }
 
-let unregister = null;
-// Registers the overlay with the plugin overlay hook. `addOverlay` is injected (from
-// js/plugin.js) so this module stays DOM-free and unit-testable.
-export function initAnalysisOverlay(addOverlay) {
-  if (unregister || !(addOverlay instanceof Function)) return unregister || (() => {});
-  unregister = addOverlay({ id: 'microscopy-analysis', render: (ctx) => renderAnalysisOverlay(ctx) });
-  return unregister;
+let overlayBound = false;
+export function initAnalysisOverlay() {
+  if (overlayBound) return;
+  overlayBound = true;
+  setMicroscopyAnalysisOverlay((ctx) => renderAnalysisOverlay(ctx));
 }

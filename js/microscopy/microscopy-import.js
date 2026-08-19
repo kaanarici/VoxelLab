@@ -190,30 +190,30 @@ function joinInflatedParts(parts, length, expectedBytes, stripIndex) {
   return output;
 }
 
-function collectInflatedPart(parts, state, part, expectedBytes, stripIndex) {
+function collectInflatedPart(parts, inflateState, part, expectedBytes, stripIndex) {
   const bytes = new Uint8Array(part.buffer, part.byteOffset, part.byteLength);
-  if (bytes.byteLength > expectedBytes - state.length) {
+  if (bytes.byteLength > expectedBytes - inflateState.length) {
     throw tiffResourceLimit(`strip ${stripIndex + 1} expands beyond its ${expectedBytes} byte geometry.`);
   }
   parts.push(bytes.slice());
-  state.length += bytes.byteLength;
+  inflateState.length += bytes.byteLength;
 }
 
 async function inflateWithPlatform(source, expectedBytes, stripIndex) {
   const stream = new Blob([source]).stream().pipeThrough(new globalThis.DecompressionStream('deflate'));
   const reader = stream.getReader();
   const parts = [];
-  const state = { length: 0 };
+  const inflateState = { length: 0 };
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      collectInflatedPart(parts, state, value, expectedBytes, stripIndex);
+      collectInflatedPart(parts, inflateState, value, expectedBytes, stripIndex);
     }
   } finally {
     reader.releaseLock?.();
   }
-  return joinInflatedParts(parts, state.length, expectedBytes, stripIndex);
+  return joinInflatedParts(parts, inflateState.length, expectedBytes, stripIndex);
 }
 
 async function inflateWithPako(source, expectedBytes, stripIndex) {
@@ -222,8 +222,8 @@ async function inflateWithPako(source, expectedBytes, stripIndex) {
   if (!(Inflate instanceof Function)) throw new Error('TIFF Deflate decoder pako.Inflate is unavailable.');
   const inflator = new Inflate();
   const parts = [];
-  const state = { length: 0 };
-  inflator.onData = part => collectInflatedPart(parts, state, part, expectedBytes, stripIndex);
+  const inflateState = { length: 0 };
+  inflator.onData = part => collectInflatedPart(parts, inflateState, part, expectedBytes, stripIndex);
   try {
     inflator.push(source, true);
   } catch (error) {
@@ -233,7 +233,7 @@ async function inflateWithPako(source, expectedBytes, stripIndex) {
   if (inflator.err || inflator.ended !== true) {
     throw new Error(`TIFF Deflate strip ${stripIndex + 1} could not be decompressed completely.`);
   }
-  return joinInflatedParts(parts, state.length, expectedBytes, stripIndex);
+  return joinInflatedParts(parts, inflateState.length, expectedBytes, stripIndex);
 }
 
 async function inflateTiffDeflateStrip(source, expectedBytes, stripIndex) {

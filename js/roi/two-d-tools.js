@@ -1,7 +1,8 @@
 import { $ } from '../dom.js';
 import { syncAskModeAfterViewChange } from '../ask-mode.js';
 import { clearROIMode } from '../roi.js';
-import { setAngleMode, setAnnotateMode, setAskMode, setMeasureMode } from '../core/state/viewer-tool-commands.js';
+import { setAngleMode, setAnnotateMode, setMeasureMode } from '../core/state/viewer-tool-commands.js';
+import { setAskMode } from '../ask-session.js';
 import { setSlimSAMMode } from '../overlay/slimsam-tool.js';
 
 function syncButton(id, active) {

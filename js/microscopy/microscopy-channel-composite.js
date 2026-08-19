@@ -1,4 +1,7 @@
 import { mapWindowLevelByte } from '../colormap.js';
+import { state } from '../core/state.js';
+import { findManifestSeriesIndex } from '../core/state/viewer-commands.js';
+import { hostWritesFor, isLiveViewerHost } from '../runtime/viewer-runtime.js';
 import { finiteDisplayRange } from './microscopy-display-range.js';
 
 const FALLBACK_COLORS = ['#FF0000', '#00FF00', '#0000FF', '#00FFFF', '#FF00FF', '#FFFF00', '#FFFFFF'];
@@ -32,30 +35,55 @@ export function hexColorToRgb(color) {
   ];
 }
 
-export function ensureMicroscopyComposite(series = {}, sizeC = 1) {
-  const microscopy = series.microscopy || (series.microscopy = {});
-  const previous = microscopy.composite || {};
+function microscopyCompositeRecord(series = {}, sizeC = 1) {
+  const previous = series?.microscopy?.composite || {};
   const channelCount = Math.max(1, Math.floor(Number(sizeC) || 1));
   const channels = Array.from({ length: channelCount }, (_, index) => previous.channels?.[index] !== false);
-  microscopy.composite = {
+  return {
     enabled: !!previous.enabled && channelCount > 1,
     channels,
   };
-  return microscopy.composite;
 }
 
-export function setMicroscopyCompositeEnabled(series, enabled, sizeC = 1) {
-  const composite = ensureMicroscopyComposite(series, sizeC);
+function sameComposite(left, right) {
+  return !!left
+    && left.enabled === right.enabled
+    && Array.isArray(left.channels)
+    && left.channels.length === right.channels.length
+    && left.channels.every((value, index) => value === right.channels[index]);
+}
+
+function persistMicroscopyComposite(series, composite, host = state, writes) {
+  const adapter = hostWritesFor(host, writes);
+  const next = adapter?.patchSeries?.(host, series, { microscopy: { composite } });
+  if (next) return next.microscopy?.composite || composite;
+  return series?.microscopy?.composite || composite;
+}
+
+export function ensureMicroscopyComposite(series = {}, sizeC = 1, host = state, writes) {
+  const composite = microscopyCompositeRecord(series, sizeC);
+  const current = series?.microscopy?.composite;
+  if (sameComposite(current, composite)) return current;
+  if (isLiveViewerHost(host) && findManifestSeriesIndex(series) >= 0) return composite;
+  if (!hostWritesFor(host, writes)) return composite;
+  return persistMicroscopyComposite(series, composite, host, writes);
+}
+
+export function setMicroscopyCompositeEnabled(series, enabled, sizeC = 1, host = state, writes) {
+  const composite = microscopyCompositeRecord(series, sizeC);
   composite.enabled = !!enabled && composite.channels.length > 1;
+  persistMicroscopyComposite(series, composite, host, writes);
   return composite.enabled;
 }
 
-export function setMicroscopyCompositeChannelEnabled(series, index, enabled, sizeC = 1) {
-  const composite = ensureMicroscopyComposite(series, sizeC);
+export function setMicroscopyCompositeChannelEnabled(series, index, enabled, sizeC = 1, host = state, writes) {
+  const composite = microscopyCompositeRecord(series, sizeC);
   const channelIndex = Math.max(0, Math.floor(Number(index) || 0));
   if (channelIndex >= composite.channels.length) return false;
   if (!enabled && composite.channels.filter(Boolean).length <= 1) return false;
-  composite.channels[channelIndex] = !!enabled;
+  const channels = composite.channels.slice();
+  channels[channelIndex] = !!enabled;
+  persistMicroscopyComposite(series, { ...composite, channels }, host, writes);
   return true;
 }
 

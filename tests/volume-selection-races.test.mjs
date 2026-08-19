@@ -68,11 +68,11 @@ function resetRuntime(manifest) {
   state.manifest = manifest;
   state.seriesIdx = 0;
   state.sliceIdx = 0;
-  state.useBrain = false;
-  state.useSeg = false;
-  state.useRegions = false;
-  state.useSym = false;
-  state.fusionSlug = '';
+  state.overlays.useBrain = false;
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+  state.overlays.heatmap = false;
+  state.overlays.fusionSlug = '';
   state.imgs = [];
   state.segImgs = [];
   state.regionImgs = [];
@@ -84,7 +84,7 @@ function resetRuntime(manifest) {
   state.regionVoxels = null;
   state.symVoxels = null;
   state.fusionVoxels = null;
-  state.regionMeta = null;
+  state.overlays.regionMeta = null;
   state._localRawVolumes = {};
   state._localRegionLabelSlicesBySlug = {};
   state.threeRuntime.seriesIdx = -1;
@@ -144,7 +144,7 @@ test('SEG worker result cannot cross same-slug study selections', async (t) => {
   resetRuntime({ patient: 'anonymous', series: [studyA, studyB] });
   const ready = [];
   initOverlayVolumes({ onReady: (type) => ready.push(type) });
-  state.useSeg = true;
+  state.overlays.tissue = true;
   state.selectRequestId = 51;
   state.segImgs = [image('study-a')];
   beginViewerRuntimeSession(studyA, { seriesIdx: 0, requestId: 51 });

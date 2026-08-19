@@ -13,6 +13,8 @@ globalThis.localStorage = {
 
 const { buildCompareGrid, drawCompare, getGroupPeers, loadComparePeers } = await import('../js/series/compare.js');
 const { state } = await import('../js/core/state.js');
+const { OVERLAY_CACHE_BY_KIND } = await import('../js/runtime/overlay-cache-keys.js');
+const { createLocalByteSlice } = await import('../js/series/local-byte-slice.js');
 const { setNoteEntriesForSlice } = await import('../js/overlay/annotation-graph.js');
 const { loadRegistrationData, registrationQualityFromData, registrationRecordFromData } = await import('../js/metadata.js');
 
@@ -24,7 +26,7 @@ test('loadComparePeers reuses in-memory local stacks for compare mode peers', as
     ],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.cmpStacks = {};
   const localA = [{ complete: true, naturalWidth: 4 }, { complete: true, naturalWidth: 4 }];
   const localB = [{ complete: true, naturalWidth: 4 }, { complete: true, naturalWidth: 4 }];
@@ -67,7 +69,7 @@ test('loadComparePeers normalizes legacy numeric groups to canonical patient-spa
     ],
   };
   state.seriesIdx = 0;
-  state.useBrain = false;
+  state.overlays.useBrain = false;
   state.cmpStacks = {};
   const legacy = [{ complete: true, naturalWidth: 4 }, { complete: true, naturalWidth: 4 }];
   const local = [{ complete: true, naturalWidth: 4 }, { complete: true, naturalWidth: 4 }];
@@ -139,10 +141,10 @@ test('loadComparePeers only loads the visible slice window for remote peers', as
   };
   state.seriesIdx = 0;
   state.sliceIdx = 10;
-  state.useBrain = false;
-  state.useSeg = false;
-  state.useSym = false;
-  state.useRegions = false;
+  state.overlays.useBrain = false;
+  state.overlays.tissue = false;
+  state.overlays.heatmap = false;
+  state.overlays.labels = false;
   state.cmpStacks = {};
   state._localStacks = {};
 
@@ -183,10 +185,10 @@ test('loadComparePeers warms the visible window when compare stacks already exis
   };
   state.seriesIdx = 0;
   state.sliceIdx = 10;
-  state.useBrain = false;
-  state.useSeg = true;
-  state.useSym = false;
-  state.useRegions = false;
+  state.overlays.useBrain = false;
+  state.overlays.tissue = true;
+  state.overlays.heatmap = false;
+  state.overlays.labels = false;
   state.cmpStacks = {};
   state._localStacks = {};
 
@@ -428,11 +430,11 @@ test('drawCompare keeps no-overlay peers on the direct grayscale path', () => {
     state.window = 255;
     state.level = 127.5;
     state.colormap = 'grayscale';
-    state.useBrain = false;
-    state.useSeg = false;
-    state.useSym = false;
-    state.useRegions = false;
-    state.fusionSlug = '';
+    state.overlays.useBrain = false;
+    state.overlays.tissue = false;
+    state.overlays.heatmap = false;
+    state.overlays.labels = false;
+    state.overlays.fusionSlug = '';
     state.compare = { viewport: { zoom: 1, tx: 0, ty: 0 } };
     state.cmpStacks = {
       cmp_direct: [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([0, 64, 128, 255]) }],
@@ -945,4 +947,212 @@ test('drawCompare does not refetch a failed compare stack in a loop', async () =
   await Promise.resolve();
 
   assert.equal(ensureCalls, 0);
+});
+
+function tableOverlayCaches() {
+  return Object.values(OVERLAY_CACHE_BY_KIND).filter((cache) => !cache.refuseInOverlayStack);
+}
+
+function installSingleCellCompareHost(slug) {
+  const pixels = [];
+  const ctx = {
+    createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },
+    putImageData(image) { pixels.push(Uint8ClampedArray.from(image.data)); },
+    clearRect() {},
+    save() {},
+    restore() {},
+    beginPath() {},
+    arc() {},
+    fill() {},
+    stroke() {},
+    fillText() {},
+    drawImage() {},
+  };
+  const canvas = {
+    style: {},
+    width: 0,
+    height: 0,
+    addEventListener() {},
+    getContext: () => ctx,
+  };
+  const cell = {
+    dataset: { slug },
+    canvas,
+    classList: { add() {}, remove() {} },
+    querySelector(selector) {
+      if (selector === 'canvas') return canvas;
+      if (selector === '.cmp-lbl') return { textContent: '' };
+      return null;
+    },
+  };
+  const host = {
+    querySelectorAll(selector) {
+      if (selector === '.cmp-cell') return [cell];
+      if (selector === '.cmp-cell canvas') return [canvas];
+      return [];
+    },
+  };
+  globalThis.document = {
+    createElement() {
+      return {
+        width: 0,
+        height: 0,
+        getContext(type) {
+          if (type === 'webgl2') return null;
+          return {
+            clearRect() {},
+            drawImage() {},
+            getImageData(_x, _y, w, h) {
+              return { data: new Uint8ClampedArray(w * h * 4) };
+            },
+          };
+        },
+      };
+    },
+    getElementById(id) {
+      if (id === 'cmp-grid') return host;
+      return null;
+    },
+  };
+  return pixels;
+}
+
+test('ensureCompareCurrentSlice asks every table overlay stack for the current slice', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ colors: { 1: [255, 0, 0] }, regions: { 1: { name: 'Cortex' } } }),
+  });
+
+  const slug = 'cmp_table_ensure';
+  const slice = () => createLocalByteSlice(Uint8Array.from([32]), 1, 1);
+  state.manifest = {
+    series: [{
+      slug,
+      name: 'Table',
+      group: 'tbl',
+      slices: 1,
+      width: 1,
+      height: 1,
+      hasBrain: false,
+      hasSeg: true,
+      hasSym: true,
+      hasRegions: true,
+    }],
+  };
+  state.seriesIdx = 0;
+  state.sliceIdx = 0;
+  state.mode = 'cmp';
+  state.overlays.useBrain = false;
+  state.overlays.tissue = true;
+  state.overlays.heatmap = true;
+  state.overlays.labels = true;
+  state.overlays.fusionSlug = '';
+  state.compare = { viewport: { zoom: 1, tx: 0, ty: 0 } };
+  state.cmpStacks = {};
+  state._localStacks = { [slug]: [slice()] };
+  for (const cache of tableOverlayCaches()) {
+    state._localStacks[`${slug}_${cache.type}`] = [slice()];
+  }
+
+  try {
+    await loadComparePeers();
+    const ensureCalls = {};
+    for (const cache of tableOverlayCaches()) {
+      const stack = state._localStacks[`${slug}_${cache.type}`];
+      stack[0] = { complete: false, naturalWidth: 0 };
+      stack.ensureIndex = () => {
+        ensureCalls[cache.type] = (ensureCalls[cache.type] || 0) + 1;
+        return Promise.resolve(true);
+      };
+    }
+    installSingleCellCompareHost(slug);
+    drawCompare();
+    assert.deepEqual(
+      Object.fromEntries(tableOverlayCaches().map((cache) => [cache.type, ensureCalls[cache.type]])),
+      Object.fromEntries(tableOverlayCaches().map((cache) => [cache.type, 1])),
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('drawCompare paints every table overlay kind', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousWebGL2 = globalThis.WebGL2RenderingContext;
+  globalThis.WebGL2RenderingContext = class {};
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ colors: { 1: [255, 0, 0] }, regions: { 1: { name: 'Cortex' } } }),
+  });
+
+  const slug = 'cmp_table_paint';
+  const base = () => createLocalByteSlice(Uint8Array.from([40]), 1, 1);
+  const overlayBytes = {
+    seg: Uint8Array.from([1]),
+    sym: Uint8Array.from([255]),
+    regions: Uint8Array.from([1]),
+  };
+  state.manifest = {
+    series: [{
+      slug,
+      name: 'Paint',
+      group: 'tblp',
+      slices: 1,
+      width: 1,
+      height: 1,
+      pixelSpacing: [1, 1],
+      hasBrain: false,
+      hasSeg: true,
+      hasSym: true,
+      hasRegions: true,
+    }],
+  };
+  state.seriesIdx = 0;
+  state.sliceIdx = 0;
+  state.mode = 'cmp';
+  state.window = 255;
+  state.level = 127.5;
+  state.colormap = 'grayscale';
+  state.overlays.useBrain = false;
+  state.overlays.fusionSlug = '';
+  state.overlays.overlayOpacity = 1;
+  state.compare = { viewport: { zoom: 1, tx: 0, ty: 0 } };
+  state.cmpStacks = {};
+
+  try {
+    const painted = {};
+    for (const cache of tableOverlayCaches()) {
+      state.overlays.tissue = cache.kind === 'tissue';
+      state.overlays.heatmap = cache.kind === 'heatmap';
+      state.overlays.labels = cache.kind === 'labels';
+      state._localStacks = { [slug]: [base()] };
+      for (const entry of tableOverlayCaches()) {
+        state._localStacks[`${slug}_${entry.type}`] = [
+          createLocalByteSlice(overlayBytes[entry.type], 1, 1),
+        ];
+      }
+      await loadComparePeers();
+      const pixels = installSingleCellCompareHost(slug);
+      drawCompare();
+      assert.equal(pixels.length, 1, `${cache.kind} should paint one compare slice`);
+      painted[cache.kind] = [...pixels[0]];
+    }
+
+    state.overlays.tissue = false;
+    state.overlays.heatmap = false;
+    state.overlays.labels = false;
+    state._localStacks = { [slug]: [base()] };
+    await loadComparePeers();
+    const grayPixels = installSingleCellCompareHost(slug);
+    drawCompare();
+    const gray = [...grayPixels[0]];
+
+    for (const cache of tableOverlayCaches()) {
+      assert.notDeepEqual(painted[cache.kind], gray, `${cache.kind} overlay should change compare pixels`);
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.WebGL2RenderingContext = previousWebGL2;
+  }
 });

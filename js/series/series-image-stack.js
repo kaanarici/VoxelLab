@@ -1,6 +1,7 @@
 // Load PNG stacks for select-series and similar.
-import { state, HAS_LOCAL_BACKEND } from '../core/state.js';
-import { cachedFetchResponse } from '../core/cached-fetch.js';
+import { state } from '../core/state.js';
+import { HAS_LOCAL_BACKEND } from '../core/local-backend.js';
+import { cachedFetchResponse } from '../cached-fetch.js';
 import { BASE_PREFETCH_CONCURRENCY, DEFAULT_PREFETCH_LIMIT, REMOTE_BASE_PREFETCH_CONCURRENCY } from '../core/constants.js';
 import { notify } from '../notify.js';
 

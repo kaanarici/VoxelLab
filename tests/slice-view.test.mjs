@@ -103,10 +103,10 @@ test('drawSlice applies spacing-aware display size for anisotropic 2d images', (
   state.sliceIdx = 0;
   state.window = 120;
   state.level = 60;
-  state.useSeg = false;
-  state.useRegions = false;
-  state.useSym = false;
-  state.fusionSlug = '';
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+  state.overlays.heatmap = false;
+  state.overlays.fusionSlug = '';
   state.manifest = {
     series: [{ slug: 'slice_spacing', width: 4, height: 2, slices: 1, pixelSpacing: [3, 1] }],
   };
@@ -162,10 +162,10 @@ test('drawSlice reuses microscopy composite ImageData without fallback visible-c
   state.window = 255;
   state.level = 128;
   state.invertDisplay = false;
-  state.useSeg = false;
-  state.useRegions = false;
-  state.useSym = false;
-  state.fusionSlug = '';
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+  state.overlays.heatmap = false;
+  state.overlays.fusionSlug = '';
   state.manifest = { series: [series] };
   state.imgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([0, 0]) }];
   state.segImgs = [];
@@ -238,17 +238,17 @@ test('showHoverAt resolves hover region names from the active labels overlay ima
   state.mode = '2d';
   state.seriesIdx = 0;
   state.sliceIdx = 0;
-  state.useSeg = false;
-  state.useSym = false;
-  state.useRegions = true;
-  state.fusionSlug = '';
+  state.overlays.tissue = false;
+  state.overlays.heatmap = false;
+  state.overlays.labels = true;
+  state.overlays.fusionSlug = '';
   state.manifest = {
     series: [{ slug: 'hover_regions', width: 2, height: 2, slices: 1, hasRegions: true }],
   };
   state.imgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([10, 20, 30, 40]) }];
   state.regionImgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([0, 7, 0, 0]) }];
   // Shape: { legend: { 7: "Thalamus" }, colors: { 7: [255, 0, 0] } }.
-  state.regionMeta = { legend: { 7: 'Thalamus' }, colors: { 7: [255, 0, 0] } };
+  state.overlays.regionMeta = { legend: { 7: 'Thalamus' }, colors: { 7: [255, 0, 0] } };
   state.regionVoxels = null;
 
   showHoverAt(11.2, 20.2);
@@ -256,4 +256,108 @@ test('showHoverAt resolves hover region names from the active labels overlay ima
   assert.match(hover.innerHTML, /region/);
   assert.match(hover.innerHTML, /Thalamus/);
   assert.equal(hover.classList.contains('visible'), true);
+});
+
+function lastPutImage(view) {
+  return view.ctx.calls.at(-1).image.data;
+}
+
+function rgbaAt(data, index) {
+  const p = index * 4;
+  return [data[p], data[p + 1], data[p + 2], data[p + 3]];
+}
+
+function bindSliceView(view) {
+  const nodes = new Map([
+    ['view', view],
+    ['view-xform', { classList: createClassList() }],
+    ['slice-big', { textContent: '' }],
+    ['wl-readout', { textContent: '' }],
+  ]);
+  globalThis.document = {
+    createElement(tag) {
+      if (tag === 'canvas') return createOffscreenCanvas();
+      return { style: {}, classList: createClassList(), appendChild() {} };
+    },
+    documentElement: { classList: createClassList() },
+    getElementById(id) {
+      return nodes.get(id) || null;
+    },
+  };
+}
+
+test('drawSlice walks OVERLAY_CACHE_BY_KIND instead of a persist-kind ladder', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../js/slice-view.js', import.meta.url), 'utf8');
+  const start = source.indexOf('export function drawSlice');
+  const drawSliceSrc = source.slice(start);
+  assert.match(drawSliceSrc, /overlayBytesFromCaches/);
+  assert.equal(/overlays\.tissue\.enabled/.test(drawSliceSrc), false);
+  assert.equal(/overlays\.heatmap\.enabled/.test(drawSliceSrc), false);
+  assert.equal(/overlays\.labels\.enabled/.test(drawSliceSrc), false);
+});
+
+test('drawSlice composites every overlay-table kind including labels voxels', () => {
+  const view = createVisibleCanvas();
+  bindSliceView(view);
+
+  const plane = 4;
+  state.loaded = true;
+  state.mode = '2d';
+  state.seriesIdx = 0;
+  state.sliceIdx = 0;
+  state.window = 255;
+  state.level = 128;
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+  state.overlays.heatmap = false;
+  state.overlays.fusionSlug = '';
+  state.overlays.overlayOpacity = 0.55;
+  state.overlays.fusionOpacity = 0.5;
+  state.manifest = {
+    series: [{
+      slug: 'slice_table_paint',
+      width: 2,
+      height: 2,
+      slices: 1,
+      hasSeg: true,
+      hasRegions: true,
+      hasSym: true,
+    }],
+  };
+  state.imgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([40, 40, 40, 40]) }];
+  state.segImgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([1, 0, 0, 0]) }];
+  state.symImgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([0, 200, 0, 0]) }];
+  state.regionImgs = [{ complete: false, naturalWidth: 0 }];
+  state.regionVoxels = Uint8Array.from([0, 0, 7, 0]);
+  state.overlays.regionMeta = { legend: { 7: 'Caudate' }, colors: { 7: [255, 0, 0] } };
+  state.fusionImgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([0, 0, 0, 200]) }];
+
+  drawSlice();
+  const gray = Uint8ClampedArray.from(lastPutImage(view));
+
+  state.overlays.tissue = true;
+  drawSlice();
+  const tissue = lastPutImage(view);
+  assert.notDeepEqual(rgbaAt(tissue, 0), rgbaAt(gray, 0));
+  assert.deepEqual(rgbaAt(tissue, 1), rgbaAt(gray, 1));
+
+  state.overlays.heatmap = true;
+  drawSlice();
+  const heatmap = lastPutImage(view);
+  assert.notDeepEqual(rgbaAt(heatmap, 1), rgbaAt(gray, 1));
+
+  state.overlays.labels = true;
+  drawSlice();
+  const labels = lastPutImage(view);
+  assert.notDeepEqual(rgbaAt(labels, 2), rgbaAt(gray, 2));
+
+  state.overlays.fusionSlug = 'slice_table_paint_pet';
+  drawSlice();
+  const fused = lastPutImage(view);
+  assert.notDeepEqual(rgbaAt(fused, 3), rgbaAt(gray, 3));
+  assert.notDeepEqual(rgbaAt(fused, 0), rgbaAt(gray, 0));
+  assert.notDeepEqual(rgbaAt(fused, 1), rgbaAt(gray, 1));
+  assert.notDeepEqual(rgbaAt(fused, 2), rgbaAt(gray, 2));
+  assert.equal(state.regionVoxels.length, plane);
 });

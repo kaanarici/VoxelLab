@@ -14,6 +14,7 @@ import { ConverterJobManager } from './converter-jobs.js';
 import { LATEST_RELEASE_URL, openTrustedExternalUrl } from './external-urls.js';
 import { launchPathsFromArgv } from './launch-paths.js';
 import { handleDesktopLocalApiRequest } from './local-api-proxy.js';
+import { contentSecurityPolicy } from './host-policy.js';
 import { collectSupportedFolderFiles, nativePathItem, nativePathItems, openFolderPayload, readNativeFileRange } from './native-paths.js';
 import {
   clearRecentDocuments,
@@ -445,17 +446,7 @@ function installIpc() {
 }
 
 function installCsp() {
-  const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'wasm-unsafe-eval'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "connect-src 'self' http: https: data: blob:",
-    "worker-src 'self'",
-    "font-src 'self' data:",
-    "object-src 'none'",
-    "base-uri 'self'",
-  ].join('; ');
+  const csp = contentSecurityPolicy('desktop');
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!details.url.startsWith(`${APP_SCHEME}://`)) {
       callback({ responseHeaders: details.responseHeaders });

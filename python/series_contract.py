@@ -10,70 +10,55 @@ from pathlib import Path
 from typing import Any
 
 from cloud_series import apply_public_series_urls, normalize_origin, validate_public_series_urls
+from contracts import (
+    DERIVED_KINDS,
+    GEOMETRY_KIND_CAPABILITY,
+    ORTHONORMAL_TOLERANCE,
+    PROJECTION_KINDS,
+    PROJECTION_STATUSES,
+    SLICE_AXIS_ALIGNMENT_MIN,
+)
 from engine_report import ENGINE_REPORT_VALIDATIONS
 from geometry import compare_group_key, cross3 as _cross3, dot3 as _dot3, norm3 as _norm3
+
+_CONTRACT = json.loads((Path(__file__).resolve().parent.parent / "schemas" / "series-contract.json").read_text())
+
+
+def dump_series_contract() -> dict:
+    return copy.deepcopy(_CONTRACT)
+
+
+_FIELD_TYPES = {
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+    "list": list,
+}
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 # Shape: {"slug": str, "slices": positive int, "hasSeg": bool, ...}.
 REQUIRED_SERIES_FIELDS = {
-    "slug": str,
-    "name": str,
-    "description": str,
-    "slices": int,
-    "width": int,
-    "height": int,
-    "pixelSpacing": list,
-    "sliceThickness": (int, float),
-    "hasBrain": bool,
-    "hasSeg": bool,
-    "hasRaw": bool,
+    key: _FIELD_TYPES[kind] for key, kind in _CONTRACT["requiredSeriesFields"].items()
 }
 
 # Shape: {"pixelSpacing": 2, "orientation": 6, "firstIPP": 3}.
-VECTOR_LENGTHS = {
-    "pixelSpacing": 2,
-    "firstIPP": 3,
-    "lastIPP": 3,
-    "orientation": 6,
-    "previewDims": 3,
-}
+VECTOR_LENGTHS = dict(_CONTRACT["vectorLengths"])
 
 # Shape: ["hasSym", "hasStats", "hasAnalysis", "hasRegions", ...].
-OPTIONAL_BOOL_FIELDS = [
-    "hasSym",
-    "hasStats",
-    "hasAnalysis",
-    "hasRegions",
-    "hasMaskRaw",
-    "hasPreview",
-    "hasContext",
-    "hasAskHistory",
-    "frameOfReferenceUIDConsistent",
-    "slicePositionsDistinct",
-]
+OPTIONAL_BOOL_FIELDS = list(_CONTRACT["optionalBoolFields"])
 
 # Shape: {"volumeStack": "display-volume", "projectionSet": "requires-reconstruction"}.
-GEOMETRY_CAPABILITY = {
-    "volumeStack": "display-volume",
-    "derivedVolume": "display-volume",
-    "projectionSet": "requires-reconstruction",
-    "ultrasoundSource": "requires-reconstruction",
-    "singleProjection": "2d-only",
-    "imageStack": "2d-only",
-    "singleImage": "2d-only",
-    "microscopyStack": "2d-only",
-}
-RENDERABILITY_VALUES = {"volume", "2d"}
-GEOMETRY_RECORD_KINDS = {"cartesian_volume", "cartesian_stack_irregular", "single_frame", "insufficient"}
-DERIVED_OBJECT_KINDS = {"seg", "rtstruct", "sr", "registration", "derived-volume"}
-AFFINE_COMPATIBILITY_VALUES = {"exact", "within-tolerance", "requires-registration", "incompatible"}
-PROJECTION_KINDS = {"cbct", "parallel-beam", "tomosynthesis", "xray", "unknown"}
-PROJECTION_STATUSES = {"requires-calibration", "requires-reconstruction", "reconstruction-pending", "reconstruction-failed", "reconstructed"}
+GEOMETRY_CAPABILITY = GEOMETRY_KIND_CAPABILITY
+RENDERABILITY_VALUES = set(_CONTRACT["renderabilityValues"])
+GEOMETRY_RECORD_KINDS = set(_CONTRACT["geometryRecordKinds"])
+DERIVED_OBJECT_KINDS = DERIVED_KINDS
+AFFINE_COMPATIBILITY_VALUES = set(_CONTRACT["affineCompatibilityValues"])
 
 # sourceJobId is the canonical identity; job_id is the snake_case on-wire alias.
-JOB_ID_FIELDS = ("sourceJobId", "job_id")
-MODAL_REQUIRED_URL_FIELDS = ("rawUrl", "sliceUrlBase")
+JOB_ID_FIELDS = tuple(_CONTRACT["jobIdFields"])
+MODAL_REQUIRED_URL_FIELDS = tuple(_CONTRACT["modalRequiredUrlFields"])
+PROJECTION_MISSING_GEOMETRY = list(_CONTRACT["projectionMissingGeometry"])
 
 dot3 = _dot3
 norm3 = _norm3
@@ -199,11 +184,11 @@ def validate_volume_geometry(series_path: str, series: dict[str, Any]) -> list[s
     row, col = orientation
     row_norm = norm3(row)
     col_norm = norm3(col)
-    if abs(row_norm - 1) > 0.02:
+    if abs(row_norm - 1) > ORTHONORMAL_TOLERANCE:
         errors.append(f"{series_path}.orientation: row direction cosine must be unit length")
-    if abs(col_norm - 1) > 0.02:
+    if abs(col_norm - 1) > ORTHONORMAL_TOLERANCE:
         errors.append(f"{series_path}.orientation: column direction cosine must be unit length")
-    if abs(dot3(row, col)) > 0.02:
+    if abs(dot3(row, col)) > ORTHONORMAL_TOLERANCE:
         errors.append(f"{series_path}.orientation: row and column direction cosines must be orthogonal")
 
     normal = cross3(row, col)
@@ -220,7 +205,7 @@ def validate_volume_geometry(series_path: str, series: dict[str, Any]) -> list[s
             errors.append(f"{series_path}.firstIPP/lastIPP: multi-slice volume requires nonzero slice span")
         else:
             alignment = abs(dot3(span, normal)) / (span_norm * normal_norm)
-            if alignment < 0.9999:
+            if alignment < SLICE_AXIS_ALIGNMENT_MIN:
                 errors.append(f"{series_path}.firstIPP/lastIPP: slice axis must align with orientation normal for accurate MPR")
 
     return errors
@@ -364,11 +349,13 @@ def validate_derived_object_binding(path: str, binding: Any) -> list[str]:
     kind = binding.get("derivedKind")
     if not isinstance(kind, str) or kind not in DERIVED_OBJECT_KINDS:
         errors.append(f"{path}.derivedKind: expected one of {sorted(DERIVED_OBJECT_KINDS)}")
-    frame_uid = binding.get("frameOfReferenceUID")
-    if not isinstance(frame_uid, str) or not frame_uid:
-        errors.append(f"{path}.frameOfReferenceUID: expected non-empty string")
     has_source_uid = isinstance(binding.get("sourceSeriesUID"), str) and bool(binding.get("sourceSeriesUID"))
     has_source_slug = isinstance(binding.get("sourceSeriesSlug"), str) and bool(binding.get("sourceSeriesSlug"))
+    frame_uid = binding.get("frameOfReferenceUID")
+    if not isinstance(frame_uid, str):
+        errors.append(f"{path}.frameOfReferenceUID: expected string")
+    elif not frame_uid and not has_source_slug:
+        errors.append(f"{path}.frameOfReferenceUID: expected non-empty string")
     if not has_source_uid and not has_source_slug:
         errors.append(f"{path}.sourceSeriesUID or sourceSeriesSlug: expected non-empty string")
     if "requiresRegistration" not in binding or not isinstance(binding["requiresRegistration"], bool):
@@ -629,6 +616,21 @@ def normalize_series_entry(
         if public_base
         else copy.deepcopy(entry)
     )
+    for key in (
+        "hasBrain",
+        "hasSeg",
+        "hasRaw",
+        "hasSym",
+        "hasStats",
+        "hasAnalysis",
+        "hasRegions",
+        "hasMaskRaw",
+        "hasPreview",
+        "hasContext",
+        "hasAskHistory",
+    ):
+        if key not in normalized:
+            normalized[key] = False
     trusted_origin = normalize_origin(public_base)
     if trusted_origin:
         for key in ("sliceUrlBase", "rawUrl", "regionUrlBase", "regionMetaUrl", "statsUrl"):

@@ -1,5 +1,6 @@
 import { state } from '../core/state.js';
 import { activeOverlayStateForSeries } from './active-overlay-state.js';
+import { OVERLAY_CACHE_BY_KIND } from './overlay-cache-keys.js';
 
 function seriesVoxelCount(series) {
   return Number(series?.width || 0) * Number(series?.height || 0) * Number(series?.slices || 0);
@@ -29,11 +30,13 @@ function stackSliceReady(stack, sliceIdx) {
   return isRenderableImage(stack?.[index]);
 }
 
-function statusForOverlay(kind, overlay, { sliceIdx, stacks = {} }) {
+function statusForOverlay(cache, overlay, { sliceIdx, stacks = {} }) {
+  const kind = cache.kind;
   const stack = stacks[kind] || null;
-  const hasMeta = kind !== 'labels' || !!overlay.meta;
+  const hasMeta = !cache.needsRegionMeta || !!overlay.meta;
   const currentSliceReady = !overlay.enabled || stackSliceReady(stack || overlay.imgs, sliceIdx);
-  const volumeReady = !overlay.enabled || !!overlay.ready;
+  const voxelsReady = !!overlay.ready;
+  const volumeReady = !overlay.enabled || voxelsReady;
   const metaReady = !overlay.enabled || hasMeta;
   let blockingReason = '';
   if (overlay.enabled && !currentSliceReady) blockingReason = `${kind}-slice`;
@@ -44,10 +47,18 @@ function statusForOverlay(kind, overlay, { sliceIdx, stacks = {} }) {
     enabled: !!overlay.enabled,
     currentSliceReady,
     volumeReady,
+    voxelsReady,
     metaReady,
     blockingReason,
-    sourceType: kind === 'tissue' ? 'seg' : kind === 'labels' ? 'regions' : kind === 'heatmap' ? 'sym' : 'fusion',
   };
+}
+
+function overlayStacksFromState() {
+  const stacks = {};
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    stacks[cache.kind] = state[cache.imgs];
+  }
+  return stacks;
 }
 
 // Shape: { tissue: { currentSliceReady: true, volumeReady: false }, ... }.
@@ -56,20 +67,14 @@ export function overlaySessionForSeries(
   {
     sliceIdx = state.sliceIdx,
     overlays = activeOverlayStateForSeries(series),
-    stacks = {
-      tissue: state.segImgs,
-      labels: state.regionImgs,
-      heatmap: state.symImgs,
-      fusion: state.fusionImgs,
-    },
+    stacks = overlayStacksFromState(),
   } = {},
 ) {
-  return {
-    tissue: statusForOverlay('tissue', overlays.tissue, { sliceIdx, stacks }),
-    labels: statusForOverlay('labels', overlays.labels, { sliceIdx, stacks }),
-    heatmap: statusForOverlay('heatmap', overlays.heatmap, { sliceIdx, stacks }),
-    fusion: statusForOverlay('fusion', overlays.fusion, { sliceIdx, stacks }),
-  };
+  const session = {};
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    session[cache.kind] = statusForOverlay(cache, overlays[cache.kind], { sliceIdx, stacks });
+  }
+  return session;
 }
 
 function allEnabled(session, key) {

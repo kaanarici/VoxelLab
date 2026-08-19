@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from modal_volumes import build_projection_set_entry
-from series_contract import merge_manifest_series, normalize_series_entry, validate_modal_series, validate_projection_set
+from series_contract import (
+    PROJECTION_MISSING_GEOMETRY,
+    merge_manifest_series,
+    normalize_series_entry,
+    validate_modal_series,
+    validate_projection_set,
+)
 
 
 def fixture_manifest() -> dict:
@@ -154,3 +160,4 @@ def test_build_projection_set_entry_matches_projection_registry_contract() -> No
 
     assert validate_projection_set(projection_entry, 0) == []
     assert projection_entry["slug"] == "projection_set_1"
+    assert projection_entry["missingGeometry"] == PROJECTION_MISSING_GEOMETRY

@@ -1,5 +1,6 @@
 import { state } from './core/state.js';
 import { notify } from './notify.js';
+import { OVERLAY_ENABLE_KINDS, overlayEnableFromSeriesFlags, overlayOutputLabel } from './core/viewer-session-shape.js';
 import {
   markSeriesUnavailable,
   probeSeriesAvailable,
@@ -15,9 +16,10 @@ export function cloudResultOutputs(series = {}, { style = 'short' } = {}) {
   const short = style !== 'verbose';
   const outputs = [];
   if (series?.hasRaw || series?.rawUrl) outputs.push(short ? 'raw' : 'raw volume');
-  if (series?.hasSeg) outputs.push(short ? 'tissue' : 'tissue overlay');
-  if (series?.hasRegions) outputs.push(short ? 'labels' : 'anatomy labels');
-  if (series?.hasSym) outputs.push(short ? 'heatmap' : 'symmetry heatmap');
+  const overlayEnable = overlayEnableFromSeriesFlags(series);
+  for (const kind of OVERLAY_ENABLE_KINDS) {
+    if (overlayEnable[kind]) outputs.push(overlayOutputLabel(kind, short ? 'short' : 'verbose'));
+  }
   if (series?.hasStats) outputs.push(short ? 'stats' : 'quantitative stats');
   if (series?.hasAnalysis) outputs.push(short ? 'analysis' : 'analysis sidecar');
   return outputs.join(', ') || (short ? 'stack' : 'rendered slice stack');

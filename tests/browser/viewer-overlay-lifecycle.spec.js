@@ -66,6 +66,36 @@ test('restored 3D anatomy and labels become visible without toggling', async ({ 
   }), { timeout: 30_000 }).toEqual({ loaded: slices, voxels: 16 * 16 * slices });
 
   await expect.poll(() => page.locator('#atlas3d-svg .atlas-item').count()).toBeGreaterThan(0);
+
+  const beforeZoom = await page.evaluate(() => {
+    const pill = document.querySelector('#atlas3d-svg .atlas-pill');
+    const marker = document.querySelector('#atlas3d-svg .atlas-marker');
+    return {
+      pill: pill?.getAttribute('transform') || '',
+      leader: document.querySelector('#atlas3d-svg .atlas-leader')?.getAttribute('points') || '',
+      cx: marker?.getAttribute('cx') || '',
+      cy: marker?.getAttribute('cy') || '',
+    };
+  });
+  expect(beforeZoom.pill).toBeTruthy();
+  await page.evaluate(async () => {
+    const { getThreeRuntime } = await import('/js/runtime/viewer-runtime.js');
+    const three = getThreeRuntime();
+    three.camera.zoom *= 2;
+    three.camera.updateProjectionMatrix();
+    three.requestRender?.('atlas-zoom', 220);
+  });
+  await expect.poll(async () => page.evaluate(() => {
+    const pill = document.querySelector('#atlas3d-svg .atlas-pill');
+    const marker = document.querySelector('#atlas3d-svg .atlas-marker');
+    return {
+      pill: pill?.getAttribute('transform') || '',
+      leader: document.querySelector('#atlas3d-svg .atlas-leader')?.getAttribute('points') || '',
+      cx: marker?.getAttribute('cx') || '',
+      cy: marker?.getAttribute('cy') || '',
+    };
+  })).not.toEqual(beforeZoom);
+
   await expect.poll(() => page.evaluate(async () => {
     const { getThreeRuntime } = await import('/js/runtime/viewer-runtime.js');
     return getThreeRuntime().mesh?.material?.uniforms?.uLabelMode?.value ?? 0;

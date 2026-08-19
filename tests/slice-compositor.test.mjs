@@ -111,10 +111,12 @@ test('shared slice compositor skips unchanged GPU texture uploads and honors for
     const wlLut = makeLut(12, 'wl:0');
     const options = {
       baseBytes,
-      segBytes,
-      symBytes: null,
-      regionBytes: null,
-      fusionBytes: null,
+      overlayBytes: {
+        segBytes,
+        symBytes: null,
+        regionBytes: null,
+        fusionBytes: null,
+      },
       wlLut,
       regionColors,
       hotLut,
@@ -129,7 +131,10 @@ test('shared slice compositor skips unchanged GPU texture uploads and honors for
     wlLut.key = 'wl:1';
     assert.deepEqual(drawWithUploads(uploads, options), [5]);
 
-    assert.deepEqual(drawWithUploads(uploads, { ...options, segBytes: null }), [1]);
+    assert.deepEqual(drawWithUploads(uploads, {
+      ...options,
+      overlayBytes: { ...options.overlayBytes, segBytes: null },
+    }), [1]);
     assert.deepEqual(drawWithUploads(uploads, options), [1]);
 
     baseBytes[0] = 9;

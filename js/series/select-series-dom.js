@@ -20,7 +20,9 @@ import {
   microscopyStreamProvenanceText,
 } from '../microscopy/microscopy-provenance-text.js';
 import { getRegistrationQuality, getRegistrationRecord } from '../metadata.js';
-import { canUseMpr3D, capabilityBlockReason, capabilityLabel, geometryKindForSeries } from './series-capabilities.js';
+import { canUseMpr3D, capabilityBlockReason, capabilityLabel, geometryKindForSeries } from '../core/series-capabilities.js';
+import { OVERLAY_ENABLE_KINDS, overlayEnableFromSeriesFlags, overlayOutputLabel } from '../core/viewer-session-shape.js';
+import { OVERLAY_CACHE_BY_KIND } from '../runtime/overlay-cache-keys.js';
 import { getGroupPeers } from './compare.js';
 
 function isSeriesMetadataRecord(value) {
@@ -448,9 +450,10 @@ function cloudProvenanceRows(series = {}) {
   if (jobId) rows.push(['Cloud job', jobId, { tip: jobId, truncate: true }]);
   const outputs = [];
   if (series.hasRaw || series.rawUrl) outputs.push('raw volume');
-  if (series.hasSeg) outputs.push('tissue overlay');
-  if (series.hasRegions) outputs.push('anatomy labels');
-  if (series.hasSym) outputs.push('symmetry heatmap');
+  const overlayEnable = overlayEnableFromSeriesFlags(series);
+  for (const kind of OVERLAY_ENABLE_KINDS) {
+    if (overlayEnable[kind]) outputs.push(overlayOutputLabel(kind));
+  }
   if (series.hasStats) outputs.push('stats');
   if (series.hasAnalysis) outputs.push('analysis');
   const resultParts = [];
@@ -580,11 +583,7 @@ function cloudOutputsForSeries(series = {}) {
   return {
     previewStack: series.sliceUrlBase ? { urlBase: series.sliceUrlBase, slices: series.slices || 0 } : null,
     rawVolume: series.rawUrl ? { url: series.rawUrl } : (series.hasRaw ? { expected: true } : null),
-    overlays: {
-      tissue: !!series.hasSeg,
-      labels: !!series.hasRegions,
-      heatmap: !!series.hasSym,
-    },
+    overlays: overlayEnableFromSeriesFlags(series),
     sidecars: cloudSidecarsForSeries(series),
   };
 }
@@ -630,29 +629,17 @@ function cloudResultPackageAssets(series = {}) {
   const overlayBases = isSeriesMetadataRecord(series.overlayUrlBases)
     ? series.overlayUrlBases
     : {};
-  if (series.hasSeg) {
-    const tissue = stackAssetRecord('tissue-overlay', 'Tissue overlay PNG stack', {
-      urlBase: overlayBases[`${slug}_seg`],
-      pathBase: `data/${slug}_seg`,
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    if (!cache.availableFlag || !series[cache.availableFlag] || !cache.packageAsset) continue;
+    const urlKey = `${slug}_${cache.type}`;
+    const asset = stackAssetRecord(cache.packageAsset.kind, cache.packageAsset.label, {
+      urlBase: cache.publicUrlBaseField
+        ? (series[cache.publicUrlBaseField] || overlayBases[urlKey])
+        : overlayBases[urlKey],
+      pathBase: `data/${urlKey}`,
       slices: series.slices,
     });
-    if (tissue) assets.push(tissue);
-  }
-  if (series.hasSym) {
-    const heatmap = stackAssetRecord('symmetry-heatmap', 'Symmetry heatmap PNG stack', {
-      urlBase: overlayBases[`${slug}_sym`],
-      pathBase: `data/${slug}_sym`,
-      slices: series.slices,
-    });
-    if (heatmap) assets.push(heatmap);
-  }
-  if (series.hasRegions) {
-    const labels = stackAssetRecord('anatomy-labels', 'Anatomy label PNG stack', {
-      urlBase: series.regionUrlBase || overlayBases[`${slug}_regions`],
-      pathBase: `data/${slug}_regions`,
-      slices: series.slices,
-    });
-    if (labels) assets.push(labels);
+    if (asset) assets.push(asset);
   }
   const sidecars = cloudSidecarsForSeries(series);
   for (const [kind, path] of Object.entries(sidecars)) {
@@ -932,9 +919,6 @@ export function applySelectSeriesDom(i, series, v) {
   const threeBtn = $('btn-3d');
   if (mprBtn) mprBtn.setAttribute('data-tip', mprBlock || 'MPR (m)');
   if (threeBtn) threeBtn.setAttribute('data-tip', mprBlock || '3D (3)');
-  if (!isVolumetric && (v.is3dActive() || v.isMprActive())) {
-    v.setMode('2d');
-  }
 
   const peers = getGroupPeers();
   const totalSeries = state.manifest.series.length;
@@ -945,7 +929,7 @@ export function applySelectSeriesDom(i, series, v) {
 
   cleanToolbarSeparators();
 
-  $('btn-brain').classList.toggle('active', state.useBrain);
+  $('btn-brain').classList.toggle('active', state.overlays.useBrain);
   $('btn-seg').classList.toggle('active', overlays.tissue.enabled);
   $('btn-regions').classList.toggle('active', overlays.labels.enabled);
   $('btn-sym').classList.toggle('active', overlays.heatmap.enabled);
@@ -959,6 +943,4 @@ export function applySelectSeriesDom(i, series, v) {
     : totalSeries >= 2
       ? 'Compare — right-click to pick series (c)'
       : '';
-
-  if (state.mode === 'cmp' && peers.length < 2) v.setMode('2d');
 }

@@ -129,7 +129,7 @@ test('buildSegOverlayImport unpacks binary SEG frames onto the referenced source
 
   assert.equal(overlay.kind, 'seg');
   assert.equal(overlay.overlayKind, 'labels');
-  assert.equal(overlay.legacySlot, 'regions');
+  assert.equal('legacySlot' in overlay, false);
   assert.deepEqual([...overlay.labelSlices[0]], [1, 1, 1, 1]);
   assert.deepEqual([...overlay.labelSlices[1]], [0, 2, 0, 0]);
   assert.equal(overlay.regionMeta.regions[1].name, 'Tumor');
@@ -404,19 +404,24 @@ test('hydrateDerivedStateForSeries normalizes persisted SEG imports as canonical
   });
   upsertDerivedRegistryEntry(entry);
 
+  state.manifest = { series: [source] };
+  state.seriesIdx = 0;
   state._localDerivedObjects[source.slug] = {};
   delete state._localRegionMetaBySlug[source.slug];
   delete state._localRegionLabelSlicesBySlug[source.slug];
   delete state._localStacks[`${source.slug}_regions`];
 
   const hydrated = hydrateDerivedStateForSeries(source);
-  const overlays = overlayKindsForSeries(source);
+  const live = state.manifest.series[0];
+  const overlays = overlayKindsForSeries(live);
 
   assert.equal(hydrated.length, 1);
-  assert.equal(source.hasRegions, true);
+  assert.equal(source.hasRegions, undefined);
+  assert.equal(live.hasRegions, true);
   assert.deepEqual(overlays.availableKinds, ['labels']);
-  assert.equal(overlays.byKind.labels.source, 'dicom-seg');
-  assert.deepEqual(overlays.byKind.labels.legacyKinds, ['regions', 'seg']);
+  assert.equal(overlays.byKind.labels.available, true);
+  assert.equal('source' in overlays.byKind.labels, false);
+  assert.equal('legacyKinds' in overlays.byKind.labels, false);
 });
 
 test('buildRTStructImport maps CLOSED_PLANAR contours into source-slice ROI polygons', async () => {

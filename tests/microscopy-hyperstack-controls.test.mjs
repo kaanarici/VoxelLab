@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const {
@@ -11,8 +12,12 @@ const {
   setMicroscopyChannelDisplayRange,
   stepMicroscopyStackPosition,
 } = await import('../js/microscopy/microscopy-hyperstack-controls.js');
-const { seriesVariantKey } = await import('../js/series/series-identity.js');
-const { canUseMpr3D, capabilityBlockReason } = await import('../js/series/series-capabilities.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
+const { state } = await import('../js/core/state.js');
+const { seriesVariantKey } = await import('../js/core/series-identity.js');
+const { canUseMpr3D, capabilityBlockReason } = await import('../js/core/series-capabilities.js');
+
+const writes = isolatedHostWrites();
 
 function element(tag) {
   return {
@@ -202,7 +207,7 @@ test('renderMicroscopyHyperstackControls exposes a composite toggle for multi-ch
   const { root } = installDom();
   const host = hostFixture();
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   assert.ok(hasDescendantId(root, 'microscopy-composite-toggle'));
 });
@@ -211,7 +216,7 @@ test('renderMicroscopyHyperstackControls shows metadata display range without wr
   const { root } = installDom();
   const host = hostFixture();
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   const meta = root.children[0].children.find(node => node.className === 'hyperstack-channel-meta');
   const text = meta.children.find(node => node.className === 'hyperstack-channel-text');
@@ -224,7 +229,7 @@ test('renderMicroscopyHyperstackControls keeps zero-start metadata ranges visibl
   const host = hostFixture();
   host.manifest.series[0].microscopyDataset.channels[0].displayRange = [0, 4095];
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   const meta = root.children[0].children.find(node => node.className === 'hyperstack-channel-meta');
   const text = meta.children.find(node => node.className === 'hyperstack-channel-text');
@@ -235,7 +240,7 @@ test('renderMicroscopyHyperstackControls shows calibrated spacing provenance', (
   const { root } = installDom();
   const host = hostFixture();
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   const calibration = root.children[0].children.find(node => node.id === 'microscopy-calibration');
   assert.equal(calibration.textContent, 'X 0.500 µm/px · Y 0.250 µm/px · Z 1.50 µm');
@@ -253,7 +258,7 @@ test('renderMicroscopyHyperstackControls labels unknown spacing as uncalibrated'
   series._sliceSpacingKnown = false;
   series.microscopyDataset.source.warnings = ['missing_xy_physical_size'];
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   const calibration = root.children[0].children.find(node => node.id === 'microscopy-calibration');
   assert.equal(calibration.textContent, 'XY uncalibrated · 1 warning');
@@ -278,28 +283,31 @@ test('applyManualMicroscopyCalibration enables trusted spacing for uncalibrated 
     { name: 't', size: 2 },
   ];
 
-  assert.equal(applyManualMicroscopyCalibration(series, {
+  const calibrated = applyManualMicroscopyCalibration(series, {
     xUmPerPx: 0.5,
     yUmPerPx: 0.25,
     zUm: 1.5,
-  }, host), true);
+  }, host, writes);
+  const next = host.manifest.series[0];
+  assert.ok(calibrated);
+  assert.equal(calibrated, next);
 
-  assert.deepEqual(series.pixelSpacing, [0.00025, 0.0005]);
-  assert.equal(series._spacingKnown, true);
-  assert.equal(series.microscopy.calibrationSource, 'manual');
-  assert.equal(series.sliceSpacing, 0.0015);
-  assert.equal(series._sliceSpacingKnown, true);
-  assert.equal(series.microscopyDataset.axes[0].known, true);
-  assert.equal(series.microscopyDataset.axes[0].scale, 0.5);
-  assert.equal(series.microscopyDataset.axes[0].unit, 'µm');
-  assert.deepEqual(series.microscopyDataset.source.warnings, []);
-  assert.deepEqual(series.firstIPP, [0, 0, 0]);
-  assert.deepEqual(series.lastIPP, [0, 0, 0.0015]);
-  assert.equal(series.geometryKind, 'volumeStack');
-  assert.equal(series.reconstructionCapability, 'display-volume');
-  assert.equal(series.microscopy.volumeEligible, true);
+  assert.deepEqual(next.pixelSpacing, [0.00025, 0.0005]);
+  assert.equal(next._spacingKnown, true);
+  assert.equal(next.microscopy.calibrationSource, 'manual');
+  assert.equal(next.sliceSpacing, 0.0015);
+  assert.equal(next._sliceSpacingKnown, true);
+  assert.equal(next.microscopyDataset.axes[0].known, true);
+  assert.equal(next.microscopyDataset.axes[0].scale, 0.5);
+  assert.equal(next.microscopyDataset.axes[0].unit, 'µm');
+  assert.deepEqual(next.microscopyDataset.source.warnings, []);
+  assert.deepEqual(next.firstIPP, [0, 0, 0]);
+  assert.deepEqual(next.lastIPP, [0, 0, 0.0015]);
+  assert.equal(next.geometryKind, 'volumeStack');
+  assert.equal(next.reconstructionCapability, 'display-volume');
+  assert.equal(next.microscopy.volumeEligible, true);
   assert.deepEqual(Array.from(host._localRawVolumes.cells), [0, 1]);
-  assert.equal(canUseMpr3D(series), true);
+  assert.equal(canUseMpr3D(next), true);
 });
 
 test('manual calibration keeps incomplete alternate C/T coverage explicitly 2D', () => {
@@ -313,18 +321,19 @@ test('manual calibration keeps incomplete alternate C/T coverage explicitly 2D',
   series._spacingKnown = false;
   series._sliceSpacingKnown = false;
 
-  assert.equal(applyManualMicroscopyCalibration(series, {
+  const next = applyManualMicroscopyCalibration(series, {
     xUmPerPx: 0.5,
     yUmPerPx: 0.25,
     zUm: 1.5,
-  }, host), true);
+  }, host, writes);
+  assert.ok(next);
 
-  assert.equal(series.geometryKind, 'microscopyStack');
-  assert.equal(series.reconstructionCapability, '2d-only');
-  assert.equal(series.microscopy.volumeEligible, false);
-  assert.equal(series.microscopy.volumeBlockReason, 'incomplete_z_coverage');
+  assert.equal(next.geometryKind, 'microscopyStack');
+  assert.equal(next.reconstructionCapability, '2d-only');
+  assert.equal(next.microscopy.volumeEligible, false);
+  assert.equal(next.microscopy.volumeBlockReason, 'incomplete_z_coverage');
   assert.equal(host._localRawVolumes.cells, undefined);
-  assert.equal(canUseMpr3D(series), false);
+  assert.equal(canUseMpr3D(next), false);
   assert.match(capabilityBlockReason(series), /complete contiguous Z coverage/);
 });
 
@@ -332,7 +341,7 @@ test('setMicroscopyChannelDisplayRange updates all timepoints for one channel on
   const host = rangeHostFixture();
   const series = host.manifest.series[0];
 
-  assert.equal(setMicroscopyChannelDisplayRange(series, 0, [50, 150], host), true);
+  assert.equal(setMicroscopyChannelDisplayRange(series, 0, [50, 150], host, writes), true);
 
   assert.deepEqual(series.microscopyDataset.channels[0].displayRange, [50, 150]);
   assert.equal(series.microscopyDataset.channels[0].displayRangeSource, 'user');
@@ -347,7 +356,7 @@ test('setMicroscopyChannelDisplayRange rejects invalid ranges without mutating s
   const host = rangeHostFixture();
   const series = host.manifest.series[0];
 
-  assert.equal(setMicroscopyChannelDisplayRange(series, 0, [200, 100], host), false);
+  assert.equal(setMicroscopyChannelDisplayRange(series, 0, [200, 100], host, writes), false);
 
   assert.deepEqual(series.microscopyDataset.channels[0].displayRange, [10, 2000]);
   assert.deepEqual(host._localMicroscopyStacks.cells['0|0'][0]._microscopyDisplayByteRange, [0, 255]);
@@ -359,20 +368,20 @@ test('canSetMicroscopyChannelDisplayRange fails closed when raw ranges are missi
   delete host._localMicroscopyStacks.cells['0|0'][0]._microscopyRawRange;
 
   assert.equal(canSetMicroscopyChannelDisplayRange(series, 0, [50, 150], host), false);
-  assert.equal(setMicroscopyChannelDisplayRange(series, 0, [50, 150], host), false);
+  assert.equal(setMicroscopyChannelDisplayRange(series, 0, [50, 150], host, writes), false);
 });
 
 test('setMicroscopyChannelDisplayColor preserves source color and overrides display color', () => {
   const host = hostFixture();
   const series = host.manifest.series[0];
 
-  assert.equal(setMicroscopyChannelDisplayColor(series, 1, '#aa00cc'), true);
+  assert.equal(setMicroscopyChannelDisplayColor(series, 1, '#aa00cc', host, writes), true);
 
   assert.equal(series.microscopyDataset.channels[1].color, '#00FF00');
   assert.equal(series.microscopyDataset.channels[1].displayColor, '#AA00CC');
   assert.equal(series.microscopyDataset.channels[1].displayColorSource, 'user');
   assert.equal(microscopyHyperstackState(host).channels[1].color, '#AA00CC');
-  assert.equal(setMicroscopyChannelDisplayColor(series, 1, 'green'), false);
+  assert.equal(setMicroscopyChannelDisplayColor(series, 1, 'green', host, writes), false);
   assert.equal(series.microscopyDataset.channels[1].displayColor, '#AA00CC');
 });
 
@@ -380,7 +389,7 @@ test('renderMicroscopyHyperstackControls exposes user channel color input', () =
   const { root } = installDom();
   const host = hostFixture();
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
   const input = descendantById(root, 'microscopy-channel-color');
   assert.equal(input.type, 'color');
   assert.equal(input.value, '#0000FF');
@@ -395,19 +404,19 @@ test('stepMicroscopyStackPosition moves C/T without changing Z slice scope', () 
   installDom();
   const host = hostFixture();
 
-  assert.equal(stepMicroscopyStackPosition({ channelDelta: 1 }, host), true);
+  assert.equal(stepMicroscopyStackPosition({ channelDelta: 1 }, host, writes), true);
   assert.equal(host.manifest.series[0].microscopy.channelIndex, 1);
   assert.equal(host.manifest.series[0].microscopy.channelName, 'GFP');
   assert.equal(host.manifest.series[0].microscopy.timeIndex, 0);
   assert.equal(host.sliceIdx, 1);
   assert.deepEqual(host.imgs, ['gfp-z1', 'gfp-z2']);
 
-  assert.equal(stepMicroscopyStackPosition({ timeDelta: 1 }, host), false);
+  assert.equal(stepMicroscopyStackPosition({ timeDelta: 1 }, host, writes), false);
   assert.equal(host.manifest.series[0].microscopy.timeIndex, 0);
   assert.equal(host.sliceIdx, 1);
 
-  assert.equal(stepMicroscopyStackPosition({ channelDelta: -1 }, host), true);
-  assert.equal(stepMicroscopyStackPosition({ timeDelta: 1 }, host), true);
+  assert.equal(stepMicroscopyStackPosition({ channelDelta: -1 }, host, writes), true);
+  assert.equal(stepMicroscopyStackPosition({ timeDelta: 1 }, host, writes), true);
   assert.equal(host.manifest.series[0].microscopy.channelIndex, 0);
   assert.equal(host.manifest.series[0].microscopy.timeIndex, 1);
   assert.equal(host.sliceIdx, 1);
@@ -418,7 +427,7 @@ test('renderMicroscopyHyperstackControls exposes active channel display range in
   const { root } = installDom();
   const host = rangeHostFixture();
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   const min = descendantById(root, 'microscopy-display-range-min');
   const max = descendantById(root, 'microscopy-display-range-max');
@@ -432,7 +441,7 @@ test('renderMicroscopyHyperstackControls exposes workflow recipe save/replay con
   const { root } = installDom();
   const host = hostFixture();
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   assert.ok(hasDescendantId(root, 'microscopy-recipe-export'));
   assert.ok(hasDescendantId(root, 'microscopy-recipe-import'));
@@ -445,7 +454,7 @@ test('renderMicroscopyHyperstackControls disables missing composite channels as 
   host.manifest.series[0].microscopy.timeIndex = 1;
   host.manifest.series[0].microscopy.composite = { enabled: true, channels: [true, true] };
 
-  renderMicroscopyHyperstackControls(host);
+  renderMicroscopyHyperstackControls(host, writes);
 
   const missingGfp = descendantById(root, 'microscopy-composite-c1');
   assert.equal(missingGfp.disabled, true);
@@ -464,7 +473,7 @@ test('activateMicroscopyStackPosition swaps the active local stack and raw-volum
   series.orientation = [1, 0, 0, 0, 1, 0];
   const beforeKey = seriesVariantKey(series, 'base', host.manifest);
 
-  assert.equal(activateMicroscopyStackPosition(1, 0, host), true);
+  assert.equal(activateMicroscopyStackPosition(1, 0, host, writes), true);
 
   assert.equal(host.seriesIdx, 0);
   assert.equal(host.manifest.series[0].microscopy.channelIndex, 1);
@@ -476,7 +485,7 @@ test('activateMicroscopyStackPosition swaps the active local stack and raw-volum
   const afterKey = seriesVariantKey(series, 'base', host.manifest);
   assert.notEqual(afterKey, beforeKey);
 
-  assert.equal(activateMicroscopyStackPosition(0, 1, host), true);
+  assert.equal(activateMicroscopyStackPosition(0, 1, host, writes), true);
   assert.deepEqual(Array.from(host._localRawVolumes.cells), [0, 1]);
   assert.notEqual(seriesVariantKey(series, 'base', host.manifest), afterKey);
 });
@@ -497,7 +506,7 @@ test('activating complete persisted Z coverage without raw planes disables volum
   host._localRawVolumes.cells = new Float32Array([0, 1]);
   delete host._localMicroscopyPlanes.cells['1|0'];
 
-  assert.equal(activateMicroscopyStackPosition(1, 0, host), true);
+  assert.equal(activateMicroscopyStackPosition(1, 0, host, writes), true);
 
   assert.deepEqual(series.firstIPP, [0, 0, 0]);
   assert.deepEqual(series.lastIPP, [0, 0, 0.0015]);
@@ -521,7 +530,7 @@ test('activating invalid retained Z planes uses the canonical volume-data failur
   series.reconstructionCapability = 'display-volume';
   host._localMicroscopyPlanes.cells['1|0'][1].pixels[0] = Number.NaN;
 
-  assert.equal(activateMicroscopyStackPosition(1, 0, host), true);
+  assert.equal(activateMicroscopyStackPosition(1, 0, host, writes), true);
 
   assert.equal(series.microscopy.volumeEligible, false);
   assert.equal(series.microscopy.volumeBlockReason, 'volume_data_invalid');
@@ -532,7 +541,7 @@ test('activateMicroscopyStackPosition refuses missing channel/time stacks', () =
   installDom();
   const host = hostFixture();
 
-  assert.equal(activateMicroscopyStackPosition(1, 1, host), false);
+  assert.equal(activateMicroscopyStackPosition(1, 1, host, writes), false);
   assert.equal(host.manifest.series[0].microscopy.channelIndex, 0);
   assert.equal(host.imgs, host._localMicroscopyStacks.cells['0|0']);
 });
@@ -546,7 +555,7 @@ test('activating a sparse alternate stack uses its actual Z extent and clears vo
   series.microscopy.volumeEligible = false;
   series.microscopy.volumeBlockReason = 'incomplete_z_coverage';
 
-  assert.equal(activateMicroscopyStackPosition(1, 0, host), true);
+  assert.equal(activateMicroscopyStackPosition(1, 0, host, writes), true);
 
   assert.equal(series.slices, 2);
   assert.deepEqual(series.firstIPP, [0, 0, 0]);
@@ -555,4 +564,57 @@ test('activating a sparse alternate stack uses its actual Z extent and clears vo
   assert.equal(series.geometryKind, 'microscopyStack');
   assert.equal(series.microscopy.volumeEligible, false);
   assert.equal(host._localRawVolumes.cells, undefined);
+});
+
+test('activateMicroscopyStackPosition replaces the live series record instead of mutating it', () => {
+  installDom();
+  const host = hostFixture();
+  const original = host.manifest.series[0];
+  state.manifest = host.manifest;
+  state.seriesIdx = 0;
+  state.sliceIdx = host.sliceIdx;
+  state.imgs = host.imgs;
+  state._localStacks = host._localStacks;
+  state._localMicroscopyStacks = host._localMicroscopyStacks;
+  state._localMicroscopyPlanes = host._localMicroscopyPlanes;
+  state._localRawVolumes = {};
+
+  assert.equal(activateMicroscopyStackPosition(1, 0, state), true);
+
+  const live = state.manifest.series[0];
+  assert.notEqual(live, original);
+  assert.equal(original.microscopy.channelIndex, 0);
+  assert.equal(live.microscopy.channelIndex, 1);
+  assert.equal(live.microscopy.channelName, 'GFP');
+  assert.equal(live.microscopy.timeIndex, 0);
+  assert.deepEqual(Array.from(state.imgs), ['gfp-z1', 'gfp-z2']);
+  assert.equal(state._localStacks.cells, state._localMicroscopyStacks.cells['1|0']);
+});
+
+test('live hyperstack series writes no-op when the series is not in the live list', () => {
+  const host = hostFixture();
+  const orphan = host.manifest.series[0];
+  state.manifest = { series: [{ slug: 'other' }] };
+
+  assert.equal(setMicroscopyChannelDisplayColor(orphan, 1, '#aa00cc', state), false);
+  assert.equal(activateMicroscopyStackPosition(1, 0, state), false);
+  assert.equal(orphan.microscopy.channelIndex, 0);
+  assert.equal(orphan.microscopyDataset.channels[1].displayColor, undefined);
+});
+
+test('isolated hyperstack writes refuse without a writes adapter', () => {
+  const host = hostFixture();
+  const series = host.manifest.series[0];
+
+  assert.equal(setMicroscopyChannelDisplayColor(series, 1, '#aa00cc', host), false);
+  assert.equal(activateMicroscopyStackPosition(1, 0, host), false);
+  assert.equal(series.microscopy.channelIndex, 0);
+  assert.equal(series.microscopyDataset.channels[1].displayColor, undefined);
+  assert.equal(host.imgs, host._localMicroscopyStacks.cells['0|0']);
+});
+
+test('live hyperstack module does not import writeHost helpers or assign series in place', () => {
+  const src = readFileSync(new URL('../js/microscopy/microscopy-hyperstack-controls.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /writeHost/);
+  assert.doesNotMatch(src, /Object\.assign\(\s*series/);
 });

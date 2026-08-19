@@ -5,7 +5,6 @@
 import { $ } from '../dom.js';
 import { signalPanelReady } from '../collapsible-sidebar.js';
 import { state, subscribe } from '../core/state.js';
-import { addOverlay } from '../plugin-overlays.js';
 import { renderRoiResults } from '../roi/roi-results.js';
 import {
   matchingColocalizationResult,
@@ -339,9 +338,17 @@ export function renderMicroscopyAnalysisPanel(host = state) {
   signalPanelReady('microscopy-analysis');
 }
 
+export function hideMicroscopyAnalysisPanel(host = state) {
+  const panel = $('microscopy-analysis-panel');
+  const root = $('microscopy-analysis-controls');
+  root?.replaceChildren();
+  panel?.classList.add('panel-init-hidden');
+  renderMicroscopyAnalysisPanel(host);
+}
+
 export function initMicroscopyAnalysisPanel({ onRedraw: redraw = () => {} } = {}) {
   onRedraw = redraw;
-  initAnalysisOverlay(addOverlay);
+  initAnalysisOverlay();
   if (!measurementSubscription) {
     measurementSubscription = subscribe('measurements', () => renderMicroscopyAnalysisPanel(state));
   }

@@ -394,21 +394,21 @@ export async function takeScreenshot(format = 'png') {
     octx.drawImage(ax, 0, (H - ax.height) / 2);
     octx.drawImage(co, ax.width + 10, (H - co.height) / 2);
     octx.drawImage(sa, ax.width + co.width + 20, (H - sa.height) / 2);
-    const zFrac = state.mprZ / Math.max(1, series.slices - 1);
-    drawScreenshotCrosshair(octx, 0, (H - ax.height) / 2, ax.width, ax.height, state.mprX, state.mprY);
-    drawScreenshotCrosshair(octx, ax.width + 10, (H - co.height) / 2, co.width, co.height, state.mprX, (1 - zFrac) * (co.height - 1));
+    const zFrac = state.mpr.z / Math.max(1, series.slices - 1);
+    drawScreenshotCrosshair(octx, 0, (H - ax.height) / 2, ax.width, ax.height, state.mpr.x, state.mpr.y);
+    drawScreenshotCrosshair(octx, ax.width + 10, (H - co.height) / 2, co.width, co.height, state.mpr.x, (1 - zFrac) * (co.height - 1));
     drawScreenshotCrosshair(
       octx,
       ax.width + co.width + 20,
       (H - sa.height) / 2,
       sa.width,
       sa.height,
-      state.mprY * (sa.width - 1) / Math.max(1, series.height - 1),
+      state.mpr.y * (sa.width - 1) / Math.max(1, series.height - 1),
       (1 - zFrac) * (sa.height - 1),
     );
     dataUrl = format === 'tiff' ? canvasToRenderedTiffDataUrl(out) : out.toDataURL('image/png');
     extension = format === 'tiff' ? 'tif' : 'png';
-    suffix = `mpr_z${state.mprZ + 1}`;
+    suffix = `mpr_z${state.mpr.z + 1}`;
   } else if (mode === 'cmp') {
     const cells = document.querySelectorAll('#cmp-grid canvas');
     if (!cells.length) return;

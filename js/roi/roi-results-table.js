@@ -4,7 +4,7 @@
 
 import { $ } from '../dom.js';
 import { state } from '../core/state.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
 import { formatNumber } from './roi-results-metrics.js';
 import {
   activateRoiResultRow,
