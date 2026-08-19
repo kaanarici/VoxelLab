@@ -6,6 +6,24 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-08-19
+
+### Fixed
+
+- The slice scrubber can be resized from the divider after the FPS control,
+  down to half of its default width.
+- Notices sit in the bottom-right, clear the toolbar and open menus, and no
+  longer draw a leftover accent stripe.
+- The Compare series heading stays flush with the top of the popover while
+  the list scrolls.
+
+### Known Limitations
+
+- The macOS app is not notarized and the Windows installer is unsigned.
+- Format support remains intentionally narrower than Bio-Formats, Fiji, or a
+  clinical DICOM workstation.
+- VoxelLab is not a medical device and is not for clinical use.
+
 ## [1.2.1] - 2026-08-19
 
 ### Fixed
@@ -148,6 +166,7 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clinical DICOM workstation.
 - VoxelLab is not a medical device and is not for clinical use.
 
+[1.2.2]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.2
 [1.2.1]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.0
 [1.1.2]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.1.2

@@ -1,4 +1,4 @@
-# Fast deterministic checks for the no-build static viewer.
+# Canonical Node/Python checks and the Playwright browser suite.
 name: Check
 
 on:

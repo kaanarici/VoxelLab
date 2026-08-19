@@ -15,12 +15,12 @@ uploading local files.
 
 ## Download
 
-Download [VoxelLab v1.2.1](https://github.com/kaanarici/VoxelLab/releases/latest).
+Download [VoxelLab v1.2.2](https://github.com/kaanarici/VoxelLab/releases/latest).
 
 | Platform | File | First launch |
 |---|---|---|
-| macOS on Apple Silicon | `VoxelLab-1.2.1-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
-| Windows 10 or 11 on x64 | `VoxelLab-1.2.1-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
+| macOS on Apple Silicon | `VoxelLab-1.2.2-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
+| Windows 10 or 11 on x64 | `VoxelLab-1.2.2-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
 
 Use `SHA256SUMS` from the release to verify either download. Updates are manual:
 open **Help → Check for Updates**, download the new installer, and install it

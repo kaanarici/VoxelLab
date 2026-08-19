@@ -46,6 +46,95 @@ async function waitForMprVolumeReady(page) {
   }), { timeout: 30_000 }).toMatchObject({ mode: 'mpr', ready: true });
 }
 
+test('bottom toolbar divider resizes the slice slider and restores on double-click', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await routeLocalVolumeStudy(page, [
+    localVolumeSeries('scrubber_resize_volume', 'Scrubber Resize Volume'),
+  ]);
+  const response = await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
+  expect(response?.ok()).toBe(true);
+  await page.locator('#series-list li').first().click();
+  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  const onboardingDismiss = page.getByRole('button', { name: 'Got it' });
+  if (await onboardingDismiss.isVisible()) await onboardingDismiss.click();
+
+  const handle = page.locator('#scrubber-resize-handle');
+  await expect(handle).toBeVisible();
+  await expect(handle).toHaveAttribute('role', 'separator');
+  await expect(handle).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(handle).toHaveAttribute('tabindex', '0');
+
+  const start = await page.evaluate(() => {
+    const scrubber = document.querySelector('.scrubber');
+    const wrap = document.getElementById('tool-rail-wrap');
+    return {
+      scrubber: scrubber.getBoundingClientRect().width,
+      wrap: wrap.getBoundingClientRect().width,
+    };
+  });
+  expect(start.scrubber).toBeGreaterThan(80);
+
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2, { steps: 10 });
+  await page.mouse.up();
+
+  const afterLeft = await page.evaluate(() => {
+    const scrubber = document.querySelector('.scrubber');
+    const wrap = document.getElementById('tool-rail-wrap');
+    const handleEl = document.getElementById('scrubber-resize-handle');
+    return {
+      scrubber: scrubber.getBoundingClientRect().width,
+      wrap: wrap.getBoundingClientRect().width,
+      now: Number(handleEl.getAttribute('aria-valuenow')),
+      min: Number(handleEl.getAttribute('aria-valuemin')),
+    };
+  });
+  expect(afterLeft.scrubber).toBeLessThan(start.scrubber - 40);
+  expect(afterLeft.wrap).toBeGreaterThan(start.wrap + 40);
+  expect(Math.abs(afterLeft.now - afterLeft.scrubber)).toBeLessThanOrEqual(1);
+  expect(afterLeft.min).toBe(Math.round(start.scrubber * 0.5));
+
+  const boxMin = await handle.boundingBox();
+  await page.mouse.move(boxMin.x + boxMin.width / 2, boxMin.y + boxMin.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(boxMin.x - 800, boxMin.y + boxMin.height / 2, { steps: 12 });
+  await page.mouse.up();
+  const atMin = await page.evaluate(() => document.querySelector('.scrubber').getBoundingClientRect().width);
+  expect(atMin).toBeGreaterThanOrEqual(start.scrubber * 0.5 - 1);
+  expect(atMin).toBeLessThanOrEqual(start.scrubber * 0.5 + 2);
+
+  const fps = page.locator('#fps');
+  const fpsBefore = await fps.inputValue();
+  const fpsBox = await fps.boundingBox();
+  expect(fpsBox).toBeTruthy();
+  await page.mouse.click(fpsBox.x + fpsBox.width * 0.85, fpsBox.y + fpsBox.height / 2);
+  await expect.poll(() => fps.inputValue()).not.toBe(fpsBefore);
+
+  await handle.focus();
+  await page.keyboard.press('ArrowRight');
+  const afterArrow = await page.evaluate(() => document.querySelector('.scrubber').getBoundingClientRect().width);
+  expect(afterArrow).toBeGreaterThan(atMin + 4);
+
+  await handle.dblclick();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.scrubber').getBoundingClientRect().width))
+    .toBeCloseTo(start.scrubber, 0);
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 80, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('mri-viewer/shellLayout/v1')));
+  expect(stored.scrubberWidth).toBeGreaterThan(0);
+  expect(stored.scrubberWidth).toBeLessThan(start.scrubber);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect.poll(async () => page.evaluate(() => document.querySelector('.scrubber')?.getBoundingClientRect().width || 0))
+    .toBeCloseTo(stored.scrubberWidth, 0);
+});
+
 test('minimum desktop viewport keeps the horizontal tool rail reachable', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
   await routeLocalVolumeStudy(page, [
@@ -519,6 +608,24 @@ test('display toolbar controls update render state and compare picker stays poli
   expect(compareMenu.textOverflow).toBe('ellipsis');
   expect(compareMenu.tooltipVisible).toBe(false);
 
+  const stickyHead = await page.locator('#cmp-menu').evaluate((menu) => {
+    const head = menu.querySelector('.cmp-menu-head');
+    menu.style.maxHeight = '96px';
+    const restGap = Math.round(head.getBoundingClientRect().top - menu.getBoundingClientRect().top);
+    menu.scrollTop = Math.max(1, menu.scrollHeight - menu.clientHeight);
+    const menuRect = menu.getBoundingClientRect();
+    const headRect = head.getBoundingClientRect();
+    const hit = document.elementFromPoint(menuRect.left + menuRect.width / 2, menuRect.top + 2);
+    return {
+      restGap,
+      scrolledGap: Math.round(headRect.top - menuRect.top),
+      hitHead: Boolean(hit?.closest('.cmp-menu-head')),
+    };
+  });
+  expect(stickyHead.restGap).toBe(0);
+  expect(stickyHead.scrolledGap).toBe(0);
+  expect(stickyHead.hitHead).toBe(true);
+
   const longNameMenu = await page.locator('#cmp-menu').evaluate((menu) => {
     const row = menu.querySelector('.cmp-pick');
     row.querySelector('.cmp-pick-name').textContent = 'Very long imported DICOM series description with scanner sequence details and acquisition suffix';
@@ -610,4 +717,104 @@ test('sidebar toggles keep the active 3D canvas stable', async ({ page }) => {
   await expect.poll(() => page.locator('#three-container canvas').evaluate((canvas) => {
     return Math.min(canvas.clientWidth, canvas.clientHeight);
   })).toBeGreaterThan(0);
+});
+
+test('toasts do not cover an open compare menu or the MPR toolbar', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await routeLocalVolumeStudy(page, [
+    localVolumeSeries('toast_chrome_a', 'Toast Chrome A'),
+    localVolumeSeries('toast_chrome_b', 'Toast Chrome B'),
+    localVolumeSeries('toast_chrome_c', 'Toast Chrome C'),
+    localVolumeSeries('toast_chrome_d', 'Toast Chrome D'),
+    localVolumeSeries('toast_chrome_e', 'Toast Chrome E'),
+    localVolumeSeries('toast_chrome_f', 'Toast Chrome F'),
+  ]);
+  const response = await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
+  expect(response?.ok()).toBe(true);
+  await page.locator('#series-list li').first().click();
+  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  const onboardingDismiss = page.getByRole('button', { name: 'Got it' });
+  if (await onboardingDismiss.isVisible()) await onboardingDismiss.click();
+
+  await page.locator('#btn-compare').click();
+  await expect(page.locator('#cmp-dropdown')).toHaveClass(/open/);
+  await page.evaluate(async () => {
+    const { notify } = await import('/js/notify.js');
+    notify('Toast over compare menu', { kind: 'info', duration: 120000, id: 'toast-chrome' });
+  });
+  await expect(page.locator('#notify-container .notify-item')).toBeVisible();
+  const menuHit = await page.evaluate(() => {
+    const toast = document.querySelector('#notify-container .notify-item');
+    const toastRect = toast.getBoundingClientRect();
+    const cx = toastRect.x + toastRect.width / 2;
+    const cy = toastRect.y + toastRect.height / 2;
+    const top = document.elementFromPoint(cx, cy);
+    const menuCoversToast = [...document.querySelectorAll('#cmp-menu .cmp-pick, #cmp-menu')].some((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left <= cx && r.right >= cx && r.top <= cy && r.bottom >= cy;
+    });
+    return {
+      menuCoversToast,
+      hitMenu: Boolean(top?.closest('#cmp-menu')),
+      hitToast: Boolean(top?.closest('.notify-item')),
+      toastZ: Number(getComputedStyle(document.getElementById('notify-container')).zIndex),
+      toolbarZ: Number(getComputedStyle(document.getElementById('toolbar-root')).zIndex),
+    };
+  });
+  expect(menuHit.toastZ).toBeLessThan(menuHit.toolbarZ);
+  expect(menuHit.menuCoversToast).toBe(true);
+  expect(menuHit.hitToast).toBe(false);
+  expect(menuHit.hitMenu).toBe(true);
+
+  await page.locator('#toolbox-measure .toolbox-trigger').click();
+  await expect(page.locator('#toolbox-measure')).toHaveClass(/open/);
+  const toolsHit = await page.evaluate(() => {
+    const toast = document.querySelector('#notify-container .notify-item');
+    const panel = document.querySelector('#toolbox-measure .toolbox-panel');
+    if (!toast || !panel) return { panel: false };
+    const a = toast.getBoundingClientRect();
+    const b = panel.getBoundingClientRect();
+    const x = Math.min(a.right, b.right) - 8;
+    const y = Math.min(a.bottom, b.bottom) - 8;
+    const overlaps = Math.min(a.right, b.right) - Math.max(a.left, b.left) > 8
+      && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 8;
+    const top = document.elementFromPoint(x, y);
+    return {
+      panel: true,
+      overlaps,
+      hitPanel: Boolean(top?.closest('#toolbox-measure .toolbox-panel')),
+      hitToast: Boolean(top?.closest('.notify-item')),
+    };
+  });
+  if (toolsHit.overlaps) {
+    expect(toolsHit.hitToast).toBe(false);
+    expect(toolsHit.hitPanel).toBe(true);
+  }
+
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    document.querySelectorAll('#notify-container .notify-item').forEach((el) => el.remove());
+  });
+
+  await page.locator('#btn-mpr').click();
+  await waitForMprVolumeReady(page);
+  await page.evaluate(async () => {
+    const { notify } = await import('/js/notify.js');
+    notify('Toast over MPR toolbar', { kind: 'info', duration: 120000, id: 'toast-chrome' });
+  });
+  const mprHit = await page.evaluate(() => {
+    const toast = document.querySelector('#notify-container .notify-item');
+    const toolbar = document.getElementById('mpr-toolbar-wrap');
+    const a = toast.getBoundingClientRect();
+    const b = toolbar.getBoundingClientRect();
+    const overlapW = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const overlapH = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return {
+      overlap: overlapW > 1 && overlapH > 1,
+      toastBottom: a.bottom,
+      toolbarTop: b.top,
+    };
+  });
+  expect(mprHit.overlap).toBe(false);
+  expect(mprHit.toastBottom).toBeLessThanOrEqual(mprHit.toolbarTop + 1);
 });

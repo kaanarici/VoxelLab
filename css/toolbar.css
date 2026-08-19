@@ -341,6 +341,52 @@
     flex-shrink: 0;
     margin: 0 var(--space-xs);
   }
+  .toolbar-sep--after-scrub {
+    position: relative;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+  }
+  .toolbar-sep--after-scrub::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 40px;
+    transform: translate(-50%, -50%);
+  }
+  .toolbar-sep--after-scrub:hover,
+  html.is-scrubber-resizing .toolbar-sep--after-scrub {
+    background: var(--muted);
+  }
+  html.is-scrubber-resizing,
+  html.is-scrubber-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+  }
+  .controls.controls--scrubber-sized .scrub-block {
+    flex: 0 1 auto;
+  }
+  .controls.controls--scrubber-sized .scrubber {
+    flex: 0 0 var(--scrubber-w);
+    width: var(--scrubber-w);
+  }
+  .controls.controls--scrubber-sized .tool-rail-wrap {
+    flex: 1 1 auto;
+  }
+  @media (max-width: 640px) {
+    .controls.controls--scrubber-sized .scrub-block {
+      flex: 1 1 0;
+    }
+    .controls.controls--scrubber-sized .scrubber {
+      flex: 1 1 0;
+      width: auto;
+    }
+    .controls.controls--scrubber-sized .tool-rail-wrap {
+      flex: 0 1 auto;
+    }
+  }
 
   /* Toolbox: collapsed group with floating panel */
   .toolbox {
@@ -694,10 +740,11 @@
   /* Compare series picker */
   #cmp-dropdown { height: auto; }
   #cmp-dropdown .dd-menu {
+    --cmp-menu-gutter: 5px;
     min-width: 232px;
     width: 232px;
     max-width: calc(100vw - var(--space-md));
-    padding: 5px;
+    padding: 0 var(--cmp-menu-gutter);
     border: 0;
     border-radius: var(--radius-lg);
   }
@@ -746,7 +793,7 @@
   #cmp-menu .cmp-menu-head {
     position: sticky;
     top: 0;
-    margin: -5px -5px var(--space-xs);
+    margin: 0 calc(-1 * var(--cmp-menu-gutter)) var(--space-xs);
     padding: var(--space-sm) var(--space-10) var(--space-2sm);
     background: var(--panel);
     color: var(--rail-title);
@@ -770,7 +817,7 @@
     bottom: 0;
     display: block;
     box-sizing: border-box;
-    margin: var(--space-xs) -5px -5px;
+    margin: var(--space-xs) calc(-1 * var(--cmp-menu-gutter)) 0;
     padding: var(--space-sm) var(--space-10);
     background: var(--panel);
     border: 0;

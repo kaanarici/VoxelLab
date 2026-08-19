@@ -25,6 +25,9 @@ export function parseShellLayout(raw) {
     if (Number.isFinite(o.leftWidth)) {
       layout.leftWidth = o.leftWidth;
     }
+    if (Number.isFinite(o.scrubberWidth)) {
+      layout.scrubberWidth = o.scrubberWidth;
+    }
     return layout;
   } catch {
     return null;
@@ -38,7 +41,7 @@ export function clampLeftRailWidthPx(widthPx, minPx, maxPx) {
   return Math.round(Math.min(max, Math.max(min, widthPx)));
 }
 
-function loadShellLayout() {
+export function loadShellLayout() {
   try {
     return parseShellLayout(localStorage.getItem(SHELL_LAYOUT_KEY));
   } catch {
@@ -46,16 +49,38 @@ function loadShellLayout() {
   }
 }
 
-function saveShellLayout(leftCollapsed, rightCollapsed, leftWidth) {
+export function patchShellLayout(patch) {
+  const current = loadShellLayout() || {
+    leftCollapsed: false,
+    rightCollapsed: false,
+  };
+  const next = { ...current };
+  if (patch.leftCollapsed === true || patch.leftCollapsed === false) {
+    next.leftCollapsed = patch.leftCollapsed;
+  }
+  if (patch.rightCollapsed === true || patch.rightCollapsed === false) {
+    next.rightCollapsed = patch.rightCollapsed;
+  }
+  if ('leftWidth' in patch) {
+    if (Number.isFinite(patch.leftWidth)) next.leftWidth = patch.leftWidth;
+    else delete next.leftWidth;
+  }
+  if ('scrubberWidth' in patch) {
+    if (Number.isFinite(patch.scrubberWidth)) next.scrubberWidth = patch.scrubberWidth;
+    else delete next.scrubberWidth;
+  }
   try {
-    const payload = { leftCollapsed, rightCollapsed };
-    if (Number.isFinite(leftWidth)) {
-      payload.leftWidth = leftWidth;
-    }
+    const payload = {
+      leftCollapsed: next.leftCollapsed,
+      rightCollapsed: next.rightCollapsed,
+    };
+    if (Number.isFinite(next.leftWidth)) payload.leftWidth = next.leftWidth;
+    if (Number.isFinite(next.scrubberWidth)) payload.scrubberWidth = next.scrubberWidth;
     localStorage.setItem(SHELL_LAYOUT_KEY, JSON.stringify(payload));
   } catch {
     /* quota / private mode */
   }
+  return next;
 }
 
 function readCssPx(name, fallback) {
@@ -111,11 +136,11 @@ export function initDesktopSidebarToggles() {
   const isDesktopShell = () => window.matchMedia(DESKTOP_MQ).matches;
 
   const persistLayout = () => {
-    saveShellLayout(
-      app.classList.contains('left-collapsed'),
-      app.classList.contains('right-collapsed'),
-      applyLeftRailWidth(readCssPx('--rail-left-w', RAIL_LEFT_MIN_FALLBACK)),
-    );
+    patchShellLayout({
+      leftCollapsed: app.classList.contains('left-collapsed'),
+      rightCollapsed: app.classList.contains('right-collapsed'),
+      leftWidth: applyLeftRailWidth(readCssPx('--rail-left-w', RAIL_LEFT_MIN_FALLBACK)),
+    });
   };
 
   // Sidebar toggles are app-local layout changes. A synthetic window resize
