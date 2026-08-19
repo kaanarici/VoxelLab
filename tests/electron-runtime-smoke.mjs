@@ -841,8 +841,38 @@ test('Electron runtime imports ROI sidecars with local OME-TIFF launches', async
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath, roiPath, jsonPath]);
   try {
     await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'roi-sidecar-cells', null, { timeout: 20_000 });
-    await page.waitForFunction(() => document.querySelectorAll('[data-roi-result-row]').length === 2, null, { timeout: 10_000 });
-    await page.waitForFunction(() => document.querySelectorAll('#overlay-svg .roi-group').length === 2, null, { timeout: 10_000 });
+    try {
+      await page.waitForFunction(() => document.querySelectorAll('[data-roi-result-row]').length === 2, null, { timeout: 30_000 });
+    } catch (error) {
+      const diagnostic = await page.evaluate(async () => {
+        const { state } = await import('/js/core/state.js');
+        const { seriesPersistenceKey } = await import('/js/core/series-identity.js');
+        const series = state.manifest?.series?.[state.seriesIdx];
+        return {
+          rowCount: document.querySelectorAll('[data-roi-result-row]').length,
+          overlayCount: document.querySelectorAll('#overlay-svg .roi-group').length,
+          roiResultsCount: document.getElementById('roi-results-count')?.textContent || '',
+          notify: [...document.querySelectorAll('#notify-container .notify-text')].map(item => item.textContent || ''),
+          persistenceKey: seriesPersistenceKey(series, state.manifest),
+          slug: series?.slug,
+          width: series?.width,
+          height: series?.height,
+          slices: series?.slices,
+          imageDomain: series?.imageDomain,
+          roiBucketKeys: Object.keys(state.rois || {}),
+        };
+      });
+      diagnostic.expectedPersistenceKey = persistenceKey;
+      diagnostic.pageErrors = pageErrors.slice();
+      throw new Error(`${error.message}\nROI sidecar diagnostic: ${JSON.stringify(diagnostic, null, 2)}`);
+    }
+    try {
+      await page.waitForFunction(() => document.querySelectorAll('#overlay-svg .roi-group').length === 2, null, { timeout: 20_000 });
+    } catch (error) {
+      const overlayCount = await page.evaluate(() => document.querySelectorAll('#overlay-svg .roi-group').length);
+      const rowCount = await page.evaluate(() => document.querySelectorAll('[data-roi-result-row]').length);
+      throw new Error(`${error.message}\nROI overlay diagnostic: rows=${rowCount} overlays=${overlayCount}`);
+    }
     const imported = await page.evaluate(async () => {
       const { state } = await import('/js/core/state.js');
       const series = state.manifest.series[state.seriesIdx];

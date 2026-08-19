@@ -821,9 +821,15 @@ export async function activateRoiResultRow(row, host = state, { isActive = () =>
   if (row.channelZeroIndex != null || row.timeZeroIndex != null) {
     const series = host?.manifest?.series?.[host.seriesIdx];
     if (series?.imageDomain === 'microscopy') {
-      const { activateMicroscopyStackPosition } = await import('../microscopy/microscopy-hyperstack-controls.js');
-      if (!isActive()) return false;
-      activateMicroscopyStackPosition(row.channelZeroIndex || 0, row.timeZeroIndex || 0, host, writes);
+      const nextC = finiteNumber(row.channelZeroIndex) ?? 0;
+      const nextT = finiteNumber(row.timeZeroIndex) ?? 0;
+      const currentC = finiteNumber(series.microscopy?.channelIndex) ?? 0;
+      const currentT = finiteNumber(series.microscopy?.timeIndex) ?? 0;
+      if (currentC !== nextC || currentT !== nextT) {
+        const { activateMicroscopyStackPosition } = await import('../microscopy/microscopy-hyperstack-controls.js');
+        if (!isActive()) return false;
+        activateMicroscopyStackPosition(nextC, nextT, host, writes);
+      }
       return setSlice();
     }
   }
