@@ -183,6 +183,7 @@ export const PRECACHE_LOCAL = [
   './js/shell/shell-layout-toggles.js',
   './js/shell/shell-mobile.js',
   './js/shell/toolbar-chrome.js',
+  './js/shell/toolbar-scrubber-resize.js',
   './js/shell/viewport.js',
   './js/sidecar-schemas.js',
   './js/slice-compositor.js',

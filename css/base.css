@@ -562,14 +562,29 @@
   /* Notification container */
   #notify-container {
     position: fixed;
-    bottom: calc(var(--space-lg) + 28px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--space-10) + var(--btn-toolbar) + var(--space-10) + var(--border-w) + var(--space-lg) + env(safe-area-inset-bottom, 0px));
     inset-inline-end: calc(var(--space-lg) + env(safe-area-inset-right, 0px));
-    right: auto;
     display: flex; flex-direction: column-reverse; gap: var(--space-sm);
     z-index: var(--z-toast); pointer-events: none; max-width: 380px;
   }
   body:has(.ask-composer:not([hidden])) #notify-container {
     bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Toolbar flyouts are position:fixed but live in #toolbar-root's
+     --z-header stacking context, so they cannot outrank a body-level toast.
+     Drop the toast under that context while a flyout is open. */
+  body:has(.toolbox.open) #notify-container,
+  body:has(.custom-dropdown.open) #notify-container {
+    z-index: calc(var(--z-header) - 1);
+  }
+  /* MPR's in-canvas toolbar sits above .controls; keep toasts above both. */
+  body:has(.canvas-wrap.mpr) #notify-container,
+  body:has(.canvas-wrap.mpr3d) #notify-container {
+    bottom: calc(
+      var(--space-10) + var(--btn-toolbar) + var(--space-10) + var(--border-w)
+      + var(--space-10) + var(--btn-toolbar) + var(--space-10) + var(--border-w)
+      + var(--space-lg) + env(safe-area-inset-bottom, 0px)
+    );
   }
   .notify-live {
     position: absolute;
@@ -597,7 +612,6 @@
   }
 
   .notify-item {
-    position: relative;
     background: var(--panel); border: var(--border-w) solid var(--border);
     border-radius: var(--radius-lg); padding: var(--space-10) var(--space-14);
     font: var(--fs-body-lg)/var(--lh-normal) var(--ff-sans);
@@ -607,18 +621,6 @@
     transition: opacity var(--panel-close-dur) var(--ease-smooth), transform var(--panel-close-dur) var(--ease-smooth);
     display: flex; align-items: flex-start; gap: var(--space-10);
   }
-  .notify-item::before {
-    content: '';
-    position: absolute;
-    inset-block: 8px;
-    inset-inline-start: 0;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--muted);
-  }
-  .notify-item[data-notify-kind="confirm"]::before { background: var(--success); }
-  .notify-item[data-notify-kind="warning"]::before { background: var(--color-attention); }
-  .notify-item[data-notify-kind="error"]::before { background: var(--danger); }
   .notify-item.exiting { opacity: 0; transform: translateX(20px); }
   .notify-item.shake { animation: notify-shake var(--shake-dur-a) var(--shake-ease); }
   .notify-body { flex: 1; min-width: 0; }
