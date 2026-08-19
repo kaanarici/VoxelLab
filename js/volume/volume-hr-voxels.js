@@ -12,7 +12,7 @@ import {
   isLocalProxyAssetUrl,
   MAX_VOLUME_CACHE_ENTRIES,
   trimCacheEntries,
-} from '../core/cached-fetch.js';
+} from '../cached-fetch.js';
 import {
   clearHrLoadingState,
   setHrLoadingState,

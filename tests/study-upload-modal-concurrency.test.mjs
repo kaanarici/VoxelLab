@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { handleLocalImport } = await import('../js/projects/study-upload-modal.js');
+const { handleLocalImport } = await import('../js/intake/run-local-import.js');
 
 function deferred() {
   let resolve;

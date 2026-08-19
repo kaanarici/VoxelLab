@@ -10,6 +10,8 @@ from collections.abc import Mapping
 from typing import BinaryIO, cast
 from urllib.parse import urlparse
 
+from host_policy import content_security_policy as host_content_security_policy
+
 
 LOCAL_API_TOKEN = (os.environ.get("VIEWER_LOCAL_API_TOKEN") or "").strip() or secrets.token_urlsafe(24)
 MAX_JSON_BODY_BYTES = 1024 * 1024
@@ -97,18 +99,7 @@ def is_same_origin(origin: str, host: str) -> bool:
 
 
 def content_security_policy() -> str:
-    return "; ".join([
-        "default-src 'self'",
-        "base-uri 'self'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "script-src 'self' 'wasm-unsafe-eval'",
-        "worker-src 'self'",
-        "style-src 'self'",
-        "img-src 'self' data: blob: https:",
-        "connect-src 'self' https:",
-        "font-src 'self' data:",
-    ])
+    return host_content_security_policy("browser")
 
 
 def local_nostore_static_path(path: str) -> bool:

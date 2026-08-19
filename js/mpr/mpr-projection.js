@@ -1,9 +1,14 @@
 import { cross3 } from '../core/geometry.js';
+import {
+  MAX_ACCURATE_SLAB_SAMPLES,
+  MAX_VOXEL_STEP,
+  MPR_PROJECTION_MODES,
+  clampSlabThicknessMm,
+  maximumAccurateSlabThicknessMm,
+  normalizeMprProjectionMode,
+} from '../core/view-limits.js';
 
-export const MPR_PROJECTION_MODES = ['thin', 'avg', 'mip', 'minip'];
-export const MAX_ACCURATE_SLAB_SAMPLES = 513;
-const MAX_SLAB_THICKNESS_MM = 160;
-const MAX_VOXEL_STEP = 0.5;
+export { MAX_ACCURATE_SLAB_SAMPLES, MPR_PROJECTION_MODES, clampSlabThicknessMm, maximumAccurateSlabThicknessMm, normalizeMprProjectionMode };
 
 function voxelToPhysical(vec, spacing) {
   return [
@@ -13,30 +18,12 @@ function voxelToPhysical(vec, spacing) {
   ];
 }
 
-export function normalizeMprProjectionMode(mode) {
-  return MPR_PROJECTION_MODES.includes(mode) ? mode : 'thin';
-}
-
 function positiveSpacing(spacing) {
   return {
     row: Number(spacing?.row) > 0 ? Number(spacing.row) : 1,
     col: Number(spacing?.col) > 0 ? Number(spacing.col) : 1,
     slice: Number(spacing?.slice) > 0 ? Number(spacing.slice) : 1,
   };
-}
-
-export function maximumAccurateSlabThicknessMm(spacing, maxSamples = MAX_ACCURATE_SLAB_SAMPLES) {
-  const safe = positiveSpacing(spacing);
-  const worstVoxelDistancePerMm = Math.max(1 / safe.col, 1 / safe.row, 1 / safe.slice);
-  const maxStepMm = MAX_VOXEL_STEP / worstVoxelDistancePerMm;
-  return Math.min(MAX_SLAB_THICKNESS_MM, Math.max(0, maxSamples - 1) * maxStepMm);
-}
-
-export function clampSlabThicknessMm(value, spacing = null) {
-  const limit = spacing
-    ? maximumAccurateSlabThicknessMm(spacing)
-    : MAX_SLAB_THICKNESS_MM;
-  return Math.max(0, Math.min(limit, Number(value) || 0));
 }
 
 // Shape: { origin: [0, 0, 12], axisU: [255, 0, 0], axisV: [0, 255, 0] } in voxel coordinates.

@@ -22,13 +22,13 @@ test('resolveVoxelInspection returns consistent tissue and region answers for on
     }],
   };
   state.seriesIdx = 0;
-  state.useSeg = true;
-  state.useRegions = true;
+  state.overlays.tissue = true;
+  state.overlays.labels = true;
   state.segVoxels = Uint8Array.from([0, 1, 2, 3, 0, 0, 0, 0]);
   state.regionVoxels = Uint8Array.from([0, 9, 0, 0, 0, 0, 0, 0]);
-  state.regionMeta = { legend: { 9: 'Thalamus' }, regions: { 9: { name: 'Thalamus' } } };
+  state.overlays.regionMeta = { legend: { 9: 'Thalamus' }, regions: { 9: { name: 'Thalamus' } } };
   state.hrVoxels = Float32Array.from([0.1, 0.5, 0.2, 0.3, 0, 0, 0, 0]);
-  state.stats = null;
+  state.overlays.stats = null;
 
   const info = resolveVoxelInspection(state.manifest.series[0], 1, 0, 0);
 
@@ -71,11 +71,11 @@ test('resolveVoxelInspection accepts explicit compare-style overlay labels', () 
     }],
   };
   state.seriesIdx = 0;
-  state.useSeg = true;
-  state.useRegions = true;
+  state.overlays.tissue = true;
+  state.overlays.labels = true;
   state.segVoxels = null;
   state.regionVoxels = null;
-  state.regionMeta = null;
+  state.overlays.regionMeta = null;
   state.hrVoxels = null;
   state.voxels = Uint8Array.from([15, 25, 35, 45]);
 
@@ -107,7 +107,7 @@ test('resolveVoxelInspection uses shared ADC display conversion', () => {
   };
   state.seriesIdx = 0;
   state.hrVoxels = Float32Array.from([0.5]);
-  state.stats = { adc: { hr_lo_raw: 100, hr_hi_raw: 300, rescale_slope: 2, rescale_intercept: 10, display_divisor: 1000 } };
+  state.overlays.stats = { adc: { hr_lo_raw: 100, hr_hi_raw: 300, rescale_slope: 2, rescale_intercept: 10, display_divisor: 1000 } };
 
   const info = resolveVoxelInspection(state.manifest.series[0], 0, 0, 0);
 

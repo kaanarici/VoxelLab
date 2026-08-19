@@ -5,22 +5,37 @@ import { state } from '../core/state.js';
 import { createImageBitmapBatch } from '../image-bitmap-batch.js';
 import { readImageByteData } from '../overlay/overlay-data.js';
 import { ensureActiveOverlayVolumes } from '../overlay/overlay-volumes.js';
+import { OVERLAY_CACHE_BY_TYPE } from '../runtime/overlay-cache-keys.js';
 import { setVoxelCache } from '../runtime/viewer-runtime.js';
 import { syncViewerRuntimeSession } from '../runtime/viewer-session.js';
 import { touchLocalRawVolume } from '../local-raw-volume-cache.js';
-import { seriesVariantKey } from '../series/series-identity.js';
+import { seriesVariantKey } from '../core/series-identity.js';
 import { stackHasLocalByteSlices } from '../series/local-byte-slice.js';
 import { hasDenseLoadedImages, workerFlattenAvailable } from './volume-image-readiness.js';
 import { flattenImageBitmapsInWorker } from './volume-worker-client.js';
 
 let _renderVolumes = () => {};
 
+function overlayVoxelPresence() {
+  const presence = Object.create(null);
+  for (const cache of Object.values(OVERLAY_CACHE_BY_TYPE)) {
+    presence[cache.voxels] = !!state[cache.voxels];
+  }
+  return presence;
+}
+
+function overlayVoxelsAppeared(before) {
+  return Object.values(OVERLAY_CACHE_BY_TYPE).some(
+    (cache) => !before[cache.voxels] && !!state[cache.voxels],
+  );
+}
+
 // In-flight builds share the same study-aware volume cache key used by
 // restored runtime caches.
 const _pendingBuilds = new Map();
 
 function currentVolumeVariant(series) {
-  return state.useBrain && series?.hasBrain ? 'brain' : 'base';
+  return state.overlays.useBrain && series?.hasBrain ? 'brain' : 'base';
 }
 
 /**
@@ -46,7 +61,7 @@ export async function tryFlattenVoxelsInWorker() {
 
   // Local raw volumes are already in memory as Float32; the sync path is
   // fastest there because it just clamps to uint8 inline.
-  const localRaw = !state.useBrain && state._localRawVolumes?.[series.slug];
+  const localRaw = !state.overlays.useBrain && state._localRawVolumes?.[series.slug];
   if (localRaw) {
     touchLocalRawVolume(series.slug);
     return false;
@@ -106,11 +121,10 @@ export async function tryFlattenVoxelsInWorker() {
     && state.imgs === sourceStack;
   if (!stillCurrent) return false;
   setVoxelCache(bytes, key);
-  const hadSeg = !!state.segVoxels;
-  const hadRegions = !!state.regionVoxels;
+  const hadOverlayVoxels = overlayVoxelPresence();
   ensureActiveOverlayVolumes();
   syncViewerRuntimeSession(series);
-  if ((!hadSeg && state.segVoxels) || (!hadRegions && state.regionVoxels)) _renderVolumes();
+  if (overlayVoxelsAppeared(hadOverlayVoxels)) _renderVolumes();
   return true;
 }
 
@@ -135,7 +149,7 @@ export function ensureVoxels() {
 
   const W = series.width, H = series.height, D = series.slices;
   const voxels = new Uint8Array(W * H * D);
-  const localRaw = !state.useBrain && state._localRawVolumes?.[series.slug];
+  const localRaw = !state.overlays.useBrain && state._localRawVolumes?.[series.slug];
   if (localRaw && localRaw.length === voxels.length) {
     touchLocalRawVolume(series.slug);
     for (let i = 0; i < localRaw.length; i++) voxels[i] = Math.max(0, Math.min(255, Math.round(localRaw[i] * 255)));
@@ -148,10 +162,9 @@ export function ensureVoxels() {
     }
   }
   setVoxelCache(voxels, key);
-  const hadSeg = !!state.segVoxels;
-  const hadRegions = !!state.regionVoxels;
+  const hadOverlayVoxels = overlayVoxelPresence();
   ensureActiveOverlayVolumes();
   syncViewerRuntimeSession(series);
-  if ((!hadSeg && state.segVoxels) || (!hadRegions && state.regionVoxels)) _renderVolumes();
+  if (overlayVoxelsAppeared(hadOverlayVoxels)) _renderVolumes();
   return true;
 }

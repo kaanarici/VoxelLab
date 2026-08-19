@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { normalizeRegionMeta, regionLabelName } = await import('../js/region-meta.js');
+const { normalizeRegionMeta, regionLabelName } = await import('../js/core/region-meta.js');
 
 test('normalizeRegionMeta backfills legend entries from regions metadata', () => {
   const normalized = normalizeRegionMeta({

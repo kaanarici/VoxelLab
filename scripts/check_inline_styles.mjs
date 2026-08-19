@@ -22,7 +22,6 @@ const INNER_HTML_ALLOWLIST = new Set([
   'js/metadata.js',
   'js/mpr/mpr-view.js',
   'js/notify.js',
-  'js/plugin.js',
   'js/projects/projects-sidebar.js',
   'js/projects/projects-sidebar-tree-render.js',
   'js/projects/projects-sidebar-context-menus.js',

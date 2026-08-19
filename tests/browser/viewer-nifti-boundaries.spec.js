@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
-import { dropFiles, openUploadModal, routeConfig } from './microscopy-upload-helpers.mjs';
+import { dropFiles, isolatedFixturePath, openUploadModal, routeConfig } from './microscopy-upload-helpers.mjs';
 
 async function writeTiny4dNifti(path) {
   const buffer = Buffer.alloc(352 + 16);
@@ -49,7 +49,7 @@ async function writeTiny3dNifti(path) {
 }
 
 test('upload modal imports 4D NIfTI as independently selectable calibrated timepoint series', async ({ page }, testInfo) => {
-  const niftiPath = testInfo.outputPath('fmri-timeseries.nii');
+  const niftiPath = await isolatedFixturePath(testInfo, 'fmri-timeseries.nii');
   await writeTiny4dNifti(niftiPath);
 
   await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
@@ -86,8 +86,8 @@ test('upload modal imports 4D NIfTI as independently selectable calibrated timep
 });
 
 test('upload modal explains mixed native medical and microscopy folders by family', async ({ page }, testInfo) => {
-  const niftiPath = testInfo.outputPath('mixed-native/brain.nii');
-  const microscopyPath = testInfo.outputPath('mixed-native/cells.ome.tiff');
+  const niftiPath = await isolatedFixturePath(testInfo, 'mixed-native-brain.nii');
+  const microscopyPath = await isolatedFixturePath(testInfo, 'mixed-native-cells.ome.tiff');
   await writeTiny3dNifti(niftiPath);
   await mkdir(dirname(microscopyPath), { recursive: true });
   await writeFile(microscopyPath, 'not parsed because mixed native families fail before import');

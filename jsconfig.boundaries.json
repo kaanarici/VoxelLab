@@ -12,8 +12,8 @@
     "js/desktop-path-file.js",
     "js/microscopy/microscopy-file-kinds.js",
     "js/mpr/mpr-oblique-geometry.js",
-    "js/runtime/viewer-session-shape.js",
-    "js/series/series-identity.js",
+    "js/core/viewer-session-shape.js",
+    "js/core/series-identity.js",
     "js/sidecar-schemas.js",
     "js/volume/volume-clip-plane.js"
   ],

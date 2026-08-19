@@ -3,6 +3,10 @@
 // which stack position a row lives at. No DOM, no file I/O — those live in
 // roi-results-table.js / roi-results-export.js.
 
+import { formatAreaFromMm2, formatLengthFromMm, lengthUnitToMm, preferredLengthUnit } from '../core/physical-units.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
+import { state } from '../core/state.js';
+import { microscopyCalibrationTrustText } from '../microscopy/microscopy-provenance-text.js';
 import {
   angleEntriesForSlice,
   drawingEntriesForSeries,
@@ -13,11 +17,8 @@ import {
   setMeasurementEntriesForSlice,
   setRoiEntriesForSlice,
 } from '../overlay/annotation-graph.js';
-import { formatAreaFromMm2, formatLengthFromMm, lengthUnitToMm, preferredLengthUnit } from '../core/physical-units.js';
-import { microscopyCalibrationTrustText } from '../microscopy/microscopy-provenance-text.js';
+import { hostWritesFor } from '../runtime/viewer-runtime.js';
 import { ROI_RESULTS_BUNDLE_SCHEMA } from '../sidecar-schemas.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
-import { state } from '../core/state.js';
 import { roiCircularityValue, roiCoordinateValues, roiPerimeterValues } from './roi-results-geometry.js';
 import { formatNumber, intDenForRow, intDenMm2ForRow, isIntensityValueSource, rawIntDenForRow } from './roi-results-metrics.js';
 
@@ -187,7 +188,7 @@ function rowEntryLocalId(row = {}) {
   return finiteNumber(match?.[1]) ?? finiteNumber(row.index);
 }
 
-export function setRoiResultLabel(row, label, host = state) {
+export function setRoiResultLabel(row, label, host = state, writes) {
   const series = host?.manifest?.series?.[host.seriesIdx];
   const sliceIdx = Math.max(0, Math.floor(Number(row?.sliceIdx) || 0));
   const id = rowEntryLocalId(row);
@@ -198,7 +199,7 @@ export function setRoiResultLabel(row, label, host = state) {
     const item = list.find(entry => Number(entry?.id) === id);
     if (!item) return false;
     item.label = clean;
-    setAngleEntriesForSlice(host, series, sliceIdx, list);
+    setAngleEntriesForSlice(host, series, sliceIdx, list, writes);
     return true;
   }
   if (row.kind === 'line') {
@@ -206,14 +207,14 @@ export function setRoiResultLabel(row, label, host = state) {
     const item = list.find(entry => Number(entry?.id) === id);
     if (!item) return false;
     item.label = clean;
-    setMeasurementEntriesForSlice(host, series, sliceIdx, list);
+    setMeasurementEntriesForSlice(host, series, sliceIdx, list, writes);
     return true;
   }
   const list = roiEntriesForSlice(host, series, sliceIdx);
   const item = list.find(entry => Number(entry?.id) === id);
   if (!item) return false;
   item.label = clean;
-  setRoiEntriesForSlice(host, series, sliceIdx, list);
+  setRoiEntriesForSlice(host, series, sliceIdx, list, writes);
   return true;
 }
 
@@ -705,7 +706,7 @@ export function roiResultsBundleIncompatibleRowCount(bundle, series = state.mani
   return count;
 }
 
-export function importRoiResultsBundle(bundle, host = state) {
+export function importRoiResultsBundle(bundle, host = state, writes) {
   const series = host?.manifest?.series?.[host.seriesIdx];
   const compatibility = validateRoiResultsBundleForSeries(bundle, series, host?.manifest);
   if (!compatibility.ok) return { ok: false, count: 0, reason: compatibility.reason };
@@ -774,9 +775,9 @@ export function importRoiResultsBundle(bundle, host = state) {
     rowsBySlice.set(sliceIdx, existing);
     count += 1;
   }
-  for (const [sliceIdx, list] of angleRowsBySlice) setAngleEntriesForSlice(host, series, sliceIdx, list);
-  for (const [sliceIdx, list] of measurementRowsBySlice) setMeasurementEntriesForSlice(host, series, sliceIdx, list);
-  for (const [sliceIdx, list] of rowsBySlice) setRoiEntriesForSlice(host, series, sliceIdx, list);
+  for (const [sliceIdx, list] of angleRowsBySlice) setAngleEntriesForSlice(host, series, sliceIdx, list, writes);
+  for (const [sliceIdx, list] of measurementRowsBySlice) setMeasurementEntriesForSlice(host, series, sliceIdx, list, writes);
+  for (const [sliceIdx, list] of rowsBySlice) setRoiEntriesForSlice(host, series, sliceIdx, list, writes);
   if (count > 0) return { ok: true, count, reason: rejectedIncompatible > 0 ? 'partial_incompatible_rows' : '' };
   return { ok: false, count: 0, reason: rejectedIncompatible > 0 ? 'incompatible_bundle_rows' : 'no_importable_rois' };
 }
@@ -806,12 +807,15 @@ export function rowMatchesCurrentScope(row, host = state) {
     && Number(series.microscopy?.timeIndex || 0) === Number(row.timeZeroIndex || 0);
 }
 
-export async function activateRoiResultRow(row, host = state, { isActive = () => true } = {}) {
+export async function activateRoiResultRow(row, host = state, { isActive = () => true, writes } = {}) {
   if (!row || !isActive()) return false;
+  const adapter = hostWritesFor(host, writes);
+  if (!adapter?.sliceIndex) return false;
   const setSlice = () => {
     if (!isActive()) return false;
     const maxSlice = Math.max(0, Number(host?.imgs?.length || 0) - 1);
-    host.sliceIdx = Math.min(maxSlice, Math.max(0, Math.floor(Number(row.sliceIdx) || 0)));
+    const next = Math.min(maxSlice, Math.max(0, Math.floor(Number(row.sliceIdx) || 0)));
+    adapter.sliceIndex(host, next);
     return true;
   };
   if (row.channelZeroIndex != null || row.timeZeroIndex != null) {
@@ -819,7 +823,7 @@ export async function activateRoiResultRow(row, host = state, { isActive = () =>
     if (series?.imageDomain === 'microscopy') {
       const { activateMicroscopyStackPosition } = await import('../microscopy/microscopy-hyperstack-controls.js');
       if (!isActive()) return false;
-      activateMicroscopyStackPosition(row.channelZeroIndex || 0, row.timeZeroIndex || 0, host);
+      activateMicroscopyStackPosition(row.channelZeroIndex || 0, row.timeZeroIndex || 0, host, writes);
       return setSlice();
     }
   }

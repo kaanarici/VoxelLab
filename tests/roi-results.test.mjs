@@ -24,6 +24,7 @@ const {
 } = await import('../js/overlay/annotation-graph.js');
 const { clearROIMode, countROIs, initROI, onROIDown, toggleROI } = await import('../js/roi.js');
 const {
+  activateRoiResultRow,
   importRoiResultsBundle: importRoiResultsBundleV2,
   roiResultsBundleIncompatibleRowCount,
   roiResultRows,
@@ -32,7 +33,8 @@ const {
   roiResultsImportFailureText,
   setRoiResultLabel,
 } = await import('../js/roi/roi-results.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 
 // Historical fixtures below focus on row geometry. Stamp them as current v2
 // bundles so they exercise those concerns without reintroducing v1 matching.
@@ -1390,4 +1392,19 @@ test('roiResultRows uses stable slice-local ROI ids for visible labels', () => {
   const rows = roiResultRows(state);
 
   assert.deepEqual(rows.map(row => [row.slice, row.index]), [[1, 1], [6, 1]]);
+});
+
+test('activateRoiResultRow writes isolated slice index only through isolatedHostWrites', async () => {
+  const host = {
+    imgs: ['a', 'b', 'c'],
+    sliceIdx: 0,
+    seriesIdx: 0,
+    manifest: { series: [{ slug: 'iso_roi_slice' }] },
+  };
+
+  assert.equal(await activateRoiResultRow({ sliceIdx: 2 }, host), false);
+  assert.equal(host.sliceIdx, 0);
+
+  assert.equal(await activateRoiResultRow({ sliceIdx: 2 }, host, { writes: isolatedHostWrites() }), true);
+  assert.equal(host.sliceIdx, 2);
 });

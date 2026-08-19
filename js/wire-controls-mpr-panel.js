@@ -1,7 +1,7 @@
 // Unified MPR toolbar + orthogonal/oblique canvas interactions (wired from wire-controls.js).
 
 import { $ } from './dom.js';
-import { initHorizontalScrollFades } from './core/horizontal-scroll-fades.js';
+import { initHorizontalScrollFades } from './shell/horizontal-scroll-fades.js';
 import { isMprActive } from './core/mode-flags.js';
 import { state } from './core/state.js';
 import {
@@ -14,6 +14,7 @@ import {
   syncMprCrosshairBounds,
 } from './slice-view.js';
 import {
+  getMprViewport,
   nudgeMprAxis,
   resetMprViewport as resetMprViewportState,
   setMprGpuEnabled,
@@ -35,19 +36,18 @@ function paneForCanvas(canvas) {
   }[canvas?.id] || '';
 }
 
+// Interaction-only pan flags. Not part of the serializable mpr viewport document.
+let activePan = null;
+
 function ensureMprViewport(canvas) {
-  const pane = paneForCanvas(canvas);
-  state.mpr.viewports ||= {};
-  // Shape: { zoom: 1, tx: 0, ty: 0, panning: false, moved: false, lastX: 0, lastY: 0 }.
-  state.mpr.viewports[pane] ||= { zoom: 1, tx: 0, ty: 0, panning: false, moved: false, lastX: 0, lastY: 0 };
-  return state.mpr.viewports[pane];
+  return getMprViewport(paneForCanvas(canvas)) || { zoom: 1, tx: 0, ty: 0 };
 }
 
 function applyMprViewport(canvas) {
   const view = ensureMprViewport(canvas);
   canvas.style.transformOrigin = '50% 50%';
   canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.zoom})`;
-  canvas.style.cursor = view.panning ? 'grabbing' : view.zoom > 1.01 ? 'grab' : 'crosshair';
+  canvas.style.cursor = activePan?.canvas === canvas ? 'grabbing' : view.zoom > 1.01 ? 'grab' : 'crosshair';
   syncMprCrosshairBounds();
 }
 
@@ -110,11 +110,10 @@ function syncMprZoomLabel() {
  */
 export function wireMprPanel(deps) {
   const { hideHover } = deps;
-  let activePan = null;
   const gpuToggle = $('mpr-gpu-toggle');
   const syncGpuUi = () => {
     const available = canUseGpuMpr();
-    gpuToggle.checked = !!state.mprGpuEnabled;
+    gpuToggle.checked = !!state.mpr.gpuEnabled;
     gpuToggle.disabled = !available;
   };
   syncGpuUi();
@@ -140,8 +139,8 @@ export function wireMprPanel(deps) {
   $('ob-pitch').addEventListener('input', () => setOb('pitch-slider'));
   $('ob-yaw-val').addEventListener('input', () => setOb('yaw-number'));
   $('ob-pitch-val').addEventListener('input', () => setOb('pitch-number'));
-  $('ob-yaw-val').addEventListener('change', () => { $('ob-yaw-val').value = state.obYaw; });
-  $('ob-pitch-val').addEventListener('change', () => { $('ob-pitch-val').value = state.obPitch; });
+  $('ob-yaw-val').addEventListener('change', () => { $('ob-yaw-val').value = state.mpr.obYaw; });
+  $('ob-pitch-val').addEventListener('change', () => { $('ob-pitch-val').value = state.mpr.obPitch; });
   $('ob-reset').onclick = () => {
     $('ob-yaw').value = 0; $('ob-pitch').value = 30;
     setOb('reset');
@@ -208,23 +207,26 @@ export function wireMprPanel(deps) {
   // --- Pan management (shared across all MPR canvases) ---
   window.addEventListener('mouseup', () => {
     if (!activePan) return;
-    const { canvas, view } = activePan;
-    view.panning = false;
-    canvas._mprIgnoreClick = view.moved;
+    const { canvas, moved } = activePan;
+    canvas._mprIgnoreClick = moved;
     activePan = null;
     applyMprViewport(canvas);
   });
   window.addEventListener('mousemove', (e) => {
     if (!activePan) return;
-    const { canvas, view } = activePan;
-    const dx = e.clientX - view.lastX;
-    const dy = e.clientY - view.lastY;
+    const { canvas, lastX, lastY } = activePan;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
     if (!dx && !dy) return;
-    view.tx += dx;
-    view.ty += dy;
-    view.lastX = e.clientX;
-    view.lastY = e.clientY;
-    view.moved = true;
+    const view = ensureMprViewport(canvas);
+    setMprViewport(paneForCanvas(canvas), {
+      zoom: view.zoom,
+      tx: view.tx + dx,
+      ty: view.ty + dy,
+    });
+    activePan.lastX = e.clientX;
+    activePan.lastY = e.clientY;
+    activePan.moved = true;
     applyMprViewport(canvas);
   });
 
@@ -237,7 +239,7 @@ export function wireMprPanel(deps) {
       mprClickToVoxel(c, e, axis);
     });
     c.addEventListener('mousemove', (e) => {
-      if (ensureMprViewport(c).panning) { hideHover(); return; }
+      if (activePan?.canvas === c) { hideHover(); return; }
       showMprHover(c, e, axis);
     });
     c.addEventListener('mouseleave', hideHover);
@@ -247,11 +249,7 @@ export function wireMprPanel(deps) {
       const wantsPan = e.button === 1 || e.metaKey || e.ctrlKey || view.zoom > 1.01;
       if (!wantsPan) return;
       e.preventDefault();
-      view.panning = true;
-      view.moved = false;
-      view.lastX = e.clientX;
-      view.lastY = e.clientY;
-      activePan = { canvas: c, view };
+      activePan = { canvas: c, lastX: e.clientX, lastY: e.clientY, moved: false };
       applyMprViewport(c);
     });
     c.addEventListener('dblclick', (e) => {
@@ -288,11 +286,7 @@ export function wireMprPanel(deps) {
       const wantsPan = e.button === 1 || e.metaKey || e.ctrlKey || view.zoom > 1.01;
       if (!wantsPan) return;
       e.preventDefault();
-      view.panning = true;
-      view.moved = false;
-      view.lastX = e.clientX;
-      view.lastY = e.clientY;
-      activePan = { canvas: obCanvas, view };
+      activePan = { canvas: obCanvas, lastX: e.clientX, lastY: e.clientY, moved: false };
       applyMprViewport(obCanvas);
     });
     obCanvas.addEventListener('wheel', (e) => {

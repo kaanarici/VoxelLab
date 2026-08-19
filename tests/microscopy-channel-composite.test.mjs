@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const {
@@ -7,7 +8,10 @@ const {
   drawMicroscopyChannelSplit,
   ensureMicroscopyComposite,
   setMicroscopyCompositeChannelEnabled,
+  setMicroscopyCompositeEnabled,
 } = await import('../js/microscopy/microscopy-channel-composite.js');
+const { state } = await import('../js/core/state.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
 
 function context(expectedWidth = null, expectedHeight = null) {
   const calls = [];
@@ -55,14 +59,42 @@ test('drawMicroscopyChannelComposite adds channel LUT colors and clips at 255', 
 });
 
 test('composite state keeps at least one visible channel', () => {
-  const series = { microscopy: {} };
-  const composite = ensureMicroscopyComposite(series, 2);
+  const series = { slug: 'iso_composite', microscopy: {} };
+  const host = { manifest: { series: [series] } };
+  const writes = isolatedHostWrites();
+  const composite = ensureMicroscopyComposite(series, 2, host, writes);
   composite.enabled = true;
 
   assert.deepEqual(composite.channels, [true, true]);
-  assert.equal(setMicroscopyCompositeChannelEnabled(series, 0, false, 2), true);
-  assert.equal(setMicroscopyCompositeChannelEnabled(series, 1, false, 2), false);
+  assert.equal(setMicroscopyCompositeChannelEnabled(series, 0, false, 2, host, writes), true);
+  assert.equal(setMicroscopyCompositeChannelEnabled(series, 1, false, 2, host, writes), false);
   assert.deepEqual(series.microscopy.composite.channels, [false, true]);
+});
+
+test('live composite writes replace the manifest series slot', () => {
+  const original = { slug: 'live_composite', microscopy: { channelIndex: 0 } };
+  state.manifest = { series: [original] };
+
+  const computed = ensureMicroscopyComposite(original, 2);
+  assert.deepEqual(computed, { enabled: false, channels: [true, true] });
+  assert.equal(original.microscopy.composite, undefined);
+
+  assert.equal(setMicroscopyCompositeEnabled(original, true, 2), true);
+  const live = state.manifest.series[0];
+  assert.notEqual(live, original);
+  assert.equal(live.microscopy.composite.enabled, true);
+  assert.deepEqual(live.microscopy.composite.channels, [true, true]);
+  assert.equal(original.microscopy.composite, undefined);
+});
+
+test('live composite writes no-op when the series is not in the live list', () => {
+  const orphan = { slug: 'orphan_composite', microscopy: { channelIndex: 0 } };
+  state.manifest = { series: [{ slug: 'live_other', microscopy: { channelIndex: 0 } }] };
+
+  setMicroscopyCompositeEnabled(orphan, true, 2);
+
+  assert.equal(orphan.microscopy.composite, undefined);
+  assert.equal(state.manifest.series[0].microscopy?.composite, undefined);
 });
 
 test('drawMicroscopyChannelComposite colorizes a single visible channel', () => {
@@ -245,4 +277,20 @@ test('channelDisplayColor preserves OME colors and falls back by channel index',
   assert.equal(channelDisplayColor({ color: '#00ff00' }, 0), '#00FF00');
   assert.equal(channelDisplayColor({}, 0), '#FF0000');
   assert.equal(channelDisplayColor({}, 2), '#0000FF');
+});
+
+test('isolated composite writes refuse without a writes adapter', () => {
+  const series = { slug: 'iso_composite_refuse', microscopy: {} };
+  const host = { manifest: { series: [series] } };
+
+  ensureMicroscopyComposite(series, 2, host);
+  setMicroscopyCompositeEnabled(series, true, 2, host);
+
+  assert.equal(series.microscopy.composite, undefined);
+});
+
+test('live composite module does not assign series.microscopy in place', () => {
+  const src = readFileSync(new URL('../js/microscopy/microscopy-channel-composite.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /writeHost/);
+  assert.doesNotMatch(src, /series\.microscopy\.composite\s*=/);
 });

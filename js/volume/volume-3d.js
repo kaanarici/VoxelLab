@@ -1,7 +1,9 @@
 import { state } from '../core/state.js';
 import { notify } from '../notify.js';
+import { volumeDisplayExtents, volumeDisplayScale } from '../core/geometry.js';
 import { effectiveSliceSpacing } from '../mpr/mpr-geometry.js';
 import { endPerfTrace, hasPendingPerfTrace } from '../core/perf-trace.js';
+import { raycastStepCount, volumeProjectionSamplingSupport } from '../core/volume-limits.js';
 import { initOverlayVolumes } from '../overlay/overlay-volumes.js';
 import {
   getThreeRuntime,
@@ -13,7 +15,6 @@ import { syncViewerRuntimeSession } from '../runtime/viewer-session.js';
 import { ensureHRVoxels, initHrVoxelsLoading } from './volume-hr-voxels.js';
 import { ensureVoxels, initEnsureVoxels } from './volume-voxels-ensure.js';
 import { volumeClipPlane } from './volume-clip-plane.js';
-import { raycastStepCount, volumeProjectionSamplingSupport } from './volume-raycast-steps.js';
 let _renderVolumes = () => {};
 let _hideHover = () => {};
 let _is3dActive = () => false;
@@ -117,11 +118,11 @@ export function updateUniforms() {
   const three = getThreeRuntime();
   if (!three.mesh) return;
   const u = three.mesh.material.uniforms;
-  u.uLowT.value = state.lowT;
-  u.uHighT.value = state.highT;
-  u.uIntensity.value = state.intensity;
-  u.uClipMin.value.fromArray(state.clipMin);
-  u.uClipMax.value.fromArray(state.clipMax);
+  u.uLowT.value = state.three.lowT;
+  u.uHighT.value = state.three.highT;
+  u.uIntensity.value = state.three.intensity;
+  u.uClipMin.value.fromArray(state.three.clipMin);
+  u.uClipMax.value.fromArray(state.three.clipMax);
   const series = state.manifest?.series?.[state.seriesIdx];
   if (series && u.uClipPlane) {
     u.uClipPlane.value.fromArray(volumeClipPlane({
@@ -131,15 +132,15 @@ export function updateUniforms() {
         col: series.pixelSpacing?.[1] || 1,
         slice: effectiveSliceSpacing(series),
       },
-      yaw: state.obYaw,
-      pitch: state.obPitch,
-      depth: state.clipPlaneDepth,
-      invert: state.clipPlaneInvert,
+      yaw: state.mpr.obYaw,
+      pitch: state.mpr.obPitch,
+      depth: state.three.clipPlaneDepth,
+      invert: state.three.clipPlaneInvert,
     }));
-    u.uClipPlaneEnabled.value = state.clipPlaneEnabled ? 1 : 0;
+    u.uClipPlaneEnabled.value = state.three.clipPlaneEnabled ? 1 : 0;
   }
   if (u.uMode) {
-    u.uMode.value = state.renderMode === 'mip' ? 1 : state.renderMode === 'minip' ? 2 : 0;
+    u.uMode.value = state.three.renderMode === 'mip' ? 1 : state.three.renderMode === 'minip' ? 2 : 0;
     const textureDims = three.mesh.material.userData.textureDims || {};
     const steps = raycastStepCount({
       width: textureDims.width || series?.width,
@@ -172,7 +173,7 @@ export async function buildVolume() {
   } = threeModules;
   const three = getThreeRuntime();
   if (!three.renderer) return;
-  const variant = state.useBrain ? 'brain' : 'base';
+  const variant = state.overlays.useBrain ? 'brain' : 'base';
   const series = state.manifest.series[state.seriesIdx];
   const W = series.width, H = series.height, D = series.slices;
   const maxTextureSize = rendererMax3DTextureSize(three.renderer);
@@ -258,7 +259,7 @@ export async function buildVolume() {
   }
 
   if (hr) {
-    const applyMask = state.useBrain && state.voxels && state.voxels.length === hr.length;
+    const applyMask = state.overlays.useBrain && state.voxels && state.voxels.length === hr.length;
     if (applyMask) {
       const masked = new Float32Array(hr.length);
       const mask = state.voxels;
@@ -293,14 +294,14 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
   texture.type = textureType;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.wrapR = THREE.ClampToEdgeWrapping;
   texture.unpackAlignment = 1;
   texture.needsUpdate = true;
 
-  const sx = series.width * (series.pixelSpacing?.[1] || 1);
-  const sy = series.height * (series.pixelSpacing?.[0] || 1);
-  const sliceSpacing = effectiveSliceSpacing(series);
-  const sz = series.slices * sliceSpacing;
-  const m = Math.max(sx, sy, sz);
+  const extents = volumeDisplayExtents(series);
+  const scale = volumeDisplayScale(series);
 
   const dummyLabel = new THREE.Data3DTexture(new Uint8Array(1), 1, 1, 1);
   dummyLabel.format = THREE.RedFormat;
@@ -330,15 +331,15 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
     gridHeight: series.height,
     gridDepth: series.slices,
     gridSpacing: [
-      series.pixelSpacing?.[1] || 1,
-      series.pixelSpacing?.[0] || 1,
-      sliceSpacing,
+      extents.colSpacing,
+      extents.rowSpacing,
+      extents.sliceSpacing,
     ],
-    lowT: state.lowT,
-    highT: state.highT,
-    intensity: state.intensity,
-    clipMin: state.clipMin,
-    clipMax: state.clipMax,
+    lowT: state.three.lowT,
+    highT: state.three.highT,
+    intensity: state.three.intensity,
+    clipMin: state.three.clipMin,
+    clipMax: state.three.clipMax,
     clipPlane: volumeClipPlane({
       dims: { W: series.width, H: series.height, D: series.slices },
       spacing: {
@@ -346,13 +347,13 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
         col: series.pixelSpacing?.[1] || 1,
         slice: effectiveSliceSpacing(series),
       },
-      yaw: state.obYaw,
-      pitch: state.obPitch,
-      depth: state.clipPlaneDepth,
-      invert: state.clipPlaneInvert,
+      yaw: state.mpr.obYaw,
+      pitch: state.mpr.obPitch,
+      depth: state.three.clipPlaneDepth,
+      invert: state.three.clipPlaneInvert,
     }),
-    clipPlaneEnabled: state.clipPlaneEnabled,
-    renderMode: state.renderMode,
+    clipPlaneEnabled: state.three.clipPlaneEnabled,
+    renderMode: state.three.renderMode,
   });
   material.userData.baseTextureBytes = volumeData.byteLength;
   material.userData.max3DTextureSize = maxTextureSize;
@@ -363,11 +364,11 @@ function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, 
 
   const geom = new THREE.BoxGeometry(1, 1, 1);
   const mesh = new THREE.Mesh(geom, material);
-  mesh.scale.set(sx / m, sy / m, sz / m);
+  mesh.scale.set(scale[0], scale[1], scale[2]);
   three.scene.add(mesh);
   setThreeRuntimeMesh(mesh, {
     seriesIdx: state.seriesIdx,
-    variant: state.useBrain ? 'brain' : 'base',
+    variant: state.overlays.useBrain ? 'brain' : 'base',
     dataKey,
   });
   syncViewerRuntimeSession(series);

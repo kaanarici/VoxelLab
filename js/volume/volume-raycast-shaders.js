@@ -3,9 +3,11 @@ export const VOLUME_RAYCAST_VERTEX_SHADER = /* glsl */`
       varying vec3 vOrigin;
       varying vec3 vDir;
       void main() {
-        vec3 camObj = (inverse(modelMatrix) * vec4(cameraPosition, 1.0)).xyz;
-        vOrigin = camObj + vec3(0.5);
-        vDir = position - camObj;
+        // Orthographic camera: parallel rays along view -Z. Converging rays from
+        // the camera point shear the volume toward the bounding-box faces while orbiting.
+        vec3 viewDirObj = normalize((inverse(modelViewMatrix) * vec4(0.0, 0.0, -1.0, 0.0)).xyz);
+        vDir = viewDirObj;
+        vOrigin = position - viewDirObj * 4.0 + vec3(0.5);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `;

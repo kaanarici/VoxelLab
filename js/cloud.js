@@ -13,12 +13,15 @@
 // The Modal webhook URLs are configured at init time. If not configured,
 // the cloud features are silently disabled (local-only mode).
 
+import { cloudActionForId, cloudActionForProcessing } from './cloud-actions.js';
 import { localApiHeaders } from './config.js';
-import { cachedFetchResponse } from './core/cached-fetch.js';
+import { cachedFetchResponse } from './cached-fetch.js';
 import { beginPerfTrace } from './core/perf-trace.js';
 import {
+  attachSeriesJobIdentity,
+  normalizeCloudProjectionSetEntry,
   normalizeCloudSeriesEntry,
-  normalizeCloudUploadResult,
+  normalizeCompleteSlug,
   normalizeOrigin,
 } from './series/series-contract.js';
 
@@ -403,5 +406,60 @@ async function fetchProcessedSeries(jobId) {
   try { await cachedFetchResponse.invalidate(url); } catch { /* best-effort */ }
   const r = await cachedFetchResponse(url, { kind: 'json' });
   if (!r.ok) return null;
-  return normalizeCloudSeriesEntry(await r.json(), { publicBase: _r2PublicBase });
+  return ingestCloudSeriesEntry(await r.json(), { publicBase: _r2PublicBase });
+}
+
+const CLOUD_ACTION_ID_RE = /^[A-Za-z0-9_.-]+$/;
+
+export function ingestCloudSeriesEntry(entry, { publicBase = '' } = {}) {
+  return normalizeCloudSeriesEntry(entry, { publicBase });
+}
+
+function cloudActionProvenance(entry, status = {}, { jobId = '', processing = {} } = {}) {
+  const processingMode = String(
+    processing.processingMode || processing.processing_mode || status.processing_mode || status.processingMode || 'standard',
+  ).trim() || 'standard';
+  const inputKind = String(processing.inputKind || processing.input_kind || status.input_kind || status.inputKind || '').trim();
+  const rawActionId = String(processing.actionId || processing.action_id || status.action_id || status.actionId || '').trim();
+  const fallbackAction = cloudActionForProcessing({ processingMode });
+  const actionId = rawActionId && CLOUD_ACTION_ID_RE.test(rawActionId) ? rawActionId : fallbackAction.id;
+  const knownAction = cloudActionForId(actionId);
+  const action = {
+    id: actionId,
+    label: knownAction?.label || fallbackAction.label,
+    provider: 'modal',
+    jobId: String(entry?.sourceJobId || jobId || '').trim(),
+    processingMode,
+    resultSlug: String(entry?.slug || '').trim(),
+  };
+  const resultStatus = String(status.status || '').trim().toLowerCase();
+  if (resultStatus && resultStatus !== 'complete') action.resultStatus = resultStatus;
+  if (inputKind) action.inputKind = inputKind;
+  return action;
+}
+
+export function attachCloudActionProvenance(entry, status = {}, context = {}) {
+  if (!entry) return null;
+  return { ...entry, cloudAction: cloudActionProvenance(entry, status, context) };
+}
+
+export function normalizeCloudUploadResult(status, { jobId = '', publicBase = '', fallbackSeriesEntry = null, processing = {} } = {}) {
+  const terminalStatus = String(status?.status || 'complete').trim().toLowerCase() || 'complete';
+  const rawEntry = status?.series_entry
+    ? ingestCloudSeriesEntry(status.series_entry, { publicBase })
+    : fallbackSeriesEntry;
+  const seriesEntry = attachCloudActionProvenance(attachSeriesJobIdentity(rawEntry, jobId), status, { jobId, processing });
+  const projectionSetEntry = status?.projection_set_entry
+    ? normalizeCloudProjectionSetEntry(status.projection_set_entry, seriesEntry)
+    : null;
+  if (seriesEntry?.sourceProjectionSetId && !projectionSetEntry) {
+    throw new Error(`Cloud result is missing projection set ${seriesEntry.sourceProjectionSetId}`);
+  }
+  return {
+    slug: normalizeCompleteSlug(status, seriesEntry),
+    jobId,
+    status: terminalStatus,
+    seriesEntry,
+    projectionSetEntry,
+  };
 }

@@ -6,17 +6,21 @@ import json
 from pathlib import Path
 from typing import Any
 
+from contracts import (
+    PROJECTION_GEOMETRIES,
+    REGISTRATION_TRANSFORMS,
+    SOURCE_RECORD_VERSIONS,
+    ULTRASOUND_MODES,
+    ULTRASOUND_PROBE_GEOMETRIES,
+    parallel_beam_coverage_deg,
+    source_record_version,
+)
 from geometry import float_list
 
 SOURCE_MANIFEST_NAMES = (
     "voxellab.source.json",
     "voxellab-source.json",
 )
-SOURCE_RECORD_VERSIONS = {1, 2}
-PROJECTION_GEOMETRIES = {"parallel-beam-stack", "circular-cbct", "limited-angle-tomo"}
-ULTRASOUND_MODES = {"stacked-sector", "tracked-freehand-sector"}
-ULTRASOUND_PROBE_GEOMETRIES = {"sector", "curvilinear", "linear"}
-REGISTRATION_TRANSFORMS = {"rigid", "translation"}
 MAX_OUTPUT_SHAPE_DIM = 4096
 MAX_OUTPUT_VOXELS = 256 * 1024 * 1024
 
@@ -61,17 +65,6 @@ def load_source_manifest(directory: Path) -> dict[str, Any] | None:
 
 def _copy_payload(payload: Any) -> dict[str, Any] | None:
     return dict(payload) if isinstance(payload, dict) else None
-
-
-def source_record_version(payload: Any) -> int:
-    if not isinstance(payload, dict):
-        return 0
-    raw = payload.get("sourceRecordVersion", payload.get("version", 1))
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return 0
-    return value if value in SOURCE_RECORD_VERSIONS else 0
 
 
 def normalize_source_manifest(payload: Any) -> dict[str, Any] | None:
@@ -127,13 +120,7 @@ def projection_manifest_errors(payload: Any, projection_count: int, series_uid: 
     if len(angles) != projection_count:
         errors.append("source manifest.projection.anglesDeg: expected one angle per projection image")
     elif geometry == "parallel-beam-stack" and len(angles) >= 2:
-        normalized = sorted((float(angle) % 360.0) for angle in angles)
-        gaps = [
-            normalized[index + 1] - normalized[index]
-            for index in range(len(normalized) - 1)
-        ] + [normalized[0] + 360.0 - normalized[-1]]
-        coverage = 360.0 - max(gaps)
-        if coverage <= 0:
+        if parallel_beam_coverage_deg(angles) <= 0:
             errors.append("source manifest.projection.anglesDeg: expected non-degenerate angular coverage")
 
     output_shape = projection.get("outputShape")

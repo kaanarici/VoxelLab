@@ -264,12 +264,13 @@ def test_start_processing_payload_includes_registration_contract() -> None:
 def test_normalize_series_entry_backfills_public_urls() -> None:
     entry = normalize_series_entry({"slug": "cloud_job123", "hasRaw": True}, "https://r2.example")
 
-    assert entry == {
-        "slug": "cloud_job123",
-        "hasRaw": True,
-        "sliceUrlBase": "https://r2.example/data/cloud_job123",
-        "rawUrl": "https://r2.example/cloud_job123.raw.zst",
-    }
+    assert entry is not None
+    assert entry["slug"] == "cloud_job123"
+    assert entry["hasRaw"] is True
+    assert entry["hasBrain"] is False
+    assert entry["hasSeg"] is False
+    assert entry["sliceUrlBase"] == "https://r2.example/data/cloud_job123"
+    assert entry["rawUrl"] == "https://r2.example/cloud_job123.raw.zst"
 
 
 def test_normalize_series_entry_backfills_region_urls() -> None:

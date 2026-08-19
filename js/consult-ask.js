@@ -5,7 +5,7 @@ import { $, escapeHtml, openModal, clientToCanvasPx } from './dom.js';
 import { getConfig, localApiHeaders, viewerAiFlags } from './config.js';
 import { drawMeasurements } from './roi/measure.js';
 import { notify } from './notify.js';
-import { cachedFetchResponse, cachedFetchJson } from './core/cached-fetch.js';
+import { cachedFetchResponse, cachedFetchJson } from './cached-fetch.js';
 import {
   EnvelopeValidationError,
   normalizeAskResult,
@@ -18,10 +18,12 @@ import { cloudRuntimeStatus } from './cloud.js';
 import { cloudResultOutputs, openCloudResultEvidence } from './cloud-results.js';
 import { getRegistrationQuality, getRegistrationRecord } from './metadata.js';
 import {
+  getAskSession,
   setAskHistory,
   setAskMarquee,
   setAskPen,
-} from './core/state/viewer-tool-commands.js';
+  subscribeAsk,
+} from './ask-session.js';
 import { syncAskPickingUi } from './ask-mode.js';
 import {
   askModelDisclosure,
@@ -122,7 +124,7 @@ function consultRecord(value) {
 }
 
 function activeQuantificationContextLines(series) {
-  const stats = consultRecord(state.stats);
+  const stats = consultRecord(state.overlays.stats);
   if (!series || !stats) return [];
   const facts = [];
   const regionVolumes = Array.isArray(stats.regionVolumes) ? stats.regionVolumes : [];
@@ -706,7 +708,7 @@ function watchComposerLifecycle() {
   const closeIfOpen = () => { if (_ask) closeAskComposer(); };
   subscribe('seriesIdx', closeIfOpen);
   subscribe('mode', closeIfOpen);
-  subscribe('askMode', () => { if (_ask && !state.askMode) closeAskComposer(); });
+  subscribeAsk(() => { if (_ask && !getAskSession().mode) closeAskComposer(); });
 }
 
 const ASK_STUDY_ICON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg>`;
@@ -1330,8 +1332,8 @@ export function handleAskPointerDown(ev) {
 
   const onMove = (e) => {
     const [qx, qy] = clientToCanvasPx($('view'), e.clientX, e.clientY);
-    if (!state.askMarquee) return;
-    setAskMarquee({ ...state.askMarquee, x1: qx, y1: qy });
+    if (!getAskSession().marquee) return;
+    setAskMarquee({ ...getAskSession().marquee, x1: qx, y1: qy });
     drawMeasurements();
   };
 
@@ -1341,7 +1343,7 @@ export function handleAskPointerDown(ev) {
     const series = state.manifest.series[state.seriesIdx];
     const W = series.width;
     const H = series.height;
-    const raw = state.askMarquee;
+    const raw = getAskSession().marquee;
     setAskMarquee(null);
     drawMeasurements();
     // One-shot: after a drag the pen retires and the cursor returns to pan.

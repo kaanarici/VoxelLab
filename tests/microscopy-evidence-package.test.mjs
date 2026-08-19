@@ -16,7 +16,7 @@ globalThis.localStorage = {
 const { state } = await import('../js/core/state.js');
 const { setRoiEntriesForSlice } = await import('../js/overlay/annotation-graph.js');
 const { buildMicroscopyEvidencePackage } = await import('../js/roi/microscopy-evidence-package.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 
 function storedZipEntries(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

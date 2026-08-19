@@ -1,6 +1,18 @@
 /* global DataTransfer, Event, File, document, window */
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect } from '@playwright/test';
+
+export async function isolatedFixturePath(testInfo, name) {
+  const dir = join(
+    tmpdir(),
+    'voxellab-pw-fixtures',
+    String(testInfo.testId || testInfo.title).replace(/[^A-Za-z0-9._-]+/g, '_'),
+  );
+  await mkdir(dir, { recursive: true });
+  return join(dir, name);
+}
 
 export async function routeConfig(page, override = {}) {
   await page.route('**/data/manifest.json', async (route) => {
@@ -62,9 +74,9 @@ export async function openUploadModal(page) {
 }
 
 export async function dropFiles(page, selector, files) {
-  const payload = await Promise.all(files.map(async ({ path, mimeType = 'application/octet-stream', relativePath = '' }) => ({
-    bytes: Array.from(await readFile(path)),
-    name: path.split('/').pop(),
+  const payload = await Promise.all(files.map(async ({ path, mimeType = 'application/octet-stream', relativePath = '', bytes: givenBytes }) => ({
+    bytes: givenBytes || Array.from(await readFile(path)),
+    name: (path || '').split('/').pop(),
     mimeType,
     relativePath,
   })));

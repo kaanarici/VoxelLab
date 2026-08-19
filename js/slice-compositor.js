@@ -1,7 +1,7 @@
 import { COLORMAPS } from './colormap.js';
 import { SEG_PALETTE, TISSUE_LABEL_COUNT } from './core/constants.js';
 
-// Shape: { width: 512, height: 512, baseBytes: Uint8Array(262144), segBytes: null }.
+// Shape: { width: 512, height: 512, baseBytes: Uint8Array(262144), overlayBytes: { segBytes: null } }.
 //
 // Shared 2D/compare compositor. Overlay-heavy redraws use one lazy WebGL2
 // pass when available; the JS path stays as the correctness fallback for
@@ -231,10 +231,10 @@ function ensureGl(width, height) {
 }
 
 function resetUploadGuards() {
-  for (const state of Object.values(_texState)) {
-    state.ref = null;
-    state.width = 0;
-    state.height = 0;
+  for (const slotState of Object.values(_texState)) {
+    slotState.ref = null;
+    slotState.width = 0;
+    slotState.height = 0;
   }
   _grayLutKey = LUT_UNSET;
   _grayLutR = null;
@@ -252,12 +252,12 @@ function uploadRedTexture(gl, handle, width, height, data) {
 }
 
 function uploadRedTextureIfChanged(gl, handle, slot, width, height, data, force = false) {
-  const state = _texState[slot];
-  if (!force && state.ref === data && state.width === width && state.height === height) return false;
+  const slotState = _texState[slot];
+  if (!force && slotState.ref === data && slotState.width === width && slotState.height === height) return false;
   uploadRedTexture(gl, handle, width, height, data);
-  state.ref = data;
-  state.width = width;
-  state.height = height;
+  slotState.ref = data;
+  slotState.width = width;
+  slotState.height = height;
   return true;
 }
 
@@ -307,13 +307,20 @@ function uploadLutsIfChanged(gl, { wlLut, regionColors }) {
   }
 }
 
+function namedOverlayBytes(options) {
+  const overlayBytes = options.overlayBytes || {};
+  return {
+    segBytes: overlayBytes.segBytes || null,
+    symBytes: overlayBytes.symBytes || null,
+    regionBytes: overlayBytes.regionBytes || null,
+    fusionBytes: overlayBytes.fusionBytes || null,
+  };
+}
+
 function drawCpu(ctx, width, height, options) {
+  const { segBytes, symBytes, regionBytes, fusionBytes } = namedOverlayBytes(options);
   const {
     baseBytes,
-    segBytes,
-    symBytes,
-    regionBytes,
-    fusionBytes,
     wlLut,
     regionColors,
     regionAlpha = 0.55,
@@ -380,6 +387,7 @@ function drawCpu(ctx, width, height, options) {
 export function drawCompositeSlice(ctx, width, height, options) {
   if (options.hotLut) _hotLut = options.hotLut;
   const forceTextureUploads = options.forceTextureUploads || {};
+  const { segBytes, symBytes, regionBytes, fusionBytes } = namedOverlayBytes(options);
   const gl = ensureGl(width, height);
   if (!gl) {
     drawCpu(ctx, width, height, options);
@@ -389,17 +397,17 @@ export function drawCompositeSlice(ctx, width, height, options) {
   gl.viewport(0, 0, width, height);
   gl.bindBuffer(gl.ARRAY_BUFFER, _buffer);
   uploadRedTextureIfChanged(gl, _textures.base, 'base', width, height, options.baseBytes, !!forceTextureUploads.base);
-  uploadRedTextureIfChanged(gl, _textures.seg, 'seg', options.segBytes ? width : 1, options.segBytes ? height : 1, options.segBytes || _emptyByte, !!forceTextureUploads.seg);
-  uploadRedTextureIfChanged(gl, _textures.sym, 'sym', options.symBytes ? width : 1, options.symBytes ? height : 1, options.symBytes || _emptyByte, !!forceTextureUploads.sym);
-  uploadRedTextureIfChanged(gl, _textures.regions, 'regions', options.regionBytes ? width : 1, options.regionBytes ? height : 1, options.regionBytes || _emptyByte, !!forceTextureUploads.regions);
-  uploadRedTextureIfChanged(gl, _textures.fusion, 'fusion', options.fusionBytes ? width : 1, options.fusionBytes ? height : 1, options.fusionBytes || _emptyByte, !!forceTextureUploads.fusion);
+  uploadRedTextureIfChanged(gl, _textures.seg, 'seg', segBytes ? width : 1, segBytes ? height : 1, segBytes || _emptyByte, !!forceTextureUploads.seg);
+  uploadRedTextureIfChanged(gl, _textures.sym, 'sym', symBytes ? width : 1, symBytes ? height : 1, symBytes || _emptyByte, !!forceTextureUploads.sym);
+  uploadRedTextureIfChanged(gl, _textures.regions, 'regions', regionBytes ? width : 1, regionBytes ? height : 1, regionBytes || _emptyByte, !!forceTextureUploads.regions);
+  uploadRedTextureIfChanged(gl, _textures.fusion, 'fusion', fusionBytes ? width : 1, fusionBytes ? height : 1, fusionBytes || _emptyByte, !!forceTextureUploads.fusion);
   uploadLutsIfChanged(gl, options);
   gl.uniform1f(_uniforms.regionAlpha, options.regionAlpha || 0);
   gl.uniform1f(_uniforms.fusionAlpha, options.fusionAlpha || 0);
-  gl.uniform1i(_uniforms.hasSeg, options.segBytes ? 1 : 0);
-  gl.uniform1i(_uniforms.hasSym, options.symBytes ? 1 : 0);
-  gl.uniform1i(_uniforms.hasRegions, options.regionBytes ? 1 : 0);
-  gl.uniform1i(_uniforms.hasFusion, options.fusionBytes ? 1 : 0);
+  gl.uniform1i(_uniforms.hasSeg, segBytes ? 1 : 0);
+  gl.uniform1i(_uniforms.hasSym, symBytes ? 1 : 0);
+  gl.uniform1i(_uniforms.hasRegions, regionBytes ? 1 : 0);
+  gl.uniform1i(_uniforms.hasFusion, fusionBytes ? 1 : 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   ctx.drawImage(_canvas, 0, 0, width, height);
   return 'webgl2';

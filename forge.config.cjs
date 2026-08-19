@@ -5,6 +5,7 @@ const packagedRoots = [
   '/css/',
   '/electron/',
   '/js/',
+  '/schemas/',
   '/templates/',
 ];
 

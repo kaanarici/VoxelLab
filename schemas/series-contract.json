@@ -1,0 +1,55 @@
+{
+  "requiredSeriesFields": {
+    "slug": "string",
+    "name": "string",
+    "description": "string",
+    "slices": "integer",
+    "width": "integer",
+    "height": "integer",
+    "pixelSpacing": "list",
+    "sliceThickness": "number"
+  },
+  "vectorLengths": {
+    "pixelSpacing": 2,
+    "firstIPP": 3,
+    "lastIPP": 3,
+    "orientation": 6,
+    "previewDims": 3
+  },
+  "optionalBoolFields": [
+    "frameOfReferenceUIDConsistent",
+    "hasAnalysis",
+    "hasAskHistory",
+    "hasBrain",
+    "hasContext",
+    "hasMaskRaw",
+    "hasPreview",
+    "hasRaw",
+    "hasRegions",
+    "hasSeg",
+    "hasStats",
+    "hasSym",
+    "slicePositionsDistinct"
+  ],
+  "jobIdFields": ["job_id", "sourceJobId"],
+  "affineCompatibilityValues": [
+    "exact",
+    "incompatible",
+    "requires-registration",
+    "within-tolerance"
+  ],
+  "renderabilityValues": ["2d", "volume"],
+    "geometryRecordKinds": [
+      "cartesian_stack_irregular",
+      "cartesian_volume",
+      "insufficient",
+      "single_frame"
+    ],
+    "projectionMissingGeometry": [
+      "projectionMatrices",
+      "sourceDetectorGeometry",
+      "isocenter",
+      "calibrationStatus"
+    ],
+    "modalRequiredUrlFields": ["rawUrl", "sliceUrlBase"]
+  }

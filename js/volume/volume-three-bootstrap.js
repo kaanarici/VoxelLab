@@ -88,6 +88,8 @@ export function ensureThreeRenderer(deps) {
   controls.noPan = false;
   controls.noZoom = false;
   controls.noRotate = false;
+  controls.minZoom = 0.4;
+  controls.maxZoom = 6;
 
   // True between a TrackballControls 'start' and 'end'; gates the hover raymarch.
   let pointerInteracting = false;

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { URL } from 'node:url';
 
@@ -11,6 +12,7 @@ const {
   captureMicroscopyWorkflowRecipe,
   validateMicroscopyWorkflowRecipe,
 } = await import('../js/microscopy/microscopy-workflow-recipe.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
 const { angleEntriesForSlice, setAngleEntriesForSlice, setRoiEntriesForSlice } = await import('../js/overlay/annotation-graph.js');
 const { roiResultRows } = await import('../js/roi/roi-results.js');
 
@@ -73,6 +75,8 @@ function fixture() {
     _localMicroscopyStacks: { cells_recipe: stacks },
     measurements: {},
     angleMeasurements: {},
+    rois: {},
+    notes: {},
     mode: '2d',
   };
 }
@@ -90,6 +94,8 @@ function resetHost(host) {
   state._localMicroscopyStacks = host._localMicroscopyStacks;
   state.measurements = host.measurements;
   state.angleMeasurements = host.angleMeasurements;
+  state.rois = host.rois || {};
+  state.notes = host.notes || {};
   state.mode = host.mode;
 }
 
@@ -98,6 +104,10 @@ function markTiffSequence(host) {
   series.sequence = 'TIFF sequence';
   series.microscopyDataset.source.originalFormat = 'TIFF sequence';
   return series;
+}
+
+function liveSeries() {
+  return state.manifest.series[0];
 }
 
 test('captureMicroscopyWorkflowRecipe emits deterministic microscopy contract fields', () => {
@@ -153,7 +163,7 @@ test('captureMicroscopyWorkflowRecipe emits deterministic microscopy contract fi
 test('applyMicroscopyWorkflowRecipe replays stack, channel styling, and view state atomically', () => {
   const host = fixture();
   resetHost(host);
-  const series = state.manifest.series[0];
+  const original = state.manifest.series[0];
   const recipe = {
     schema: MICROSCOPY_WORKFLOW_RECIPE_SCHEMA,
     target: {
@@ -172,8 +182,11 @@ test('applyMicroscopyWorkflowRecipe replays stack, channel styling, and view sta
   };
 
   const result = applyMicroscopyWorkflowRecipe(recipe, state);
+  const series = liveSeries();
 
   assert.deepEqual(result, { ok: true, code: '', message: '' });
+  assert.notEqual(series, original);
+  assert.equal(original.microscopy.channelIndex, 0);
   assert.equal(state.window, 210);
   assert.equal(state.level, 60);
   assert.equal(state.invertDisplay, true);
@@ -316,8 +329,8 @@ test('applyMicroscopyWorkflowRecipe rejects partial embedded ROI results before 
     invertDisplay: state.invertDisplay,
     colormap: state.colormap,
     sliceIdx: state.sliceIdx,
-    channelIndex: series.microscopy.channelIndex,
-    timeIndex: series.microscopy.timeIndex,
+    channelIndex: liveSeries().microscopy.channelIndex,
+    timeIndex: liveSeries().microscopy.timeIndex,
     rows: roiResultRows(state).length,
   }, before);
 });
@@ -444,19 +457,21 @@ test('applyMicroscopyWorkflowRecipe replays TIFF sequence calibration before emb
   resetHost(replayHost);
 
   const result = applyMicroscopyWorkflowRecipe(recipe, state);
+  const series = liveSeries();
 
   assert.deepEqual(result, { ok: true, code: '', message: '' });
-  assert.deepEqual(replaySeries.pixelSpacing, [0.00025, 0.0005]);
-  assert.equal(replaySeries._spacingKnown, true);
-  assert.equal(replaySeries.sliceSpacing, 0.0015);
-  assert.equal(replaySeries.sliceThickness, 0.0015);
-  assert.equal(replaySeries._sliceSpacingKnown, true);
-  assert.equal(replaySeries.microscopy.physicalUnit, 'µm');
-  assert.equal(replaySeries.microscopy.calibrationSource, 'manual');
-  assert.equal(replaySeries.microscopy.physicalSizeX, 0.5);
-  assert.equal(replaySeries.microscopy.physicalSizeY, 0.25);
-  assert.equal(replaySeries.microscopy.physicalSizeZ, 1.5);
-  assert.deepEqual(replaySeries.microscopyDataset.source.warnings, []);
+  assert.notEqual(series, replaySeries);
+  assert.deepEqual(series.pixelSpacing, [0.00025, 0.0005]);
+  assert.equal(series._spacingKnown, true);
+  assert.equal(series.sliceSpacing, 0.0015);
+  assert.equal(series.sliceThickness, 0.0015);
+  assert.equal(series._sliceSpacingKnown, true);
+  assert.equal(series.microscopy.physicalUnit, 'µm');
+  assert.equal(series.microscopy.calibrationSource, 'manual');
+  assert.equal(series.microscopy.physicalSizeX, 0.5);
+  assert.equal(series.microscopy.physicalSizeY, 0.25);
+  assert.equal(series.microscopy.physicalSizeZ, 1.5);
+  assert.deepEqual(series.microscopyDataset.source.warnings, []);
   const [row] = roiResultRows(state);
   assert.equal(row.kind, 'polygon');
   assert.equal(row.objectId, 'roi:cells_recipe|0:9');
@@ -504,9 +519,9 @@ test('applyMicroscopyWorkflowRecipe rejects mismatched embedded ROI results befo
     invertDisplay: state.invertDisplay,
     colormap: state.colormap,
     sliceIdx: state.sliceIdx,
-    channelIndex: series.microscopy.channelIndex,
-    timeIndex: series.microscopy.timeIndex,
-    channelColor: series.microscopyDataset.channels[1].displayColor,
+    channelIndex: liveSeries().microscopy.channelIndex,
+    timeIndex: liveSeries().microscopy.timeIndex,
+    channelColor: liveSeries().microscopyDataset.channels[1].displayColor,
     rows: roiResultRows(state).length,
   }, before);
 });
@@ -541,7 +556,86 @@ test('applyMicroscopyWorkflowRecipe rejects invalid channel styling without muta
   assert.equal(state.invertDisplay, false);
   assert.equal(state.colormap, 'grayscale');
   assert.equal(state.sliceIdx, 0);
-  assert.equal(series.microscopy.channelIndex, 0);
-  assert.equal(series.microscopy.timeIndex, 0);
-  assert.equal(series.microscopyDataset.channels[1].displayColor, '#00FF00');
+  assert.equal(liveSeries().microscopy.channelIndex, 0);
+  assert.equal(liveSeries().microscopy.timeIndex, 0);
+  assert.equal(liveSeries().microscopyDataset.channels[1].displayColor, '#00FF00');
+});
+
+test('live recipe replay does not import writeHost helpers', () => {
+  const src = readFileSync(new URL('../js/microscopy/microscopy-workflow-recipe-replay.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /writeHost/);
+});
+
+test('applyMicroscopyWorkflowRecipe patches an isolated host in place', () => {
+  const host = fixture();
+  resetHost(host);
+  state.window = 255;
+  state.level = 128;
+  state.colormap = 'grayscale';
+  const original = host.manifest.series[0];
+  const recipe = {
+    schema: MICROSCOPY_WORKFLOW_RECIPE_SCHEMA,
+    target: {
+      imageDomain: 'microscopy',
+      sourceFormat: 'OME-TIFF',
+      geometry: { width: 16, height: 16, sizeZ: 2, sizeC: 2, sizeT: 2 },
+    },
+    requirements: { calibrationRequired: true, measurementPrerequisite: 'none' },
+    view: { window: 210, level: 60, invertDisplay: true, colormap: 'viridis', sliceIndex: 1 },
+    stack: { channelIndex: 1, timeIndex: 1, compositeEnabled: true, compositeChannels: [true, false] },
+    channels: [
+      { index: 0, color: '#0000FF', displayRange: [0, 90] },
+      { index: 1, color: '#AA00CC', displayRange: [20, 180] },
+    ],
+    exportPreferences: { requireTrustedMeasurements: false },
+  };
+
+  const result = applyMicroscopyWorkflowRecipe(recipe, host, isolatedHostWrites());
+
+  assert.deepEqual(result, { ok: true, code: '', message: '' });
+  assert.equal(host.manifest.series[0], original);
+  assert.equal(original.microscopy.channelIndex, 1);
+  assert.equal(original.microscopy.timeIndex, 1);
+  assert.equal(host.window, 210);
+  assert.equal(host.level, 60);
+  assert.equal(host.colormap, 'viridis');
+  assert.equal(host.invertDisplay, true);
+  assert.equal(host.sliceIdx, 1);
+  assert.equal(host.imgs, host._localMicroscopyStacks.cells_recipe['1|1']);
+  assert.equal(original.microscopy.composite.enabled, true);
+  assert.deepEqual(original.microscopy.composite.channels, [true, false]);
+  assert.equal(original.microscopyDataset.channels[1].displayColor, '#AA00CC');
+  assert.equal(state.window, 255);
+  assert.equal(state.level, 128);
+  assert.equal(state.colormap, 'grayscale');
+});
+
+test('applyMicroscopyWorkflowRecipe fails closed on an isolated host without write adapter', () => {
+  const host = fixture();
+  resetHost(host);
+  state.window = 255;
+  state.level = 128;
+  state.colormap = 'grayscale';
+  const recipe = {
+    schema: MICROSCOPY_WORKFLOW_RECIPE_SCHEMA,
+    target: {
+      imageDomain: 'microscopy',
+      sourceFormat: 'OME-TIFF',
+      geometry: { width: 16, height: 16, sizeZ: 2, sizeC: 2, sizeT: 2 },
+    },
+    requirements: { calibrationRequired: true, measurementPrerequisite: 'none' },
+    view: { window: 210, level: 60, invertDisplay: true, colormap: 'viridis', sliceIndex: 1 },
+    stack: { channelIndex: 1, timeIndex: 1, compositeEnabled: false, compositeChannels: [true, true] },
+    channels: [],
+    exportPreferences: { requireTrustedMeasurements: false },
+  };
+
+  const result = applyMicroscopyWorkflowRecipe(recipe, host);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'isolated_host_writes_required');
+  assert.equal(host.window, 255);
+  assert.equal(host.colormap, 'grayscale');
+  assert.equal(state.window, 255);
+  assert.equal(state.colormap, 'grayscale');
 });

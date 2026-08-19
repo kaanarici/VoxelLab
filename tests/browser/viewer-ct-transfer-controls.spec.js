@@ -34,8 +34,8 @@ test('CT HU transfer controls are CT-only and clear stale active state', async (
   await expect.poll(() => page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
     return {
-      lowT: Number(state.lowT.toFixed(4)),
-      highT: Number(state.highT.toFixed(4)),
+      lowT: Number(state.three.lowT.toFixed(4)),
+      highT: Number(state.three.highT.toFixed(4)),
     };
   })).toEqual({ lowT: 0, highT: 0.4147 });
 

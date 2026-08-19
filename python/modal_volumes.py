@@ -5,7 +5,7 @@ from typing import Any
 
 from geometry import affine_lps_from_series, geometry_from_slices
 from modal_io import compress_raw_volume
-from series_contract import normalize_series_entry
+from series_contract import PROJECTION_MISSING_GEOMETRY, normalize_series_entry
 
 
 def normalize_volume_for_pngs(vol, modality: str, np) -> Any:
@@ -131,6 +131,7 @@ def build_projection_set_entry(
         "reconstructionCapability": "requires-reconstruction",
         "reconstructionStatus": str(projection_set.get("reconstructionStatus", "") or "requires-reconstruction"),
         "renderability": "2d",
+        "missingGeometry": list(projection_set.get("missingGeometry") or PROJECTION_MISSING_GEOMETRY),
     }
     if source_series_slug:
         entry["sourceSeriesSlug"] = source_series_slug

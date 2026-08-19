@@ -544,6 +544,23 @@
           "source": "dicom_enhanced_multiframe"
         }
       }
+    ],
+    "isOrthonormalImagePlane": [
+      {
+        "id": "axial-unit",
+        "iop": [1, 0, 0, 0, 1, 0],
+        "expected": true
+      },
+      {
+        "id": "scaled-row",
+        "iop": [2, 0, 0, 0, 1, 0],
+        "expected": false
+      },
+      {
+        "id": "skewed-axes",
+        "iop": [1, 0, 0, 0.2, 1, 0],
+        "expected": false
+      }
     ]
   },
   "browserOnlyContract": {

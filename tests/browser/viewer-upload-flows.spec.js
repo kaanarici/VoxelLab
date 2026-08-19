@@ -1342,7 +1342,7 @@ test('persisted SEG overlays hydrate on the first series selection after reload'
     const button = document.getElementById('btn-regions');
     return {
       hasRegions: !!series?.hasRegions,
-      hasRegionMeta: !!state.regionMeta?.regions?.[1],
+      hasRegionMeta: !!state.overlays.regionMeta?.regions?.[1],
       buttonHidden: button?.classList.contains('hidden') || false,
     };
   }), { timeout: 10_000 }).toEqual({
@@ -1355,14 +1355,14 @@ test('persisted SEG overlays hydrate on the first series selection after reload'
   await expect.poll(async () => page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
     return {
-      useRegions: !!state.useRegions,
-      hasRegionMeta: !!state.regionMeta?.regions?.[1],
+      labels: !!state.overlays.labels,
+      hasRegionMeta: !!state.overlays.regionMeta?.regions?.[1],
       regionImageCount: state.regionImgs?.length || 0,
       firstRegionReady: !!state.regionImgs?.[0]?.complete,
       buttonActive: document.getElementById('btn-regions')?.classList.contains('active') || false,
     };
   }), { timeout: 10_000 }).toEqual({
-    useRegions: true,
+    labels: true,
     hasRegionMeta: true,
     regionImageCount: 1,
     firstRegionReady: true,

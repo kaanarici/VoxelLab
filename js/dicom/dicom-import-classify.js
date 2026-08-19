@@ -1,10 +1,9 @@
 import { geometryFromDicomMetas } from '../core/geometry.js';
+import { PROJECTION_MODALITIES } from '../core/contracts.js';
 import { classifyUltrasoundSource } from '../ultrasound.js';
 import { extractEnhancedMultiFrameMetas } from './dicom-frame-meta.js';
 import { hasVolumeStackGeometry } from './dicom-import-geometry.js';
 import { getFloatArray, getInt, getStr, getStrArray, normalizeModality } from './dicom-meta.js';
-
-const PROJECTION_MODALITIES = new Set(['CR', 'DX', 'XA', 'RF', 'MG', 'IO', 'PX']);
 const PROJECTION_IMAGE_TYPE_TOKENS = new Set(['LOCALIZER', 'SCOUT', 'PROJECTION']);
 
 function hasProjectionImageType(metas) {

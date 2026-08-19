@@ -6,7 +6,7 @@
 // scattered lists with two functions:
 //
 //   syncSlice()    — call after any state.sliceIdx change
-//   syncOverlays() — call after toggling brain/seg/regions/sym/colormap
+//   syncOverlays() — call after toggling tissue/labels/heatmap/colormap
 
 import { $ } from './dom.js';
 import { state, subscribe } from './core/state.js';
@@ -22,14 +22,18 @@ import {
   clearMprCellCache,
   releaseMprGpuVolumes,
 } from './slice-view.js';
-import { drawCompare } from './series/compare.js';
+import { OVERLAY_ENABLE_KINDS } from './core/viewer-session-shape.js';
+import { drawCompare, loadComparePeers } from './series/compare.js';
 import { drawSparkline } from './sparkline.js';
 import { drawMeasurements } from './roi/measure.js';
 import { is3dActive, isMprActive } from './core/mode-flags.js';
+import { ensureActiveOverlayVolumes } from './overlay/overlay-volumes.js';
+import { initOverlayStack } from './overlay/overlay-stack.js';
 import { updateUniforms, updateLabelTexture, syncThreeSurfaceState } from './volume/volume-3d.js';
 import { updateClipReadouts } from './clip-readouts.js';
 import { syncPanelRangeFills } from './panel-range-fills.js';
 import { getThreeRuntime } from './runtime/viewer-runtime.js';
+import { OVERLAY_CACHE_BY_KIND, OVERLAY_CACHE_BY_TYPE } from './runtime/overlay-cache-keys.js';
 import { renderStructuresPanel } from './atlas/structures-panel.js';
 import { syncViewerRuntimeSession } from './runtime/viewer-session.js';
 import { syncDisplayControlAvailability, syncMrPresetActiveState } from './shell/toolbar-chrome.js';
@@ -101,7 +105,7 @@ export function syncZScrubberSlider(series = state.manifest?.series?.[state.seri
   if (!el || !series) return;
   const max0 = Math.max(0, (series.slices | 0) - 1);
   el.max = String(max0);
-  el.value = String(Math.min(max0, Math.max(0, Math.ceil(state.clipMax[2] * series.slices) - 1)));
+  el.value = String(Math.min(max0, Math.max(0, Math.ceil(state.three.clipMax[2] * series.slices) - 1)));
   el.disabled = max0 <= 0;
   syncPanelRangeFills();
 }
@@ -135,15 +139,12 @@ function ensureVisibleStackWindow() {
     if (radius > 0) imgs?.ensureWindow?.(currentIdx, radius);
   };
   redrawWhenReady(currentImgs, ensureCurrentSlice(currentImgs), () => state.imgs);
-  redrawWhenReady(state.segImgs, ensureCurrentSlice(state.segImgs), () => state.segImgs);
-  redrawWhenReady(state.symImgs, ensureCurrentSlice(state.symImgs), () => state.symImgs);
-  redrawWhenReady(state.regionImgs, ensureCurrentSlice(state.regionImgs), () => state.regionImgs);
-  redrawWhenReady(state.fusionImgs, ensureCurrentSlice(state.fusionImgs), () => state.fusionImgs);
   warmNearbySlices(currentImgs);
-  warmNearbySlices(state.segImgs);
-  warmNearbySlices(state.symImgs);
-  warmNearbySlices(state.regionImgs);
-  warmNearbySlices(state.fusionImgs);
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    const imgs = state[cache.imgs];
+    redrawWhenReady(imgs, ensureCurrentSlice(imgs), () => state[cache.imgs]);
+    warmNearbySlices(imgs);
+  }
 }
 
 export function initReactiveSync({
@@ -157,13 +158,14 @@ export function initReactiveSync({
 } = {}) {
   if (_wired) return;
   _wired = true;
+  initOverlayStack({ onReady: syncOverlays });
 
   subscribe('sliceIdx', () => {
     ensureVisibleStackWindow();
     syncSliceUI();
     renderRoiResults();
     renderMicroscopyHyperstackControls();
-    if (isMprActive() && state.mprZ !== state.sliceIdx) syncMprSliceIndex();
+    if (isMprActive() && state.mpr.z !== state.sliceIdx) syncMprSliceIndex();
     scheduleRedraw();
   });
 
@@ -172,7 +174,7 @@ export function initReactiveSync({
     syncDisplayControlAvailability();
     renderRoiResults();
     renderMicroscopyHyperstackControls();
-    if (isMprActive() && state.mprZ !== state.sliceIdx) syncMprSliceIndex();
+    if (isMprActive() && state.mpr.z !== state.sliceIdx) syncMprSliceIndex();
     scheduleRedraw({ fullMpr: true });
   });
 
@@ -209,29 +211,28 @@ export function initReactiveSync({
     });
   }
 
+  const overlayCacheKeys = Object.values(OVERLAY_CACHE_BY_TYPE).flatMap((cache) => [cache.imgs, cache.voxels]);
+  const overlayEnableSubscribeKeys = OVERLAY_ENABLE_KINDS.map((kind) => `overlays.${kind}`);
+  const overlayEnableSubscribeKeySet = new Set(overlayEnableSubscribeKeys);
   for (const key of [
-    'useBrain',
-    'useSeg',
-    'useSym',
-    'useRegions',
-    'segImgs',
-    'segVoxels',
-    'symImgs',
-    'symVoxels',
-    'regionImgs',
-    'regionVoxels',
-    'regionMeta',
-    'fusionSlug',
-    'fusionImgs',
-    'fusionVoxels',
-    'stats',
+    'overlays.useBrain',
+    ...overlayEnableSubscribeKeys,
+    ...overlayCacheKeys,
+    'overlays.regionMeta',
+    'overlays.fusionSlug',
+    'overlays.stats',
   ]) {
     subscribe(key, () => {
       const three = getThreeRuntime();
-      if (key === 'useBrain' || key === 'useSeg' || key === 'useSym' || key === 'useRegions' || key === 'fusionSlug') {
+      if (
+        key === 'overlays.useBrain'
+        || overlayEnableSubscribeKeySet.has(key)
+        || key === 'overlays.fusionSlug'
+      ) {
         clearMprCellCache();
       }
       syncViewerRuntimeSession();
+      ensureActiveOverlayVolumes();
       ensureVisibleStackWindow();
       scheduleRedraw({ fullMpr: true });
       syncOverlayOpacityUI();
@@ -241,6 +242,9 @@ export function initReactiveSync({
       renderVolumeTable();
       renderStructuresPanel();
       renderVolumes();
+      if (state.mode === 'cmp' && overlayEnableSubscribeKeySet.has(key)) {
+        loadComparePeers().then(() => drawCompare());
+      }
       if (three.mesh) {
         void updateLabelTexture();
       }
@@ -248,7 +252,7 @@ export function initReactiveSync({
     });
   }
 
-  for (const key of ['overlayOpacity', 'fusionOpacity']) {
+  for (const key of ['overlays.overlayOpacity', 'overlays.fusionOpacity']) {
     subscribe(key, () => {
       const three = getThreeRuntime();
       scheduleRedraw({ fullMpr: true });
@@ -260,39 +264,49 @@ export function initReactiveSync({
     });
   }
 
-  for (const key of ['mprX', 'mprY']) {
+  for (const key of ['mpr.x', 'mpr.y']) {
     subscribe(key, () => {
       if (isMprActive()) scheduleRedraw({ fullMpr: true, interactiveMpr: true });
     });
   }
 
-  for (const key of ['obYaw', 'obPitch']) {
+  for (const key of ['mpr.obYaw', 'mpr.obPitch']) {
     subscribe(key, () => {
       const yaw = $('ob-yaw-val');
       const pitch = $('ob-pitch-val');
       const yawSlider = $('ob-yaw');
       const pitchSlider = $('ob-pitch');
-      if (yaw && yaw !== document.activeElement) yaw.value = state.obYaw;
-      if (pitch && pitch !== document.activeElement) pitch.value = state.obPitch;
-      if (yawSlider) yawSlider.value = state.obYaw;
-      if (pitchSlider) pitchSlider.value = state.obPitch;
+      if (yaw && yaw !== document.activeElement) yaw.value = state.mpr.obYaw;
+      if (pitch && pitch !== document.activeElement) pitch.value = state.mpr.obPitch;
+      if (yawSlider) yawSlider.value = state.mpr.obYaw;
+      if (pitchSlider) pitchSlider.value = state.mpr.obPitch;
       const clipYaw = $('s-clip-plane-yaw');
       const clipPitch = $('s-clip-plane-pitch');
-      if (clipYaw && clipYaw !== document.activeElement) clipYaw.value = state.obYaw;
-      if (clipPitch && clipPitch !== document.activeElement) clipPitch.value = state.obPitch;
+      if (clipYaw && clipYaw !== document.activeElement) clipYaw.value = state.mpr.obYaw;
+      if (clipPitch && clipPitch !== document.activeElement) clipPitch.value = state.mpr.obPitch;
       if (is3dActive()) updateUniforms();
     });
   }
 
-  subscribe('mprGpuEnabled', () => {
-    if (!state.mprGpuEnabled) releaseMprGpuVolumes();
+  subscribe('mpr.gpuEnabled', () => {
+    if (!state.mpr.gpuEnabled) releaseMprGpuVolumes();
     if (isMprActive()) scheduleRedraw({ fullMpr: true, force: true });
   });
 
-  for (const key of ['lowT', 'highT', 'intensity', 'clipMin', 'clipMax', 'clipPlaneEnabled', 'clipPlaneDepth', 'clipPlaneInvert', 'renderMode']) {
+  for (const key of [
+    'three.lowT',
+    'three.highT',
+    'three.intensity',
+    'three.clipMin',
+    'three.clipMax',
+    'three.clipPlaneEnabled',
+    'three.clipPlaneDepth',
+    'three.clipPlaneInvert',
+    'three.renderMode',
+  ]) {
     subscribe(key, () => {
       updateClipReadouts();
-      if (key === 'clipMax') syncZScrubberSlider();
+      if (key === 'three.clipMax') syncZScrubberSlider();
       updateUniforms();
     });
   }
@@ -317,5 +331,6 @@ export function syncSlice({ scrub = true, fullMpr = false } = {}) {
  */
 export function syncOverlays() {
   redrawActiveViews({ fullMpr: true });
+  if (is3dActive() || isMprActive()) ensureActiveOverlayVolumes();
   if (is3dActive()) getThreeRuntime().requestRender?.('overlay-sync', 160);
 }

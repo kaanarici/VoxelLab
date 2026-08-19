@@ -4,6 +4,8 @@ import { $ } from './dom.js';
 import { state } from './core/state.js';
 import { stepSlice } from './core/state/viewer-commands.js';
 
+let cineTimer = null;
+
 // Update the filled portion of the custom slider track via CSS var.
 // Called anywhere state.sliceIdx changes.
 export function updateScrubFill() {
@@ -21,12 +23,12 @@ export function setPlayIcon(playing) {
 }
 
 export function startCine() {
-  if (state.cineTimer) return;
+  if (cineTimer) return;
   setPlayIcon(true);
   $('btn-play').classList.add('active');
   let lastFrameTime = 0;
   const loop = (timestamp) => {
-    if (!state.cineTimer) return;
+    if (!cineTimer) return;
     if (!lastFrameTime) lastFrameTime = timestamp;
     const interval = 1000 / state.cineFps;
     const elapsed = timestamp - lastFrameTime;
@@ -46,21 +48,25 @@ export function startCine() {
       const next = (state.sliceIdx + steps) % total;
       stepSlice(next - state.sliceIdx);
     }
-    state.cineTimer = requestAnimationFrame(loop);
+    cineTimer = requestAnimationFrame(loop);
   };
-  state.cineTimer = requestAnimationFrame(loop);
+  cineTimer = requestAnimationFrame(loop);
 }
 
 export function stopCine() {
-  if (state.cineTimer) {
-    cancelAnimationFrame(state.cineTimer);
-    state.cineTimer = null;
+  if (cineTimer) {
+    cancelAnimationFrame(cineTimer);
+    cineTimer = null;
   }
   setPlayIcon(false);
   $('btn-play').classList.remove('active');
 }
 
+export function isCinePlaying() {
+  return cineTimer != null;
+}
+
 export function toggleCine() {
-  if (state.cineTimer) stopCine();
+  if (cineTimer) stopCine();
   else startCine();
 }

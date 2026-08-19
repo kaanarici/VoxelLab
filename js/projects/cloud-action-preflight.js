@@ -1,15 +1,19 @@
 import { DCMJS_IMPORT_URL } from '../core/dependencies.js';
 import { cloudActionCatalog, cloudActionText } from '../cloud-actions.js';
+import {
+  PROJECTION_GEOMETRIES,
+  PROJECTION_MODALITIES,
+  REGISTRATION_TRANSFORMS,
+  ULTRASOUND_MODES,
+  ULTRASOUND_PROBE_GEOMETRIES,
+  parallelBeamCoverageDeg,
+  sourceRecordVersion,
+} from '../core/contracts.js';
 
 export { cloudActionCatalog, cloudActionText };
 
 const SOURCE_MANIFEST_NAMES = new Set(['voxellab.source.json', 'voxellab-source.json']);
-const PROJECTION_MODALITIES = new Set(['CR', 'DX', 'IO', 'MG', 'PX', 'RF', 'XA']);
 const PROJECTION_IMAGE_TYPE_TOKENS = new Set(['LOCALIZER', 'SCOUT', 'PROJECTION']);
-const PROJECTION_GEOMETRIES = new Set(['parallel-beam-stack', 'circular-cbct', 'limited-angle-tomo']);
-const ULTRASOUND_MODES = new Set(['stacked-sector', 'tracked-freehand-sector']);
-const ULTRASOUND_PROBE_GEOMETRIES = new Set(['sector', 'curvilinear', 'linear']);
-const REGISTRATION_TRANSFORMS = new Set(['rigid', 'translation']);
 const MAX_OUTPUT_DIMENSION = 4096;
 const MAX_OUTPUT_VOXELS = 256 * 1024 * 1024;
 
@@ -164,6 +168,7 @@ function basicImagePreflightError(metas = [], noun = 'cloud action') {
 
 function projectionManifestPreflightError(sourceManifest = {}, projectionCount = 0, seriesUID = '') {
   if (sourceManifest?.sourceKind !== 'projection') return 'voxellab.source.json sourceKind must be projection.';
+  if (!sourceRecordVersion(sourceManifest)) return 'voxellab.source.json sourceRecordVersion must be 1 or 2.';
   if (seriesUID && sourceManifest.seriesUID && String(sourceManifest.seriesUID) !== seriesUID) {
     return 'voxellab.source.json seriesUID does not match the selected projection DICOM series.';
   }
@@ -174,6 +179,9 @@ function projectionManifestPreflightError(sourceManifest = {}, projectionCount =
   const angles = numberArray(projection.anglesDeg);
   if (angles.length !== projectionCount) {
     return `voxellab.source.json has ${angles.length} calibrated angle${angles.length === 1 ? '' : 's'} but ${projectionCount} DICOM file${projectionCount === 1 ? '' : 's'} selected.`;
+  }
+  if (geometry === 'parallel-beam-stack' && angles.length >= 2 && parallelBeamCoverageDeg(angles) <= 0) {
+    return 'voxellab.source.json projection anglesDeg must have non-degenerate angular coverage.';
   }
   if (!outputDimensionsValid(projection["outputShape"])) return 'voxellab.source.json projection outputShape must be [width, height, depth] positive integers.';
   const spacing = numberList(projection.outputSpacingMm, 3);
@@ -186,6 +194,7 @@ function projectionManifestPreflightError(sourceManifest = {}, projectionCount =
 
 function ultrasoundManifestPreflightError(sourceManifest = {}, frameCount = 0, seriesUID = '') {
   if (sourceManifest?.sourceKind !== 'ultrasound') return 'voxellab.source.json sourceKind must be ultrasound.';
+  if (!sourceRecordVersion(sourceManifest)) return 'voxellab.source.json sourceRecordVersion must be 1 or 2.';
   if (seriesUID && sourceManifest.seriesUID && String(sourceManifest.seriesUID) !== seriesUID) {
     return 'voxellab.source.json seriesUID does not match the selected ultrasound DICOM series.';
   }
@@ -213,6 +222,7 @@ function ultrasoundManifestPreflightError(sourceManifest = {}, frameCount = 0, s
 
 function registrationManifestPreflightError(sourceManifest = {}, seriesUIDs = new Set()) {
   if (sourceManifest?.sourceKind !== 'registration') return 'voxellab.source.json sourceKind must be registration.';
+  if (!sourceRecordVersion(sourceManifest)) return 'voxellab.source.json sourceRecordVersion must be 1 or 2.';
   const registration = sourceManifest.registration;
   if (!registration || Array.isArray(registration) || Object.getPrototypeOf(registration) !== Object.prototype) return 'voxellab.source.json must include a registration object.';
   const fixed = String(registration.fixedSeriesUID || '').trim();

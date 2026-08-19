@@ -1,4 +1,13 @@
-import { createViewerSessionState } from '../../runtime/viewer-session-shape.js';
+import { createViewerSessionState, overlayImgsResetValue, RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE } from '../viewer-session-shape.js';
+
+function overlayCacheInitialState() {
+  const out = {};
+  for (const keys of Object.values(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE)) {
+    out[keys.imgs] = overlayImgsResetValue(keys);
+    out[keys.voxels] = null;
+  }
+  return out;
+}
 
 export function createInitialRuntimeState() {
   return {
@@ -42,20 +51,15 @@ export function createInitialRuntimeState() {
     _localRegionLabelSlicesBySlug: {},
     _localDerivedObjects: {},
     _localRtDoseBySlug: {},
+    // Shape: { [seriesIdentityKey]: { labels: { available: true } } }.
+    _seriesOverlayHints: {},
     // Parsed local SEG/RTSTRUCT/RTDOSE/SR objects waiting for their source series.
     // Session-only by design: these may contain image-derived data and are never persisted.
     _pendingDerivedObjects: [],
     // Shape: [{ key: "t2_axial|base", slug: "t2_axial", variant: "base", voxels, hrVoxels, segVoxels, ... }].
     _seriesVolumeCacheEntries: [],
 
-    segImgs: [],
-    segVoxels: null,
-    symImgs: [],
-    symVoxels: null,
-    regionImgs: [],
-    regionVoxels: null,
-    fusionImgs: null,
-    fusionVoxels: null,
+    ...overlayCacheInitialState(),
 
     voxels: null,
     voxelsKey: '',

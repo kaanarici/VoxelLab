@@ -8,10 +8,13 @@
 import { $, canvasScreenScale, clientToCanvasPx } from '../dom.js';
 import { inPlanePixelSpacing } from '../core/geometry.js';
 import { state } from '../core/state.js';
-import { angleEntriesForSlice } from '../overlay/annotation-graph.js';
 import {
-  appendAngleMeasurement,
-  deleteAngleMeasurementAt,
+  angleEntriesForSlice,
+  deleteDrawingEntryById,
+  nextDrawingEntryId,
+  setAngleEntriesForSlice,
+} from '../overlay/annotation-graph.js';
+import {
   setAngleMode,
   setAnglePending,
 } from '../core/state/viewer-tool-commands.js';
@@ -23,6 +26,35 @@ function refreshRoiResults() {
 
 function angleKey() {
   return `${state.manifest.series[state.seriesIdx].slug}|${state.sliceIdx}`;
+}
+
+function parseSliceKey(key) {
+  const [slug = '', slicePart = '0'] = String(key || '').split('|');
+  return { slug, sliceIdx: Number(slicePart || 0) };
+}
+
+function drawingTarget(slug) {
+  const series = state.manifest?.series?.[state.seriesIdx];
+  return series?.slug === slug ? series : slug;
+}
+
+export function appendAngleMeasurement(key, measurement) {
+  const { slug, sliceIdx } = parseSliceKey(key);
+  const target = drawingTarget(slug);
+  const list = angleEntriesForSlice(state, target, sliceIdx);
+  // Shape: { id: 2, p1: {x,y}, vertex: {x,y}, p3: {x,y}, deg: 42.1 }.
+  const next = [...list, { ...measurement, id: measurement?.id ?? nextDrawingEntryId(list) }];
+  return setAngleEntriesForSlice(state, target, sliceIdx, next);
+}
+
+export function deleteAngleMeasurementAt(key, measurement) {
+  const { slug, sliceIdx } = parseSliceKey(key);
+  const target = drawingTarget(slug);
+  const list = angleEntriesForSlice(state, target, sliceIdx);
+  const next = measurement?.id != null
+    ? deleteDrawingEntryById(list, measurement.id)
+    : list.filter((entry) => entry !== measurement);
+  setAngleEntriesForSlice(state, target, sliceIdx, next);
 }
 
 function anglesHere() {

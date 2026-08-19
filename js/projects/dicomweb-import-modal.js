@@ -25,10 +25,10 @@ function isAbortError(error) {
 function beginDicomwebOperation(dicomwebState, isModalActive) {
   const controller = new AbortController();
   const operation = {};
-  const state = dicomwebState || {};
-  state.activeAbortController?.abort();
-  state.activeOperation = operation;
-  state.activeAbortController = controller;
+  const session = dicomwebState || {};
+  session.activeAbortController?.abort();
+  session.activeOperation = operation;
+  session.activeAbortController = controller;
 
   const uploadModal = $('upload-modal');
   const observationRoot = uploadModal?.parentElement || uploadModal;
@@ -45,16 +45,16 @@ function beginDicomwebOperation(dicomwebState, isModalActive) {
   });
 
   const isActive = () => !controller.signal.aborted
-    && state.activeOperation === operation
+    && session.activeOperation === operation
     && isModalActive();
   return {
     signal: controller.signal,
     isActive,
     finish() {
       observer?.disconnect();
-      if (state.activeOperation !== operation) return;
-      state.activeOperation = null;
-      state.activeAbortController = null;
+      if (session.activeOperation !== operation) return;
+      session.activeOperation = null;
+      session.activeAbortController = null;
     },
   };
 }

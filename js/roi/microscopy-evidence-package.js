@@ -1,5 +1,5 @@
 import { state } from '../core/state.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
 import { storedZip } from '../zip-store.js';
 import { roiResultRows, roiResultsBundle, sourceForBundle, calibrationForBundle } from './roi-results-model.js';
 import { roiResultsCsv } from './roi-results-export.js';

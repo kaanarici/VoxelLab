@@ -1,58 +1,141 @@
 import { state, batch } from '../state.js';
-import { $ } from '../../dom.js';
-import { syncSliceCountAriaBusy } from '../../shell/toolbar-chrome.js';
-import { clampSlabThicknessMm, normalizeMprProjectionMode } from '../../mpr/mpr-projection.js';
+import { clampSlabThicknessMm, clampClipPlaneDepth, clampObliquePitch, clampObliqueYaw, normalizeMprProjectionMode } from '../view-limits.js';
 import { geometryFromSeries } from '../geometry.js';
-import { normalizeRegionMeta } from '../../region-meta.js';
+import { is3dActive } from '../mode-flags.js';
+import { seriesIdentityKey } from '../series-identity.js';
+import { volumeProjectionSamplingSupport } from '../volume-limits.js';
+import { normalizeRegionMeta } from '../region-meta.js';
 import {
-  clampClipPlaneDepth,
-  clampObliquePitch,
-  clampObliqueYaw,
-} from '../../volume/volume-clip-plane.js';
-import { volumeProjectionSamplingSupport } from '../../volume/volume-raycast-steps.js';
-import {
-  clearRuntimeSelectionCaches,
-  restoreRuntimeVolumeCache,
-  stashRuntimeVolumeCache,
-} from '../../runtime/viewer-runtime.js';
+  applyOverlayEnableSnapshot,
+  OVERLAY_ENABLE_KINDS,
+  overlayEnableSnapshot,
+  RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE,
+  RUNTIME_OVERLAY_KIND_BY_TYPE,
+} from '../viewer-session-shape.js';
 import { rememberSeriesViewState, viewStateForSeries } from './series-view-memory.js';
 import { setLastActiveSeries } from './session-persistence.js';
 import { clampSliceIndex, currentSeriesSlug, getCurrentSeries } from './viewer-selectors.js';
-import { setAskHistory } from './viewer-tool-commands.js';
+
+const OVERLAY_ENABLE_KIND_SET = new Set(OVERLAY_ENABLE_KINDS);
+
+function clipMaxZForSlice(sliceIdx, slices) {
+  const count = Math.max(1, Number(slices) || 1);
+  const index = Math.max(0, Math.min(Math.floor(Number(sliceIdx) || 0), count - 1));
+  return (index + 1) / count;
+}
+
+function sliceIndexForClipMaxZ(clipZ, slices) {
+  const count = Math.max(1, Number(slices) || 1);
+  return Math.max(0, Math.min(count - 1, Math.ceil(Number(clipZ) * count) - 1));
+}
+
+// 3D Z crop follows the review slice only when the slice changes while 3D is
+// already active. enter3D resets clipMax to the full volume so the first 3D
+// frame is not a thin brick of the current 2D slice.
+function syncThreeClipToSlice(series = getCurrentSeries()) {
+  if (!is3dActive() || !series) return;
+  const nextZ = clipMaxZForSlice(state.sliceIdx, series.slices);
+  if (Math.abs(state.three.clipMax[2] - nextZ) <= 1e-9) return;
+  const nextMin = state.three.clipMin.slice();
+  const nextMax = state.three.clipMax.slice();
+  nextMax[2] = Math.max(nextZ, nextMin[2] + 0.01);
+  setClipRange(nextMin, nextMax);
+}
 
 export function setManifest(manifest) {
   state.manifest = manifest;
   return manifest;
 }
 
+export function setManifestCollections({ series, projectionSets } = {}) {
+  if (!state.manifest) return null;
+  batch(() => {
+    if (series !== undefined) state.manifest.series = series;
+    if (projectionSets !== undefined) state.manifest.projectionSets = projectionSets;
+  });
+  return state.manifest;
+}
+
+function isPlainRecord(value) {
+  return value != null && Object(value) === value && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+export function mergeSeriesRecordPatch(current, patch) {
+  if (!isPlainRecord(current) || !isPlainRecord(patch)) return current;
+  const next = { ...current, ...patch };
+  if (isPlainRecord(current.microscopy) || isPlainRecord(patch.microscopy)) {
+    const currentMicroscopy = isPlainRecord(current.microscopy) ? current.microscopy : {};
+    const patchMicroscopy = isPlainRecord(patch.microscopy) ? patch.microscopy : {};
+    const microscopy = { ...currentMicroscopy, ...patchMicroscopy };
+    if (isPlainRecord(currentMicroscopy.composite) || isPlainRecord(patchMicroscopy.composite)) {
+      const currentComposite = isPlainRecord(currentMicroscopy.composite) ? currentMicroscopy.composite : {};
+      const patchComposite = isPlainRecord(patchMicroscopy.composite) ? patchMicroscopy.composite : {};
+      microscopy.composite = { ...currentComposite, ...patchComposite };
+      if (Array.isArray(patchComposite.channels)) {
+        microscopy.composite.channels = patchComposite.channels.slice();
+      } else if (Array.isArray(currentComposite.channels)) {
+        microscopy.composite.channels = currentComposite.channels.slice();
+      }
+    }
+    next.microscopy = microscopy;
+  }
+  return next;
+}
+
+export function findManifestSeriesIndex(seriesOrIndex, list = state.manifest?.series, manifest = state.manifest) {
+  if (!Array.isArray(list)) return -1;
+  if (Number.isInteger(seriesOrIndex)) {
+    return seriesOrIndex >= 0 && seriesOrIndex < list.length ? seriesOrIndex : -1;
+  }
+  if (!isPlainRecord(seriesOrIndex)) return -1;
+  const direct = list.indexOf(seriesOrIndex);
+  if (direct >= 0) return direct;
+  const key = seriesIdentityKey(seriesOrIndex, manifest);
+  if (!key) return -1;
+  return list.findIndex((item) => seriesIdentityKey(item, manifest) === key);
+}
+
+export function patchManifestSeries(seriesOrIndex, patch = {}) {
+  const list = state.manifest?.series;
+  const index = findManifestSeriesIndex(seriesOrIndex, list, state.manifest);
+  if (index < 0) return null;
+  if (!isPlainRecord(patch) || !Object.keys(patch).length) return list[index];
+  const next = mergeSeriesRecordPatch(list[index], patch);
+  const series = list.slice();
+  series[index] = next;
+  setManifestCollections({ series });
+  return state.manifest.series[index];
+}
+
 export function setAnalysis(analysis) {
-  state.analysis = analysis;
-  return state.analysis;
+  state.overlays.analysis = analysis;
+  return state.overlays.analysis;
 }
 
 export function setAnalysisBusy(busy) {
-  state.analysisBusy = !!busy;
-  return state.analysisBusy;
+  state.overlays.analysisBusy = !!busy;
+  return state.overlays.analysisBusy;
 }
 
 export function setRegionMeta(regionMeta) {
-  state.regionMeta = normalizeRegionMeta(regionMeta);
-  return state.regionMeta;
+  state.overlays.regionMeta = normalizeRegionMeta(regionMeta);
+  return state.overlays.regionMeta;
 }
 
 export function setStats(stats) {
-  state.stats = stats || null;
-  return state.stats;
+  state.overlays.stats = stats || null;
+  return state.overlays.stats;
 }
 
 export function setFusionSelection(slug) {
-  state.fusionSlug = slug || null;
-  return state.fusionSlug;
+  state.overlays.fusionSlug = slug || null;
+  return state.overlays.fusionSlug;
 }
 
 export function setSliceIndex(next, series = getCurrentSeries()) {
   const clamped = clampSliceIndex(next, series);
   state.sliceIdx = clamped;
+  syncThreeClipToSlice(series);
   return clamped;
 }
 
@@ -71,6 +154,40 @@ export function setWindowLevel(windowValue, levelValue) {
 export function setLoaded(loaded) {
   state.loaded = !!loaded;
   return state.loaded;
+}
+
+export function setInvertDisplay(enabled) {
+  state.invertDisplay = !!enabled;
+  return state.invertDisplay;
+}
+
+export function setComparePeers(slugs) {
+  const next = Array.isArray(slugs) ? slugs.filter(Boolean) : [];
+  state.cmpManualSlugs = next.length >= 2 ? next : null;
+  return state.cmpManualSlugs;
+}
+
+export function bumpSelectRequest() {
+  state.selectRequestId += 1;
+  return state.selectRequestId;
+}
+
+export function setSeriesIndex(index) {
+  state.seriesIdx = index;
+  return state.seriesIdx;
+}
+
+export function forgetSeriesViewMemory(viewKey) {
+  if (viewKey && state.seriesViewMemory) delete state.seriesViewMemory[viewKey];
+}
+
+export function emptyViewer() {
+  batch(() => {
+    state.seriesIdx = -1;
+    state.sliceIdx = 0;
+    state.mode = '2d';
+    state.loaded = false;
+  });
 }
 
 export function setZoomTransform({ zoom = state.zoom, tx = state.tx, ty = state.ty } = {}) {
@@ -127,21 +244,21 @@ export function setCineFps(fps) {
 }
 
 export function setOverlayOpacity(opacity) {
-  state.overlayOpacity = +opacity;
-  return state.overlayOpacity;
+  state.overlays.overlayOpacity = +opacity;
+  return state.overlays.overlayOpacity;
 }
 
 export function setFusionOpacity(opacity) {
-  state.fusionOpacity = +opacity;
-  return state.fusionOpacity;
+  state.overlays.fusionOpacity = +opacity;
+  return state.overlays.fusionOpacity;
 }
 
 export function setRenderMode(mode) {
   const requested = mode === 'mip' || mode === 'minip' ? mode : 'alpha';
   const series = getCurrentSeries();
-  if (!renderModeSupportedForSeries(requested, series)) return state.renderMode;
-  state.renderMode = requested;
-  return state.renderMode;
+  if (!renderModeSupportedForSeries(requested, series)) return state.three.renderMode;
+  state.three.renderMode = requested;
+  return state.three.renderMode;
 }
 
 function renderModeSupportedForSeries(mode, series) {
@@ -160,69 +277,79 @@ export function setColormap(name) {
   return state.colormap;
 }
 
-export function setVolumeTransfer({ lowT = state.lowT, highT = state.highT, intensity = state.intensity } = {}) {
+export function setVolumeTransfer({ lowT = state.three.lowT, highT = state.three.highT, intensity = state.three.intensity } = {}) {
   batch(() => {
-    state.lowT = lowT;
-    state.highT = highT;
-    state.intensity = intensity;
+    state.three.lowT = lowT;
+    state.three.highT = highT;
+    state.three.intensity = intensity;
   });
-  return { lowT: state.lowT, highT: state.highT, intensity: state.intensity };
+  return { lowT: state.three.lowT, highT: state.three.highT, intensity: state.three.intensity };
 }
 
 export function applyViewerPreset(preset = {}) {
   batch(() => {
-    if (preset.lowT !== undefined) state.lowT = preset.lowT;
-    if (preset.highT !== undefined) state.highT = preset.highT;
-    if (preset.intensity !== undefined) state.intensity = preset.intensity;
-    if (preset.clipMin) state.clipMin = preset.clipMin.slice();
-    if (preset.clipMax) state.clipMax = preset.clipMax.slice();
-    if (preset.clipPlaneEnabled !== undefined) state.clipPlaneEnabled = !!preset.clipPlaneEnabled;
+    if (preset.lowT !== undefined) state.three.lowT = preset.lowT;
+    if (preset.highT !== undefined) state.three.highT = preset.highT;
+    if (preset.intensity !== undefined) state.three.intensity = preset.intensity;
+    if (preset.clipMin) state.three.clipMin = preset.clipMin.slice();
+    if (preset.clipMax) state.three.clipMax = preset.clipMax.slice();
+    if (preset.clipPlaneEnabled !== undefined) state.three.clipPlaneEnabled = !!preset.clipPlaneEnabled;
     if (preset.mode) {
       const requestedMode = preset.mode === 'mip' || preset.mode === 'minip' ? preset.mode : 'alpha';
-      if (renderModeSupportedForSeries(requestedMode, getCurrentSeries())) state.renderMode = requestedMode;
+      if (renderModeSupportedForSeries(requestedMode, getCurrentSeries())) state.three.renderMode = requestedMode;
     }
   });
   return {
-    lowT: state.lowT,
-    highT: state.highT,
-    intensity: state.intensity,
-    clipMin: state.clipMin.slice(),
-    clipMax: state.clipMax.slice(),
-    mode: state.renderMode,
-    clipPlaneEnabled: state.clipPlaneEnabled,
+    lowT: state.three.lowT,
+    highT: state.three.highT,
+    intensity: state.three.intensity,
+    clipMin: state.three.clipMin.slice(),
+    clipMax: state.three.clipMax.slice(),
+    mode: state.three.renderMode,
+    clipPlaneEnabled: state.three.clipPlaneEnabled,
   };
 }
 
 export function setClipRange(min, max) {
   batch(() => {
-    if (min) state.clipMin = min.slice();
-    if (max) state.clipMax = max.slice();
+    if (min) state.three.clipMin = min.slice();
+    if (max) state.three.clipMax = max.slice();
   });
-  return { clipMin: state.clipMin.slice(), clipMax: state.clipMax.slice() };
+  return { clipMin: state.three.clipMin.slice(), clipMax: state.three.clipMax.slice() };
+}
+
+export function setSeriesDesktopImportId(seriesIndex, importId) {
+  const next = patchManifestSeries(seriesIndex, { _desktopImportId: String(importId || '') });
+  return next?._desktopImportId || '';
 }
 
 export function setClipAxis(bound, axisIndex, value) {
-  const nextMin = state.clipMin.slice();
-  const nextMax = state.clipMax.slice();
+  const nextMin = state.three.clipMin.slice();
+  const nextMax = state.three.clipMax.slice();
   if (bound === 'min') nextMin[axisIndex] = Math.min(value, nextMax[axisIndex] - 0.01);
   if (bound === 'max') nextMax[axisIndex] = Math.max(value, nextMin[axisIndex] + 0.01);
-  return setClipRange(nextMin, nextMax);
+  const result = setClipRange(nextMin, nextMax);
+  if (is3dActive() && bound === 'max' && axisIndex === 2) {
+    const slice = sliceIndexForClipMaxZ(state.three.clipMax[2], getCurrentSeries()?.slices);
+    if (slice !== state.sliceIdx) state.sliceIdx = slice;
+  }
+  return result;
 }
 
 export function setObliqueClip({
-  enabled = state.clipPlaneEnabled,
-  depth = state.clipPlaneDepth,
-  invert = state.clipPlaneInvert,
+  enabled = state.three.clipPlaneEnabled,
+  depth = state.three.clipPlaneDepth,
+  invert = state.three.clipPlaneInvert,
 } = {}) {
   batch(() => {
-    state.clipPlaneEnabled = !!enabled;
-    state.clipPlaneDepth = clampClipPlaneDepth(depth);
-    state.clipPlaneInvert = !!invert;
+    state.three.clipPlaneEnabled = !!enabled;
+    state.three.clipPlaneDepth = clampClipPlaneDepth(depth);
+    state.three.clipPlaneInvert = !!invert;
   });
   return {
-    enabled: state.clipPlaneEnabled,
-    depth: state.clipPlaneDepth,
-    invert: state.clipPlaneInvert,
+    enabled: state.three.clipPlaneEnabled,
+    depth: state.three.clipPlaneDepth,
+    invert: state.three.clipPlaneInvert,
   };
 }
 
@@ -233,58 +360,84 @@ export function syncSeriesIdxForActiveSlug(manifest, activeSlug = currentSeriesS
   return nextIdx;
 }
 
-export function setOverlayFlags(patch = {}) {
+function writeAppMapEntry(bucketName, key, list) {
+  const mapKey = String(key || '');
+  if (!mapKey) return;
+  const value = Array.isArray(list) && list.length ? list.map((entry) => ({ ...entry })) : undefined;
   batch(() => {
-    for (const [key, value] of Object.entries(patch)) state[key] = value;
+    if (!state[bucketName] || Object.getPrototypeOf(state[bucketName]) !== Object.prototype) {
+      state[bucketName] = {};
+    }
+    if (value === undefined) delete state[bucketName][mapKey];
+    else state[bucketName][mapKey] = value;
   });
-  return patch;
 }
 
-export function setOverlayEnabled(stateKey, enabled, exclusive = []) {
+export function setMeasurementMapEntry(key, list) {
+  writeAppMapEntry('measurements', key, list);
+}
+
+export function setAngleMeasurementMapEntry(key, list) {
+  writeAppMapEntry('angleMeasurements', key, list);
+}
+
+export function setRoiMapEntry(key, list) {
+  writeAppMapEntry('rois', key, list);
+}
+
+export function setNoteMapEntry(key, list) {
+  writeAppMapEntry('notes', key, list);
+}
+
+export function setOverlayEnabled(kind, enabled, exclusive = []) {
+  if (!OVERLAY_ENABLE_KIND_SET.has(kind)) return false;
   batch(() => {
-    state[stateKey] = enabled;
+    state.overlays[kind] = !!enabled;
     if (enabled) {
-      for (const key of exclusive) state[key] = false;
+      for (const other of exclusive) {
+        if (OVERLAY_ENABLE_KIND_SET.has(other)) state.overlays[other] = false;
+      }
     }
   });
-  return !!state[stateKey];
+  return !!state.overlays[kind];
 }
 
 export function enableRegionsIfAvailable(series = getCurrentSeries()) {
-  if (series?.hasRegions) state.useRegions = true;
-  return state.useRegions;
+  const flag = RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.regions?.availableFlag;
+  if (flag && series?.[flag]) state.overlays.labels = true;
+  return state.overlays.labels;
 }
 
 export function initializeSeriesViewState(series = getCurrentSeries()) {
   if (!series) return null;
   batch(() => {
-    state.mprX = Math.floor(series.width / 2);
-    state.mprY = Math.floor(series.height / 2);
-    state.mprZ = Math.floor(series.slices / 2);
+    state.mpr.x = Math.floor(series.width / 2);
+    state.mpr.y = Math.floor(series.height / 2);
+    state.mpr.z = Math.floor(series.slices / 2);
     state.mpr.viewports = {
       ax: { zoom: 1, tx: 0, ty: 0 },
       co: { zoom: 1, tx: 0, ty: 0 },
       sa: { zoom: 1, tx: 0, ty: 0 },
       ob: { zoom: 1, tx: 0, ty: 0 },
     };
-    if (!series.hasBrain) state.useBrain = false;
-    if (!series.hasSeg) state.useSeg = false;
-    if (!series.hasRegions) state.useRegions = false;
-    if (!series.hasSym) state.useSym = false;
+    if (!series.hasBrain) state.overlays.useBrain = false;
+    for (const [type, cache] of Object.entries(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE)) {
+      const flag = cache.availableFlag;
+      const kind = RUNTIME_OVERLAY_KIND_BY_TYPE[type];
+      if (!flag || !kind) continue;
+      if (!series[flag]) state.overlays[kind] = false;
+    }
   });
   return {
-    mprX: state.mprX,
-    mprY: state.mprY,
-    mprZ: state.mprZ,
-    useBrain: state.useBrain,
-    useSeg: state.useSeg,
-    useRegions: state.useRegions,
-    useSym: state.useSym,
+    mprX: state.mpr.x,
+    mprY: state.mpr.y,
+    mprZ: state.mpr.z,
+    ...overlayEnableSnapshot(state.overlays),
   };
 }
 
 export function setMprPosition(
-  { x = state.mprX, y = state.mprY, z = state.mprZ } = {},
+  { x = state.mpr.x, y = state.mpr.y, z = state.mpr.z } = {},
   series = getCurrentSeries(),
   { syncSlice = false } = {},
 ) {
@@ -293,18 +446,18 @@ export function setMprPosition(
   const nextY = Math.max(0, Math.min(series.height - 1, Math.round(y)));
   const nextZ = clampSliceIndex(Math.round(z), series);
   batch(() => {
-    state.mprX = nextX;
-    state.mprY = nextY;
-    state.mprZ = nextZ;
+    state.mpr.x = nextX;
+    state.mpr.y = nextY;
+    state.mpr.z = nextZ;
     if (syncSlice) state.sliceIdx = nextZ;
   });
-  return { mprX: state.mprX, mprY: state.mprY, mprZ: state.mprZ, sliceIdx: state.sliceIdx };
+  return { mprX: state.mpr.x, mprY: state.mpr.y, mprZ: state.mpr.z, sliceIdx: state.sliceIdx };
 }
 
 export function nudgeMprAxis(axis, delta, series = getCurrentSeries()) {
-  if (axis === 'x') return setMprPosition({ x: state.mprX + delta }, series);
-  if (axis === 'y') return setMprPosition({ y: state.mprY + delta }, series);
-  return setMprPosition({ z: state.mprZ + delta }, series, { syncSlice: true });
+  if (axis === 'x') return setMprPosition({ x: state.mpr.x + delta }, series);
+  if (axis === 'y') return setMprPosition({ y: state.mpr.y + delta }, series);
+  return setMprPosition({ z: state.mpr.z + delta }, series, { syncSlice: true });
 }
 
 export function syncMprSliceIndex(series = getCurrentSeries()) {
@@ -312,22 +465,34 @@ export function syncMprSliceIndex(series = getCurrentSeries()) {
 }
 
 export function setMprQuality(quality) {
-  state.mprQuality = quality;
-  return state.mprQuality;
+  state.mpr.quality = quality;
+  return state.mpr.quality;
 }
 
 export function setMprGpuEnabled(enabled) {
-  state.mprGpuEnabled = !!enabled;
-  return state.mprGpuEnabled;
+  state.mpr.gpuEnabled = !!enabled;
+  return state.mpr.gpuEnabled;
+}
+
+function mprViewportPane(pane) {
+  return pane === 'ax' || pane === 'co' || pane === 'sa' || pane === 'ob' ? pane : '';
 }
 
 function ensureMprViewportState(pane) {
-  const key = pane === 'ax' || pane === 'co' || pane === 'sa' || pane === 'ob' ? pane : '';
+  const key = mprViewportPane(pane);
   if (!key) return null;
   state.mpr.viewports ||= {};
-  // Shape: { zoom: 1, tx: 0, ty: 0 }.
-  state.mpr.viewports[key] ||= { zoom: 1, tx: 0, ty: 0 };
+  // Shape: { zoom: 1, tx: 0, ty: 0 }. Interaction flags stay off this document.
+  const current = state.mpr.viewports[key];
+  if (current && Number.isFinite(+current.zoom)) return current;
+  state.mpr.viewports[key] = { zoom: 1, tx: 0, ty: 0 };
   return state.mpr.viewports[key];
+}
+
+export function getMprViewport(pane) {
+  const view = ensureMprViewportState(pane);
+  if (!view) return null;
+  return { zoom: view.zoom, tx: view.tx, ty: view.ty };
 }
 
 export function setMprProjection({
@@ -356,40 +521,42 @@ export function setMprViewport(pane, {
   tx = ensureMprViewportState(pane)?.tx,
   ty = ensureMprViewportState(pane)?.ty,
 } = {}) {
-  const view = ensureMprViewportState(pane);
-  if (!view) return null;
+  const key = mprViewportPane(pane);
+  if (!key) return null;
+  const next = {
+    zoom: Math.max(1, Math.min(8, Number(zoom) || 1)),
+    tx: Number.isFinite(+tx) ? +tx : 0,
+    ty: Number.isFinite(+ty) ? +ty : 0,
+  };
   batch(() => {
-    view.zoom = Math.max(1, Math.min(8, Number(zoom) || 1));
-    view.tx = Number.isFinite(+tx) ? +tx : 0;
-    view.ty = Number.isFinite(+ty) ? +ty : 0;
+    state.mpr.viewports ||= {};
+    state.mpr.viewports[key] = next;
   });
-  return { zoom: view.zoom, tx: view.tx, ty: view.ty };
+  return { zoom: next.zoom, tx: next.tx, ty: next.ty };
 }
 
 export function resetMprViewport(pane) {
   return setMprViewport(pane, { zoom: 1, tx: 0, ty: 0 });
 }
 
-export function setObliqueAngles({ yaw = state.obYaw, pitch = state.obPitch } = {}) {
+export function setObliqueAngles({ yaw = state.mpr.obYaw, pitch = state.mpr.obPitch } = {}) {
   batch(() => {
-    state.obYaw = clampObliqueYaw(yaw);
-    state.obPitch = clampObliquePitch(pitch);
+    state.mpr.obYaw = clampObliqueYaw(yaw);
+    state.mpr.obPitch = clampObliquePitch(pitch);
   });
-  return { obYaw: state.obYaw, obPitch: state.obPitch };
+  return { obYaw: state.mpr.obYaw, obPitch: state.mpr.obPitch };
 }
 
 export function beginSeriesSelection(index, { preserveSlice = false } = {}) {
   const previousSeries = getCurrentSeries();
-  const previousVariant = state.useBrain && previousSeries?.hasBrain ? 'brain' : 'base';
   const series = state.manifest.series[index];
   if (state.loaded || state.selectRequestId > 0) rememberSeriesViewState(previousSeries);
   const nextView = viewStateForSeries(series, { preserveSlice });
   let requestId = 0;
-  stashRuntimeVolumeCache(previousSeries, { variant: previousVariant });
   batch(() => {
     requestId = ++state.selectRequestId;
     state.seriesIdx = index;
-    if (!renderModeSupportedForSeries(state.renderMode, series)) state.renderMode = 'alpha';
+    if (!renderModeSupportedForSeries(state.three.renderMode, series)) state.three.renderMode = 'alpha';
     state.mode = nextView.mode;
     state.sliceIdx = nextView.sliceIdx;
     if (nextView.window != null) state.window = nextView.window;
@@ -397,37 +564,23 @@ export function beginSeriesSelection(index, { preserveSlice = false } = {}) {
     // Unsupported overlays are corrected by initializeSeriesViewState's
     // capability guards immediately after selection.
     if (nextView.restored) {
-      if (nextView.overlays) {
-        state.useBrain = !!nextView.overlays.useBrain;
-        state.useSeg = !!nextView.overlays.useSeg;
-        state.useRegions = !!nextView.overlays.useRegions;
-        state.useSym = !!nextView.overlays.useSym;
-      }
+      if (nextView.overlays) applyOverlayEnableSnapshot(state.overlays, nextView.overlays);
     }
     // Restore the per-series locked anatomy selection (or clear it for a fresh
     // series); the transient hover preview never carries across series.
     state.lockedLabels = new Set((nextView.lockedLabels || []).map(Number).filter(Number.isFinite));
     state.previewLabel = null;
     state.loaded = false;
-    const cur = $('slice-cur');
-    const tot = $('slice-tot');
-    if (cur) cur.textContent = '';
-    if (tot) tot.textContent = '';
-    syncSliceCountAriaBusy();
-    state.analysis = null;
-    state.regionMeta = null;
-    state._localRtDoseBySlug[series.slug] = state._localRtDoseBySlug[series.slug] || [];
-    state.stats = null;
-    state.fusionSlug = null;
-    state.askHistory = [];
-    state.clipMin = [0, 0, 0];
-    state.clipMax = [1, 1, 1];
-    state.clipPlaneEnabled = false;
-    state.clipPlaneDepth = 0.5;
-    state.clipPlaneInvert = false;
+    state.overlays.analysis = null;
+    state.overlays.regionMeta = null;
+    state.overlays.stats = null;
+    state.overlays.fusionSlug = null;
+    state.three.clipMin = [0, 0, 0];
+    state.three.clipMax = [1, 1, 1];
+    state.three.clipPlaneEnabled = false;
+    state.three.clipPlaneDepth = 0.5;
+    state.three.clipPlaneInvert = false;
   });
-  clearRuntimeSelectionCaches();
-  restoreRuntimeVolumeCache(series, { variant: state.useBrain && series?.hasBrain ? 'brain' : 'base' });
   setLastActiveSeries(series);
   return {
     requestId,
@@ -442,20 +595,10 @@ export function isSeriesSelectionCurrent(requestId, seriesSlug) {
   return state.selectRequestId === requestId && currentSeriesSlug() === seriesSlug;
 }
 
-export function hydrateSeriesStacks({ imgs, segImgs, symImgs, regionImgs } = {}) {
+export function hydrateSeriesSidecars({ analysis, regionMeta, stats } = {}) {
   batch(() => {
-    if (imgs) state.imgs = imgs;
-    if (segImgs) state.segImgs = segImgs;
-    if (symImgs) state.symImgs = symImgs;
-    if (regionImgs) state.regionImgs = regionImgs;
-  });
-}
-
-export function hydrateSeriesSidecars({ analysis, regionMeta, askHistory, stats } = {}) {
-  batch(() => {
-    if (analysis) state.analysis = analysis;
+    if (analysis) state.overlays.analysis = analysis;
     if (regionMeta) setRegionMeta(regionMeta);
-    if (Array.isArray(askHistory)) setAskHistory(askHistory);
     if (stats) setStats(stats);
   });
 }
@@ -466,17 +609,10 @@ export function finishSeriesSelection() {
   });
 }
 
-export function setBrainStack({ nextUseBrain, imgs }) {
-  const series = getCurrentSeries();
-  const previousVariant = state.useBrain && series?.hasBrain ? 'brain' : 'base';
-  stashRuntimeVolumeCache(series, { variant: previousVariant });
+export function setBrainStack({ nextUseBrain }) {
   batch(() => {
-    state.useBrain = nextUseBrain;
+    state.overlays.useBrain = nextUseBrain;
     state.loaded = false;
-    state.imgs = imgs;
-    state.cmpStacks = {};
   });
-  clearRuntimeSelectionCaches({ resetViewerSessionState: false });
-  restoreRuntimeVolumeCache(series, { variant: nextUseBrain && series?.hasBrain ? 'brain' : 'base' });
-  return state.useBrain;
+  return state.overlays.useBrain;
 }

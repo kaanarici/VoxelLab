@@ -12,7 +12,7 @@ globalThis.localStorage = {
 
 const { state } = await import('../js/core/state.js');
 const { roiResultsBundle, validateRoiResultsBundleForSeries } = await import('../js/roi/roi-results.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 const {
   NOTE_STORAGE_KEY,
   setNoteEntriesForSlice,

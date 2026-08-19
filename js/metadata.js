@@ -8,6 +8,7 @@ import { state } from './core/state.js';
 import { inPlanePixelSpacing } from './core/geometry.js';
 import { signalPanelReady } from './collapsible-sidebar.js';
 import { activeOverlayStateForSeries } from './runtime/active-overlay-state.js';
+import { OVERLAY_CACHE_BY_KIND } from './runtime/overlay-cache-keys.js';
 import { setOverlayEnabled, setSliceIndex } from './core/state/viewer-commands.js';
 import { regionMetaUrlForSeries } from './series/series-image-stack.js';
 
@@ -365,7 +366,7 @@ export function renderQuantificationPanel() {
   const panel = $('quantification-panel');
   const host = $('quantification');
   const series = state.manifest?.series?.[state.seriesIdx];
-  const stats = state.stats;
+  const stats = state.overlays.stats;
   if (!panel || !host || !series || !stats) {
     if (panel) panel.hidden = true;
     return;
@@ -454,9 +455,9 @@ export function renderQuantificationPanel() {
   if (jump && peak) {
     jump.onclick = () => {
       setSliceIndex(peak.z, series);
-      if (!state.useSym && activeOverlayStateForSeries(series).heatmap.available) {
-        setOverlayEnabled('useSym', true);
-        void import('./overlay/overlay-stack.js').then(({ ensureOverlayStack }) => ensureOverlayStack('sym'));
+      if (!state.overlays.heatmap && activeOverlayStateForSeries(series).heatmap.available) {
+        setOverlayEnabled('heatmap', true);
+        void import('./overlay/overlay-stack.js').then(({ ensureOverlayStack }) => ensureOverlayStack(OVERLAY_CACHE_BY_KIND.heatmap.type));
         $('btn-sym')?.classList.add('active');
       }
     };
@@ -528,13 +529,13 @@ export function renderVolumeTable() {
   const host = $('volume-table');
   const volLine = $('volumes-info-line');
   if (!host) return;
-  if (!state.regionMeta || !state.regionMeta.regions) {
+  if (!state.overlays.regionMeta || !state.overlays.regionMeta.regions) {
     if (volLine) volLine.hidden = true;
     host.innerHTML = regionalVolumesEmptyLine('noSidecar');
     return;
   }
-  const regions = state.regionMeta.regions;
-  const colors = state.regionMeta.colors || {};
+  const regions = state.overlays.regionMeta.regions;
+  const colors = state.overlays.regionMeta.colors || {};
   const series = state.manifest?.series?.[state.seriesIdx];
   // When the series has no trusted voxel spacing, the sidecar's mL was computed
   // against assumed 1 mm spacing — reporting it as authoritative millilitres is

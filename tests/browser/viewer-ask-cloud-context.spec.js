@@ -194,9 +194,9 @@ test('cloud segmentation mesh export uses cached labels without requiring overla
         }
       }
     }
-    state.useRegions = false;
+    state.overlays.labels = false;
     state.regionVoxels = voxels;
-    state.regionMeta = {
+    state.overlays.regionMeta = {
       regions: { 7: { name: 'Fixture Organ', voxels: 8, mL: 8 } },
       colors: { 7: [255, 0, 0] },
     };

@@ -91,8 +91,8 @@ async function setupAnalysisPollTest(t) {
   state.seriesIdx = 0;
   state.selectRequestId = 1;
   state.sliceIdx = 0;
-  state.analysis = null;
-  state.analysisBusy = false;
+  state.overlays.analysis = null;
+  state.overlays.analysisBusy = false;
   const analysis = await import(`../js/analysis-findings.js?t=${Date.now()}-${Math.random()}`);
 
   t.after(() => {
@@ -165,7 +165,7 @@ test('analysis poll surfaces terminal error status', async (t) => {
   await analysis.startAnalysis('scan');
   await runQueuedTimers(timers);
 
-  assert.equal(state.analysisBusy, false);
+  assert.equal(state.overlays.analysisBusy, false);
   assert.match(document.getElementById('gen-status').textContent, /provider offline/);
 });
 
@@ -261,8 +261,8 @@ test('analysis cancellation aborts an in-flight status poll without changing sta
   await polling;
 
   assert.equal(statusSignal?.aborted, true);
-  assert.equal(state.analysisBusy, false);
-  assert.equal(state.analysis, null);
+  assert.equal(state.overlays.analysisBusy, false);
+  assert.equal(state.overlays.analysis, null);
 });
 
 test('analysis completion cannot cross a selection session or same-slug series replacement', async (t) => {
@@ -291,15 +291,15 @@ test('analysis completion cannot cross a selection session or same-slug series r
   state.manifest = { studyUID: 'replacement-study', series: [replacement] };
   state.seriesIdx = 0;
   state.selectRequestId++;
-  state.analysis = null;
+  state.overlays.analysis = null;
   resolveStatus(analysisStatus(analysisKey, { status: 'done', running: false }));
   await polling;
 
   assert.equal(sidecarFetches, 0);
-  assert.equal(state.analysis, null);
-  assert.equal(state.analysisBusy, true);
+  assert.equal(state.overlays.analysis, null);
+  assert.equal(state.overlays.analysisBusy, true);
   assert.equal(analysis.cancelActiveAnalysis(), true);
-  assert.equal(state.analysisBusy, false);
+  assert.equal(state.overlays.analysisBusy, false);
 });
 
 test('selection reload prefers the exact keyed result over a coexisting legacy sidecar', async (t) => {
@@ -438,7 +438,7 @@ test('analysis completion rejects a keyed payload bound to another slug', async 
   await analysis.startAnalysis('scan');
   await runQueuedTimers(timers);
 
-  assert.equal(state.analysis, null);
-  assert.equal(state.analysisBusy, false);
+  assert.equal(state.overlays.analysis, null);
+  assert.equal(state.overlays.analysisBusy, false);
   assert.match(document.getElementById('gen-status').textContent, /mismatched source-series identity/);
 });

@@ -23,7 +23,7 @@ export default [
       import: importPlugin,
     },
     languageOptions: {
-      ecmaVersion: 2022,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.browser,
@@ -33,20 +33,42 @@ export default [
     rules: {
       // Keep noise low; tighten incrementally (see contributor notes in README).
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      // Intentional silent catches for localStorage / plugin hooks
+      // Intentional silent catches for localStorage
       'no-empty': ['error', { allowEmptyCatch: true }],
       // Filenames must be kebab-case everywhere (enforced repo-wide).
       'unicorn/filename-case': ['error', { case: 'kebabCase' }],
     },
   },
   {
-    // Architecture invariants for the new @-aliased layers (js/core, js/ui, …).
+    files: ['js/**/*.js', 'viewer.js'],
+    ignores: [
+      'js/core/state/**',
+      'js/runtime/**',
+      'js/volume/volume-worker.js',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: "AssignmentExpression[left.object.name='state']",
+        message: 'Assign viewer state through commands or runtime setters.',
+      }, {
+        selector: "AssignmentExpression[left.object.object.name='state']",
+        message: 'Assign viewer state through commands or runtime setters.',
+      }, {
+        selector: "UnaryExpression[operator='delete'][argument.object.name='state']",
+        message: 'Delete viewer state through commands or runtime setters.',
+      }, {
+        selector: "UnaryExpression[operator='delete'][argument.object.object.name='state']",
+        message: 'Delete viewer state through commands or runtime setters.',
+      }],
+    },
+  },
+  {
+    // Architecture invariants for js/core and feature folders.
     // Ordered imports and acyclic boundaries are enforced as modules migrate
     // into these folders across later phases; the legacy flat js/ tree still
     // carries pre-existing cycles tracked separately.
     files: [
       'js/core/**/*.js',
-      'js/ui/**/*.js',
       'js/microscopy/**/*.js',
       'js/dicom/**/*.js',
       'js/volume/**/*.js',
@@ -55,6 +77,7 @@ export default [
       'js/overlay/**/*.js',
       'js/series/**/*.js',
       'js/projects/**/*.js',
+      'js/intake/**/*.js',
       'js/shell/**/*.js',
     ],
     // The worker is a separate module realm linted by its own block below.
@@ -64,6 +87,27 @@ export default [
       // Lazy `await import()` is the codebase's deliberate cycle boundary;
       // a cycle that routes through one is allowed (broken at runtime).
       'import/no-cycle': ['error', { allowUnsafeDynamicCyclicDependency: true }],
+    },
+  },
+  {
+    files: ['js/core/**/*.js'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: [
+            '**/config.js',
+            '**/dom.js',
+            '**/notify.js',
+            '**/shell/**',
+            '**/series/**',
+            '**/mpr/**',
+            '**/volume/**',
+            '**/overlay/**',
+            '**/runtime/**',
+          ],
+          message: 'js/core cannot import config, dom, notify, shell, series, mpr, volume, overlay, or runtime.',
+        }],
+      }],
     },
   },
   {

@@ -35,6 +35,7 @@ const sharedMap = new Map([
   ['affineLpsFromSeries', { js: 'geometryFromSeries', py: 'affine_lps_from_series' }],
   ['compareGroup', { js: 'seriesCompareGroup', py: 'compare_group_key' }],
   ['buildGeometryRecord', { js: 'buildGeometryRecord', py: 'build_geometry_record' }],
+  ['isOrthonormalImagePlane', { js: 'isOrthonormalImagePlane', py: 'is_orthonormal_image_plane' }],
 ]);
 
 const allowedJsOnly = new Map([
@@ -44,9 +45,11 @@ const allowedJsOnly = new Map([
   ['geometryFromDicomMetas', 'browser DICOM meta adapter feeding buildGeometryRecord'],
   ['inPlaneDisplaySize', 'browser canvas sizing helper'],
   ['inPlanePixelSpacing', 'browser measurement and scale-bar helper'],
-  ['isOrthonormalImagePlane', 'browser DICOM derived-object validation helper'],
   ['patientPointAtSlice', 'browser slice navigation helper over geometryFromSeries'],
   ['closestSliceIndexForPatientPoint', 'browser compare and derived-object binding helper'],
+  ['patientLpsToVoxel', 'browser LPS readout inverse of geometryFromSeries affine'],
+  ['volumeDisplayExtents', 'browser 3D mesh sizing helper over geometryFromSeries'],
+  ['volumeDisplayScale', 'browser 3D mesh unit-cube scale helper over geometryFromSeries'],
 ]);
 const allowedPyOnly = new Map([
   ['float_list', 'Python DICOM value coercion helper'],
@@ -85,7 +88,10 @@ for (const key of sharedMap.keys()) {
   if (!contractKeys.has(key)) fail(`sharedMap contract "${key}" is missing from canonical-cases.json`);
 }
 
-const jsExports = [...readFileSync(JS_PATH, 'utf8').matchAll(/^export function (\w+)/gm)].map((m) => m[1]);
+const jsExports = [
+  ...readFileSync(JS_PATH, 'utf8').matchAll(/^export function (\w+)/gm),
+  ...readFileSync(JS_PATH, 'utf8').matchAll(/^export const (\w+)\s*=\s*(?:async\s*)?\(/gm),
+].map((m) => m[1]);
 const pyDefs = [...readFileSync(PY_PATH, 'utf8').matchAll(/^def (\w+)/gm)].map((m) => m[1]);
 const mappedJs = new Set([...sharedMap.values()].map((value) => value.js));
 const mappedPy = new Set([...sharedMap.values()].map((value) => value.py));

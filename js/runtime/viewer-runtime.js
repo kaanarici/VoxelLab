@@ -1,22 +1,18 @@
-import { batch, state } from '../core/state.js';
-import { seriesVariantKey } from '../series/series-identity.js';
+import { seriesPersistenceKey, seriesVariantKey } from '../core/series-identity.js';
+import { batch, deletePassthroughRootEntry, setPassthroughRootEntry, state } from '../core/state.js';
+import { patchManifestSeries, setColormap, setInvertDisplay, setSliceIndex, setWindowLevel } from '../core/state/viewer-commands.js';
+import { overlayImgsResetValue } from '../core/viewer-session-shape.js';
+import { OVERLAY_CACHE_BY_TYPE, overlayVoxelsKey } from './overlay-cache-keys.js';
+import { clearSeriesOverlayHints } from './overlay-kinds.js';
 import { resetViewerRuntimeSession } from './viewer-session.js';
 
-const OVERLAY_STACK_KEY = {
-  seg: 'segImgs',
-  sym: 'symImgs',
-  regions: 'regionImgs',
-};
 const WARM_VOLUME_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 function volumeEntryByteLength(entry) {
   const values = new Set([
     entry?.voxels,
     entry?.hrVoxels,
-    entry?.segVoxels,
-    entry?.symVoxels,
-    entry?.regionVoxels,
-    entry?.fusionVoxels,
+    ...Object.values(OVERLAY_CACHE_BY_TYPE).map((cache) => entry?.[cache.voxels]),
   ].filter(Boolean));
   return [...values].reduce((bytes, value) => bytes + (Number(value?.byteLength) || 0), 0);
 }
@@ -25,7 +21,7 @@ function currentSeries() {
   return state.manifest?.series?.[state.seriesIdx] || null;
 }
 
-function volumeVariant(series = currentSeries(), useBrain = state.useBrain) {
+function volumeVariant(series = currentSeries(), useBrain = state.overlays.useBrain) {
   return useBrain && series?.hasBrain ? 'brain' : 'base';
 }
 
@@ -82,8 +78,7 @@ export function setThreePreviewShown(shown) {
   state.threeRuntime.previewShown = !!shown;
 }
 
-export function setOverlayStack(type, imgs) {
-  const key = OVERLAY_STACK_KEY[type];
+export function setOverlayStack(key, imgs) {
   if (!key) return null;
   state[key] = imgs;
   return state[key];
@@ -98,14 +93,10 @@ export function clearRuntimeSelectionCaches({ resetViewerSessionState = true } =
     state.hrLoading = null;
     state.hrLoadingKey = '';
     state.hrAbortController = null;
-    state.segImgs = [];
-    state.segVoxels = null;
-    state.symImgs = [];
-    state.symVoxels = null;
-    state.regionImgs = [];
-    state.regionVoxels = null;
-    state.fusionImgs = null;
-    state.fusionVoxels = null;
+    for (const cache of Object.values(OVERLAY_CACHE_BY_TYPE)) {
+      state[cache.imgs] = overlayImgsResetValue(cache);
+      state[cache.voxels] = null;
+    }
   });
   resetThreeRuntimeSession();
   if (resetViewerSessionState) resetViewerRuntimeSession();
@@ -118,21 +109,28 @@ export function stashRuntimeVolumeCache(series = currentSeries(), {
   if (!series) return false;
   const key = volumeEntryKey(series, variant);
   if (!key) return false;
-  if (!state.voxels && !state.hrVoxels && !state.segVoxels && !state.symVoxels && !state.regionVoxels && !state.fusionVoxels) {
+  if (
+    !state.voxels
+    && !state.hrVoxels
+    && !Object.values(OVERLAY_CACHE_BY_TYPE).some((cache) => state[cache.voxels])
+  ) {
     return false;
   }
-  // Shape: { key: "t2_axial|base", voxels: Uint8Array|null, hrVoxels: Float32Array|null, segVoxels: Uint8Array|null }.
+  // Shape: { key: "t2_axial|base", voxels, hrVoxels, plus overlay voxel slots from OVERLAY_CACHE_BY_TYPE }.
+  const overlayVoxels = {};
+  const peerSlugs = {};
+  for (const cache of Object.values(OVERLAY_CACHE_BY_TYPE)) {
+    overlayVoxels[cache.voxels] = state[cache.voxels] || null;
+    if (cache.peerSlugField) peerSlugs[cache.peerSlugField] = state.overlays[cache.peerSlugField] || '';
+  }
   const entry = {
     key,
     slug: series.slug,
     variant,
     voxels: state.hrVoxels ? null : state.voxels,
     hrVoxels: state.hrVoxels || null,
-    segVoxels: state.segVoxels || null,
-    symVoxels: state.symVoxels || null,
-    regionVoxels: state.regionVoxels || null,
-    fusionVoxels: state.fusionVoxels || null,
-    fusionSlug: state.fusionSlug || '',
+    ...overlayVoxels,
+    ...peerSlugs,
     byteLength: 0,
   };
   entry.byteLength = volumeEntryByteLength(entry);
@@ -168,12 +166,16 @@ export function restoreRuntimeVolumeCache(series = currentSeries(), { variant = 
     state.voxelsKey = entry.voxels ? key : '';
     state.hrVoxels = entry.hrVoxels || null;
     state.hrKey = entry.hrVoxels ? `${state.seriesIdx}:${series.slug}:${series.rawUrl || ''}` : '';
-    state.segVoxels = entry.segVoxels || null;
-    state.symVoxels = entry.symVoxels || null;
-    state.regionVoxels = entry.regionVoxels || null;
-    state.fusionVoxels = entry.fusionSlug && entry.fusionSlug === state.fusionSlug
-      ? (entry.fusionVoxels || null)
-      : null;
+    for (const cache of Object.values(OVERLAY_CACHE_BY_TYPE)) {
+      if (cache.peerSlugField) {
+        const slug = entry[cache.peerSlugField];
+        state[cache.voxels] = slug && slug === state.overlays[cache.peerSlugField]
+          ? (entry[cache.voxels] || null)
+          : null;
+        continue;
+      }
+      state[cache.voxels] = entry[cache.voxels] || null;
+    }
   });
   return true;
 }
@@ -193,18 +195,28 @@ export function invalidateVoxelCache({ dropData = false } = {}) {
 }
 
 export function clearFusionRuntime() {
+  const cache = OVERLAY_CACHE_BY_TYPE.fusion;
   batch(() => {
-    state.fusionImgs = null;
-    state.fusionVoxels = null;
+    setOverlayStack(cache.imgs, null);
+    setOverlayVoxels(cache.type, null);
   });
 }
 
-export function setFusionRuntime({ slug = state.fusionSlug, imgs = state.fusionImgs, voxels = state.fusionVoxels } = {}) {
+export function setFusionRuntime({ imgs, voxels } = {}) {
+  const cache = OVERLAY_CACHE_BY_TYPE.fusion;
+  const nextImgs = imgs !== undefined ? imgs : state[cache.imgs];
+  const nextVoxels = voxels !== undefined ? voxels : state[cache.voxels];
   batch(() => {
-    state.fusionSlug = slug;
-    state.fusionImgs = imgs;
-    state.fusionVoxels = voxels;
+    setOverlayStack(cache.imgs, nextImgs);
+    setOverlayVoxels(cache.type, nextVoxels);
   });
+}
+
+export function setOverlayVoxels(type, voxels) {
+  const key = overlayVoxelsKey(type);
+  if (!key) return null;
+  state[key] = voxels;
+  return state[key];
 }
 
 export function setHrLoadingState({ key = '', controller = null, promise = null } = {}) {
@@ -231,3 +243,196 @@ export function setHrVoxelCache(voxels, key) {
     state.hrKey = key;
   });
 }
+
+export function transitionVolumeCaches(previousSeries, mutate, {
+  resetViewerSessionState = true,
+} = {}) {
+  stashRuntimeVolumeCache(previousSeries, { variant: volumeVariant(previousSeries) });
+  const result = mutate();
+  const nextSeries = currentSeries();
+  clearRuntimeSelectionCaches({ resetViewerSessionState });
+  restoreRuntimeVolumeCache(nextSeries, { variant: volumeVariant(nextSeries) });
+  return result;
+}
+
+const LOCAL_SERIES_MAPS = [
+  '_localStacks',
+  '_localMicroscopyStacks',
+  '_localMicroscopyPlanes',
+  '_localRegionMetaBySlug',
+  '_localRegionLabelSlicesBySlug',
+  '_localDerivedObjects',
+  '_localRtDoseBySlug',
+];
+const LOCAL_ANALYSIS_MAPS = [
+  '_microscopyAnalysisLog',
+  '_microscopyAnalysisResults',
+];
+
+export function getLocalRuntimeMap(mapKey) {
+  return state[mapKey];
+}
+
+export function setLocalRuntimeMapEntry(mapKey, entryKey, value) {
+  if (!LOCAL_SERIES_MAPS.includes(mapKey) && !LOCAL_ANALYSIS_MAPS.includes(mapKey) && mapKey !== '_localRawVolumes') {
+    throw new Error(`Unknown local runtime map: ${mapKey}`);
+  }
+  const key = String(entryKey || '');
+  if (!key) return false;
+  if (value === undefined) return deletePassthroughRootEntry(mapKey, key);
+  if (!state[mapKey] || Object.getPrototypeOf(state[mapKey]) !== Object.prototype) state[mapKey] = {};
+  return setPassthroughRootEntry(mapKey, key, value);
+}
+
+export function deleteLocalRuntimeMapEntry(mapKey, entryKey) {
+  return setLocalRuntimeMapEntry(mapKey, entryKey, undefined);
+}
+
+export function ensureLocalDerivedBucket(slug) {
+  const key = String(slug || '');
+  if (!key) return {};
+  const current = state._localDerivedObjects?.[key];
+  if (current && Object.getPrototypeOf(current) === Object.prototype) return current;
+  setLocalRuntimeMapEntry('_localDerivedObjects', key, {});
+  return state._localDerivedObjects[key];
+}
+
+export function replaceLocalDerivedBucket(slug, next = {}) {
+  const key = String(slug || '');
+  if (!key) return {};
+  const value = next && Object.getPrototypeOf(next) === Object.prototype ? next : {};
+  setLocalRuntimeMapEntry('_localDerivedObjects', key, value);
+  return state._localDerivedObjects[key];
+}
+
+export function setLocalDerivedObject(slug, objectUID, value) {
+  const uid = String(objectUID || '');
+  if (!uid) return null;
+  const bucket = { ...ensureLocalDerivedBucket(slug) };
+  if (value === undefined) delete bucket[uid];
+  else bucket[uid] = value;
+  return replaceLocalDerivedBucket(slug, bucket);
+}
+
+export function appendLocalRtDose(slug, entry) {
+  const key = String(slug || '');
+  if (!key || !entry) return [];
+  const current = Array.isArray(state._localRtDoseBySlug?.[key]) ? state._localRtDoseBySlug[key] : [];
+  const next = current.concat(entry);
+  setLocalRuntimeMapEntry('_localRtDoseBySlug', key, next);
+  return next;
+}
+
+export function getPendingDerivedObjects() {
+  return Array.isArray(state._pendingDerivedObjects) ? state._pendingDerivedObjects : [];
+}
+
+export function setPendingDerivedObjects(list) {
+  state._pendingDerivedObjects = Array.isArray(list) ? list : [];
+  return state._pendingDerivedObjects;
+}
+
+export function getLocalRawVolumeOrder() {
+  if (!Array.isArray(state._localRawVolumeOrder)) state._localRawVolumeOrder = [];
+  return state._localRawVolumeOrder;
+}
+
+export function setLocalRawVolumeOrder(order) {
+  state._localRawVolumeOrder = Array.isArray(order) ? order : [];
+  return state._localRawVolumeOrder;
+}
+
+export function setSeriesImageStacks(payload = {}) {
+  const { imgs, cmpStacks } = payload;
+  batch(() => {
+    if (imgs !== undefined) state.imgs = imgs;
+    for (const cache of Object.values(OVERLAY_CACHE_BY_TYPE)) {
+      if (payload[cache.imgs] !== undefined) setOverlayStack(cache.imgs, payload[cache.imgs]);
+    }
+    if (cmpStacks !== undefined) state.cmpStacks = cmpStacks;
+  });
+}
+
+export function clearRuntimeImageStacks() {
+  setSeriesImageStacks({ imgs: [], cmpStacks: {} });
+}
+
+export function forgetLocalSeriesRuntime(series, manifest) {
+  const slug = series?.slug;
+  if (!slug) return;
+  batch(() => {
+    for (const key of LOCAL_SERIES_MAPS) {
+      deletePassthroughRootEntry(key, slug);
+    }
+    deletePassthroughRootEntry('_localStacks', `${slug}_regions`);
+    const analysisKey = seriesPersistenceKey(series, manifest);
+    if (analysisKey) {
+      deletePassthroughRootEntry('_microscopyAnalysisLog', analysisKey);
+      deletePassthroughRootEntry('_microscopyAnalysisResults', analysisKey);
+    }
+    clearSeriesOverlayHints(series);
+  });
+}
+
+export function dropRuntimeVolumeCachesForSlugs(slugs) {
+  const requested = slugs instanceof Set ? slugs : new Set(slugs);
+  state._seriesVolumeCacheEntries = (state._seriesVolumeCacheEntries || [])
+    .filter((entry) => !requested.has(entry?.slug));
+}
+
+const LOCAL_MAP_KEYS = [...LOCAL_SERIES_MAPS, ...LOCAL_ANALYSIS_MAPS, '_localRawVolumes'];
+
+function assertLocalMapKey(mapKey) {
+  if (!LOCAL_MAP_KEYS.includes(mapKey)) throw new Error(`Unknown local runtime map: ${mapKey}`);
+}
+
+export function isLiveViewerHost(host) {
+  return host === state;
+}
+
+export function replaceLocalRuntimeMap(mapKey, next = {}) {
+  assertLocalMapKey(mapKey);
+  const value = next && Object.getPrototypeOf(next) === Object.prototype ? next : {};
+  batch(() => { state[mapKey] = value; });
+  return state[mapKey];
+}
+
+export const LIVE_HOST_WRITES = {
+  patchSeries(_host, series, patch) {
+    return patchManifestSeries(series, patch);
+  },
+  sliceIndex(_host, sliceIdx, series) {
+    return setSliceIndex(sliceIdx, series);
+  },
+  invertDisplay(_host, enabled) {
+    return setInvertDisplay(enabled);
+  },
+  windowLevel(_host, windowValue, levelValue) {
+    return setWindowLevel(windowValue, levelValue);
+  },
+  colormap(_host, name) {
+    return setColormap(name);
+  },
+  displayStack(_host, slug, stack, sliceIdx) {
+    const images = Array.isArray(stack) ? stack : [];
+    const max = Math.max(0, images.length - 1);
+    const nextSlice = Math.max(0, Math.min(Math.floor(Number(sliceIdx) || 0), max));
+    if (slug) setLocalRuntimeMapEntry('_localStacks', slug, images);
+    setSeriesImageStacks({ imgs: images });
+    setSliceIndex(nextSlice);
+    return true;
+  },
+  runtimeMapEntry(_host, mapKey, entryKey, value) {
+    return setLocalRuntimeMapEntry(mapKey, entryKey, value);
+  },
+  replaceRuntimeMap(_host, mapKey, next) {
+    return replaceLocalRuntimeMap(mapKey, next);
+  },
+};
+
+export function hostWritesFor(host, writes) {
+  if (isLiveViewerHost(host)) return LIVE_HOST_WRITES;
+  if (writes) return writes;
+  return null;
+}
+

@@ -76,7 +76,7 @@ export function show3DHover(ev, renderer, camera) {
     } else {
       normVal = (vox[vi] || 0) / 255;
     }
-    if (normVal < state.lowT || normVal > state.highT || normVal < 0.005) continue;
+    if (normVal < state.three.lowT || normVal > state.three.highT || normVal < 0.005) continue;
 
     const inspection = resolveVoxelInspection(series, vx, vy, vz, { intensity: Math.round(normVal * 255) });
 

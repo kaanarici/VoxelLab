@@ -2,7 +2,7 @@ import { TISSUE_NAMES, CT_HU_LO, CT_HU_RANGE } from './core/constants.js';
 import { adcDisplayFromNorm } from './adc.js';
 import { formatLPS, voxelToMM } from './core/coords.js';
 import { escapeHtml } from './dom.js';
-import { regionLabelName } from './region-meta.js';
+import { regionLabelName } from './core/region-meta.js';
 import { state } from './core/state.js';
 import { activeOverlayStateForSeries } from './runtime/active-overlay-state.js';
 
@@ -40,13 +40,13 @@ export function resolveVoxelInspection(
   const effectiveRegionMeta = regionMeta || overlays.labels.meta;
   const effectiveRegionLabel = regionLabel != null
     ? regionLabel
-    : (useLiveOverlays && overlays.labels.voxels ? (state.regionVoxels?.[vi] || 0) : 0);
+    : (useLiveOverlays && overlays.labels.voxels ? (overlays.labels.voxels[vi] || 0) : 0);
   const regionName = effectiveRegionMeta?.legend
     ? regionLabelName(effectiveRegionMeta, effectiveRegionLabel)
     : '';
   const effectiveTissueLabel = tissueLabel != null
     ? tissueLabel
-    : (useLiveOverlays && overlays.tissue.voxels ? (state.segVoxels?.[vi] || 0) : 0);
+    : (useLiveOverlays && overlays.tissue.voxels ? (overlays.tissue.voxels[vi] || 0) : 0);
   const tissueName = effectiveTissueLabel > 0 && effectiveTissueLabel < 4 ? TISSUE_NAMES[effectiveTissueLabel] : '';
   let ctHu = null;
   let ctHuClipped = false;
@@ -59,8 +59,8 @@ export function resolveVoxelInspection(
     ctHuClipped = n >= 0.999 ? 'high' : n <= 0.001 ? 'low' : false;
   }
   let adcDisplay = null;
-  if (series.slug === 'dwi_adc' && state.stats?.adc && state.hrVoxels?.length === series.width * series.height * series.slices) {
-    adcDisplay = adcDisplayFromNorm(state.stats.adc, state.hrVoxels[vi]);
+  if (series.slug === 'dwi_adc' && state.overlays.stats?.adc && state.hrVoxels?.length === series.width * series.height * series.slices) {
+    adcDisplay = adcDisplayFromNorm(state.overlays.stats.adc, state.hrVoxels[vi]);
   }
   return {
     intensity: intensity ?? baseIntensityAt(series, vi),

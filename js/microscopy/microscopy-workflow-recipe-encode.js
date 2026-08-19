@@ -8,7 +8,7 @@ import {
   drawingEntriesForSeries,
 } from '../overlay/annotation-graph.js';
 import { normalizeLengthUnit } from '../core/physical-units.js';
-import { seriesPersistenceKey } from '../series/series-identity.js';
+import { seriesPersistenceKey } from '../core/series-identity.js';
 import {
   roiResultRows,
   roiResultsBundle,

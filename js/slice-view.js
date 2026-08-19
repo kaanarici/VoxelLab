@@ -4,12 +4,13 @@ import { renderInspectionReadout, resolveVoxelInspection } from './inspection-re
 import { getFusedWLLut, getFusedWLU32, COLORMAPS } from './colormap.js';
 import { drawAnnotationPins } from './overlay/annotation.js';
 import { drawHistogram } from './sparkline.js';
-import { drawPluginOverlays } from './plugin-overlays.js';
+import { drawPostCompositeOverlays } from './overlay/post-composite-overlays.js';
 import { readImageByteData } from './overlay/overlay-data.js';
 import { drawMicroscopyChannelComposite, ensureMicroscopyComposite } from './microscopy/microscopy-channel-composite.js';
 import { drawCompositeSlice } from './slice-compositor.js';
 import { endPerfTrace, hasPendingPerfTrace } from './core/perf-trace.js';
 import { activeOverlayStateForSeries } from './runtime/active-overlay-state.js';
+import { overlayBytesFromCaches, overlayBytesPresent } from './runtime/overlay-cache-keys.js';
 import { inPlaneDisplaySize } from './core/geometry.js';
 import { updateScaleBar } from './overlay/scale-bar.js';
 import { selectionRegionColors } from './runtime/region-color-isolation.js';
@@ -192,32 +193,21 @@ export function drawSlice() {
   const baseData = readImageByteData(img, series.width, series.height);
   if (!baseData) return;
   const overlays = activeOverlayStateForSeries(series);
-
-  // Check which overlays are active (read their pixel data once, not per-pixel)
-  const segBytes = overlays.tissue.enabled
-    ? readImageByteData(state.segImgs[state.sliceIdx], series.width, series.height)
-    : null;
-  const symBytes = overlays.heatmap.enabled
-    ? readImageByteData(state.symImgs[state.sliceIdx], series.width, series.height)
-    : null;
-  const regBytes = overlays.labels.enabled && overlays.labels.meta
-    ? (overlays.labels.voxels
-      ? state.regionVoxels.subarray(
+  const overlayBytes = overlayBytesFromCaches((cache) => {
+    const overlay = overlays[cache.kind];
+    const sliceImg = overlay?.imgs?.[state.sliceIdx];
+    const ready = overlay?.enabled
+      && (!cache.needsRegionMeta || overlay.meta)
+      && (!cache.requiresCompleteSliceImage || sliceImg?.complete);
+    if (!ready) return null;
+    return cache.sliceBytes === 'voxels' && overlay.voxels
+      ? overlay.voxels.subarray(
         state.sliceIdx * series.width * series.height,
         (state.sliceIdx + 1) * series.width * series.height,
       )
-      : readImageByteData(state.regionImgs[state.sliceIdx], series.width, series.height))
-    : null;
-  const hasFusion = overlays.fusion.enabled && overlays.fusion.imgs
-    && overlays.fusion.imgs[state.sliceIdx] && overlays.fusion.imgs[state.sliceIdx].complete;
-  const fusBytes = hasFusion
-    ? readImageByteData(overlays.fusion.imgs[state.sliceIdx], series.width, series.height)
-    : null;
-  const hasSeg = !!segBytes;
-  const hasSym = !!symBytes;
-  const hasRegions = !!regBytes;
-  const hasFusionBytes = !!fusBytes;
-  const anyOverlay = hasSeg || hasSym || hasRegions || hasFusionBytes;
+      : readImageByteData(sliceImg, series.width, series.height);
+  });
+  const anyOverlay = overlayBytesPresent(overlayBytes);
   const microscopyComposite = !anyOverlay ? microscopyCompositeSources(series) : [];
 
   const drewMicroscopyComposite = microscopyComposite.length > 0 && drawMicroscopyChannelComposite(ctx, series.width, series.height, {
@@ -237,20 +227,17 @@ export function drawSlice() {
   } else if (!drewMicroscopyComposite) {
     drawCompositeSlice(ctx, series.width, series.height, {
       baseBytes: baseData,
-      segBytes,
-      symBytes,
-      regionBytes: regBytes,
-      fusionBytes: fusBytes,
+      overlayBytes,
       wlLut: getFusedWLLut(),
-      regionColors: hasRegions ? selectionRegionColors(overlays.labels.meta.colors || {}, state) : null,
-      regionAlpha: state.overlayOpacity,
-      fusionAlpha: state.fusionOpacity,
-      hotLut: hasFusionBytes ? COLORMAPS.hot.lut : null,
+      regionColors: overlayBytes.regionBytes ? selectionRegionColors(overlays.labels.meta.colors || {}, state) : null,
+      regionAlpha: state.overlays.overlayOpacity,
+      fusionAlpha: state.overlays.fusionOpacity,
+      hotLut: overlayBytes.fusionBytes ? COLORMAPS.hot.lut : null,
     });
   }
 
   drawAnnotationPins(ctx);
-  drawPluginOverlays(ctx);
+  drawPostCompositeOverlays(ctx);
   drawHistogram();
   updateScaleBar();
 

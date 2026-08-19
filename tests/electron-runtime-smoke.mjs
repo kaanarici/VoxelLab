@@ -15,7 +15,7 @@ import {
 } from './fixtures/microscopy/calibrated-ome-tiff.mjs';
 import { parseMicroscopyFiles } from '../js/microscopy/microscopy-import.js';
 import { normalizeSeriesEntryForManifest } from '../js/series/series-contract.js';
-import { seriesPersistenceKey } from '../js/series/series-identity.js';
+import { seriesPersistenceKey } from '../js/core/series-identity.js';
 import {
   assertMacWindowControlsAvoidSidebar,
   assertShellFits,
@@ -842,6 +842,7 @@ test('Electron runtime imports ROI sidecars with local OME-TIFF launches', async
   try {
     await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'roi-sidecar-cells', null, { timeout: 20_000 });
     await page.waitForFunction(() => document.querySelectorAll('[data-roi-result-row]').length === 2, null, { timeout: 10_000 });
+    await page.waitForFunction(() => document.querySelectorAll('#overlay-svg .roi-group').length === 2, null, { timeout: 10_000 });
     const imported = await page.evaluate(async () => {
       const { state } = await import('/js/core/state.js');
       const series = state.manifest.series[state.seriesIdx];

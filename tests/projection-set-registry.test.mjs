@@ -60,6 +60,24 @@ test('registerProjectionSet upserts runtime and manifest projection set records'
   assert.equal(state.projectionSets, undefined);
 });
 
+test('registerProjectionSet replaces live projectionSets through setManifestCollections', () => {
+  const original = [];
+  state.manifest = { series: [], projectionSets: original };
+  const record = registerProjectionSet(state.manifest, {
+    slug: 'live_dx',
+    name: 'Live DX',
+    modality: 'DX',
+    slices: 2,
+    isProjectionSet: true,
+  });
+
+  assert.equal(record.id, 'live_dx_projection_set');
+  assert.notEqual(state.manifest.projectionSets, original);
+  assert.equal(original.length, 0);
+  assert.equal(state.manifest.projectionSets.length, 1);
+  assert.equal(state.manifest.projectionSets[0].projectionCount, 2);
+});
+
 test('registerProjectionSet preserves returned cloud projection metadata', () => {
   const manifest = { series: [], projectionSets: [] };
   const record = registerProjectionSet(manifest, {

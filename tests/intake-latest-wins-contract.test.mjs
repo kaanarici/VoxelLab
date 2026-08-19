@@ -82,11 +82,11 @@ test('desktop intake drain runs only the latest queued payload after active work
 });
 
 test('post-selection microscopy sidecars remain bound to the imported series', () => {
-  const uploadModal = source('../js/projects/study-upload-modal.js');
+  const localImport = source('../js/intake/run-local-import.js');
 
-  assert.match(uploadModal, /const isSelectedSeriesActive = \(\) => \(/);
-  assert.match(uploadModal, /await selectSeries\(selectedIndex\);\s+if \(!isSelectedSeriesActive\(\)\) return;/);
-  assert.match(uploadModal, /importImageJRoiSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
-  assert.match(uploadModal, /applyRecipeSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
-  assert.match(uploadModal, /importRoiSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
+  assert.match(localImport, /const isSelectedSeriesActive = \(\) => \(/);
+  assert.match(localImport, /await selectSeries\(selectedIndex\);\s+if \(!isSelectedSeriesActive\(\)\) return;/);
+  assert.match(localImport, /importImageJRoiSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
+  assert.match(localImport, /applyRecipeSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
+  assert.match(localImport, /importRoiSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
 });

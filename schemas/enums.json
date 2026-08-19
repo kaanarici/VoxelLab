@@ -1,0 +1,29 @@
+{
+  "orthonormalTolerance": 0.001,
+  "sliceAxisAlignmentMin": 0.9999,
+  "projectionModalities": ["CR", "DX", "IO", "MG", "PX", "RF", "XA"],
+  "projectionKinds": ["cbct", "parallel-beam", "tomosynthesis", "unknown", "xray"],
+  "projectionStatuses": [
+    "reconstructed",
+    "reconstruction-failed",
+    "reconstruction-pending",
+    "requires-calibration",
+    "requires-reconstruction"
+  ],
+  "geometryKindCapability": {
+    "derivedVolume": "display-volume",
+    "imageStack": "2d-only",
+    "microscopyStack": "2d-only",
+    "projectionSet": "requires-reconstruction",
+    "singleImage": "2d-only",
+    "singleProjection": "2d-only",
+    "ultrasoundSource": "requires-reconstruction",
+    "volumeStack": "display-volume"
+  },
+  "derivedKinds": ["derived-volume", "registration", "rtdose", "rtstruct", "seg", "sr"],
+  "sourceRecordVersions": [1, 2],
+  "projectionGeometries": ["circular-cbct", "limited-angle-tomo", "parallel-beam-stack"],
+  "ultrasoundModes": ["stacked-sector", "tracked-freehand-sector"],
+  "ultrasoundProbeGeometries": ["curvilinear", "linear", "sector"],
+  "registrationTransforms": ["rigid", "translation"]
+}

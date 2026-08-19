@@ -38,7 +38,7 @@ test('cachedFetchResponse sends the local token for proxy-asset requests', async
   };
 
   const { loadConfig } = await import('../js/config.js');
-  const { cachedFetchResponse } = await import('../js/core/cached-fetch.js');
+  const { cachedFetchResponse } = await import('../js/cached-fetch.js');
   await loadConfig();
   const proxyUrl = '/api/proxy-asset?url=https%3A%2F%2Fr2.example%2Fslice.png';
   const response = await cachedFetchResponse(proxyUrl);
@@ -54,7 +54,7 @@ test('cachedFetchResponse sends the local token for proxy-asset requests', async
 
 test('proxy detection rejects cross-origin lookalike URLs', async () => {
   globalThis.location = new URL('http://127.0.0.1/');
-  const { isLocalProxyAssetUrl } = await import('../js/core/cached-fetch.js');
+  const { isLocalProxyAssetUrl } = await import('../js/cached-fetch.js');
 
   assert.equal(isLocalProxyAssetUrl('/api/proxy-asset?url=x'), true);
   assert.equal(isLocalProxyAssetUrl('https://evil.example/api/proxy-asset?url=x'), false);
@@ -75,7 +75,7 @@ test('trimCacheEntries enforces the hard entry limit while preserving the active
       return true;
     },
   };
-  const { trimCacheEntries } = await import('../js/core/cached-fetch.js');
+  const { trimCacheEntries } = await import('../js/cached-fetch.js');
 
   const removed = await trimCacheEntries(cache, 3, entries[0]);
 

@@ -3,6 +3,7 @@
 import { $, closeTopModal } from './dom.js';
 import { state } from './core/state.js';
 import { toggleAskMode } from './ask-mode.js';
+import { getAskSession } from './ask-session.js';
 import { drawMeasurements, toggleMeasure } from './roi/measure.js';
 import { toggleCine } from './cine.js';
 import { runShortcutEvent } from './keyboard-shortcuts.js';
@@ -71,7 +72,7 @@ export function wireKeyboardShortcuts(deps) {
       if (state.measurePending) { setMeasurePending(null); drawMeasurements(); return; }
       if (state.measureMode) { toggleMeasure(); return; }
       if (state.annotateMode) { toggleAnnotate(); return; }
-      if (state.askMode) { toggleAskMode(); return; }
+      if (getAskSession().mode) { toggleAskMode(); return; }
       if (isROIMode()) {
         cancelROI(); toggleROI(currentROIMode()); $('view-xform').classList.remove('roi-mode'); return;
       }

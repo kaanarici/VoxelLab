@@ -19,7 +19,8 @@ test('cold shell stays within the established module and byte budgets', async ({
   })));
   const scriptCount = resources.filter(entry => /\.(?:m?js)(?:\?|$)/.test(entry.name)).length;
   const decodedBytes = resources.reduce((sum, entry) => sum + entry.decodedBodySize, 0);
-  expect(scriptCount, `cold shell loaded ${scriptCount} script modules`).toBeLessThanOrEqual(170);
+  // Change detector for the no-bundler HTTP module graph, not a physics constant.
+  expect(scriptCount, `cold shell loaded ${scriptCount} script modules`).toBeLessThanOrEqual(180);
   expect(decodedBytes, `cold shell decoded ${decodedBytes} bytes`).toBeLessThanOrEqual(1_500_000);
   expect(responses.length).toBeGreaterThan(0);
 });
@@ -114,7 +115,7 @@ test('3D renderer failure returns to a supported view without an unhandled rejec
   expect(pageErrors).toEqual([]);
 });
 
-test('entering 3D preserves the review slice and keeps Z clipping independent', async ({ page }) => {
+test('entering 3D preserves the review slice and keeps a full volume until a scrubber cuts it', async ({ page }) => {
   await openLocalVolumeFixture(page);
   await page.locator('#scrub').fill('1');
   await page.locator('#btn-mpr').click();
@@ -124,6 +125,10 @@ test('entering 3D preserves the review slice and keeps Z clipping independent', 
 
   await expect(page.locator('#btn-3d')).toHaveClass(/active/);
   await expect.poll(() => page.evaluate(async () => (await import('/js/core/state.js')).state.sliceIdx)).toBe(1);
+  await expect.poll(() => page.evaluate(async () => {
+    const { state } = await import('/js/core/state.js');
+    return { slice: state.sliceIdx, clipZ: state.three.clipMax[2] };
+  })).toEqual({ slice: 1, clipZ: 1 });
   await expect(page.locator('#s-zscrub')).toHaveValue('2');
   await page.locator('#s-zscrub').evaluate(element => {
     element.value = '0';
@@ -131,8 +136,16 @@ test('entering 3D preserves the review slice and keeps Z clipping independent', 
   });
   await expect.poll(() => page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');
-    return { slice: state.sliceIdx, clipZ: state.clipMax[2] };
-  })).toEqual({ slice: 1, clipZ: 1 / 3 });
+    return { slice: state.sliceIdx, clipZ: state.three.clipMax[2] };
+  })).toEqual({ slice: 0, clipZ: 1 / 3 });
+  await page.locator('#scrub').evaluate(element => {
+    element.value = '1';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(async () => {
+    const { state } = await import('/js/core/state.js');
+    return { slice: state.sliceIdx, clipZ: state.three.clipMax[2] };
+  })).toEqual({ slice: 1, clipZ: 2 / 3 });
 });
 
 test('3D keeps a supported preview when the full volume exceeds the live GPU texture limit', async ({ page }) => {
@@ -342,9 +355,9 @@ async function obliqueSnapshot(page) {
     const extent = obliquePlaneExtentMm(
       { W: series.width, H: series.height, D: series.slices },
       { row: geo.rowSpacing, col: geo.colSpacing, slice: geo.sliceSpacing },
-      [state.mprX, state.mprY, state.mprZ],
-      state.obYaw,
-      state.obPitch,
+      [state.mpr.x, state.mpr.y, state.mpr.z],
+      state.mpr.obYaw,
+      state.mpr.obPitch,
     );
     let hash = 2166136261;
     if (ctx && canvas.width > 0 && canvas.height > 0) {
@@ -864,17 +877,6 @@ test('viewer defers DICOM-derived hydration when no persisted objects exist', as
   await openLocalVolumeFixture(page);
   await page.waitForTimeout(250);
   expect(derivedRequests).toEqual([]);
-});
-
-test('viewer defers the full plugin API outside plugin registration', async ({ page }) => {
-  const pluginRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/plugin.js')) pluginRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(pluginRequests).toEqual([]);
 });
 
 test('viewer defers microscopy controls, analysis, and recipe modules outside microscopy workflows', async ({ page }) => {

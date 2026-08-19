@@ -10,7 +10,9 @@ const {
   capabilityLabel,
   geometryKindForSeries,
   reconstructionCapabilityForSeries,
-} = await import('../js/series/series-capabilities.js');
+} = await import('../js/core/series-capabilities.js');
+const { state } = await import('../js/core/state.js');
+const { patchManifestSeries } = await import('../js/core/state/viewer-commands.js');
 const { overlayKindsForSeries, setSeriesOverlayHints } = await import('../js/runtime/overlay-kinds.js');
 
 test('volume stacks remain MPR/3D-capable by default', () => {
@@ -322,21 +324,51 @@ test('overlay capability consumer normalizes legacy flags into canonical overlay
   const overlays = overlayKindsForSeries(series);
 
   assert.deepEqual(overlays.availableKinds, ['tissue', 'labels', 'heatmap']);
-  assert.equal(overlays.byKind.tissue.manifestFlag, 'hasSeg');
-  assert.equal(overlays.byKind.labels.manifestFlag, 'hasRegions');
-  assert.equal(overlays.byKind.heatmap.manifestFlag, 'hasSym');
+  assert.equal(overlays.byKind.tissue.available, true);
+  assert.equal(overlays.byKind.labels.available, true);
+  assert.equal(overlays.byKind.heatmap.available, true);
   assert.equal(overlays.byKind.fusion.available, false);
+  assert.deepEqual(Object.keys(overlays.byKind), ['tissue', 'labels', 'heatmap', 'fusion']);
+  assert.deepEqual(Object.keys(overlays.byKind.tissue), ['available']);
+  assert.equal(series.hasSeg, true);
+  assert.equal(series.hasRegions, true);
+  assert.equal(series.hasSym, true);
+  assert.equal('kind' in overlays.byKind.tissue, false);
+  assert.equal('manifestFlag' in overlays.byKind.tissue, false);
+  assert.equal('availableFlag' in overlays.byKind.tissue, false);
+  assert.equal('source' in overlays.byKind.tissue, false);
+  assert.equal('legacyKinds' in overlays.byKind.tissue, false);
+  assert.equal('legacyMap' in overlays, false);
 });
 
 test('overlay capability consumer preserves canonical local SEG hints behind the labels slot', () => {
-  const series = { hasRegions: true };
+  const series = { slug: 'overlay_hint_seg', hasRegions: true };
   setSeriesOverlayHints(series, {
-    labels: { source: 'dicom-seg', legacyKinds: ['seg'] },
+    labels: { available: true },
   });
 
   const overlays = overlayKindsForSeries(series);
 
-  assert.equal(overlays.byKind.labels.source, 'dicom-seg');
-  assert.deepEqual(overlays.byKind.labels.legacyKinds, ['regions', 'seg']);
+  assert.equal(overlays.byKind.labels.available, true);
+  assert.equal('source' in overlays.byKind.labels, false);
+  assert.equal('legacyKinds' in overlays.byKind.labels, false);
+  assert.deepEqual(overlays.availableKinds, ['labels']);
+});
+
+test('overlay hints stay keyed by series identity after the live record is replaced', () => {
+  const original = { slug: 'overlay_hint_replace', hasRegions: false };
+  state.manifest = { series: [original] };
+  setSeriesOverlayHints(original, {
+    labels: { available: true },
+  });
+
+  assert.equal(overlayKindsForSeries(original).byKind.labels.available, true);
+
+  const next = patchManifestSeries(original, { hasRegions: true });
+  const overlays = overlayKindsForSeries(next);
+
+  assert.notEqual(next, original);
+  assert.equal(next.hasRegions, true);
+  assert.equal(overlays.byKind.labels.available, true);
   assert.deepEqual(overlays.availableKinds, ['labels']);
 });

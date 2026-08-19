@@ -7,8 +7,8 @@
 // absolute keys. After replacing content at the same URL, callers
 // invalidate(url) before re-fetch (see analysis-findings.js, cloud.js).
 
-import { loadConfig, localApiHeaders } from '../config.js';
-import { IMAGE_CACHE_NAME } from './dependencies.js';
+import { loadConfig, localApiHeaders } from './config.js';
+import { IMAGE_CACHE_NAME } from './core/dependencies.js';
 
 const INFLIGHT = new Map();
 let _cachePromise = null;

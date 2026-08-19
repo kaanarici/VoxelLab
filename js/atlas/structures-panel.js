@@ -124,12 +124,12 @@ export function renderStructuresPanel() {
   const host = $('label-list');
   if (!panel || !host) return;
 
-  const regions = state.regionMeta?.regions;
+  const regions = state.overlays.regionMeta?.regions;
   if (!regions) { panel.hidden = true; return; }
   panel.classList.remove('panel-init-hidden');
   panel.hidden = false;
 
-  const colors = state.regionMeta.colors || {};
+  const colors = state.overlays.regionMeta.colors || {};
   const entries = Object.entries(regions)
     .map(([k, r]) => ({ id: +k, ...r }))
     .sort((a, b) => (b.mL || 0) - (a.mL || 0));

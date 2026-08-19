@@ -1,5 +1,6 @@
 /* global URL */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { makeRectParticlePlane, PARTICLE_PLANE } from './fixtures/microscopy/particle-ground-truth.mjs';
@@ -29,7 +30,7 @@ const {
   runPixelwiseColocalization,
 } = await import('../js/microscopy/microscopy-analysis.js');
 const { validateAnalysisOps } = await import('../js/microscopy/microscopy-workflow-recipe.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 
 function setup() {
   storage.clear();
@@ -238,4 +239,10 @@ test('validateAnalysisOps is fail-closed', () => {
   assert.equal(validateAnalysisOps({
     analysisOps: [{ op: 'pixelwise-colocalization', inputs: { cA: 0, cB: 0, z: 0, t: 0 }, params: { thresholdA: 1, thresholdB: 2 } }],
   }, series, { ...DIMS, sizeC: 2 }).code, 'analysis_op_axis_mismatch');
+});
+
+test('analysis module does not raw-assign isolated analysis maps', () => {
+  const src = readFileSync(new URL('../js/microscopy/microscopy-analysis.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /writeHost/);
+  assert.doesNotMatch(src, /host\[mapKey\]\s*=/);
 });

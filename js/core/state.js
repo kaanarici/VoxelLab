@@ -1,69 +1,16 @@
-// Global viewer state. Single source of truth, now wrapped in an
-// observable proxy so renderers can subscribe instead of relying on
-// every mutation site to remember a redraw call.
+// Global viewer state. App document + runtime buffers behind one proxy.
+// App writes go through viewer-commands. Runtime caches use viewer-runtime
+// setters. `_` roots and cmpStacks are raw maps; entry writes use
+// setPassthroughRootEntry so subscribers still hear them.
 
-import { APP_ALIASES, createInitialAppModel } from './state/app-model.js';
+import { createInitialAppModel } from './state/app-model.js';
 import { createInitialRuntimeState } from './state/runtime-state.js';
+import { RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE } from './viewer-session-shape.js';
 
-// Local-backend detection. This controls browser features that depend on
-// same-origin helper APIs such as `/api/analyze`, `/api/ask`, and `/api/consult`.
-// Static/public builds can still load committed sidecars and remote assets.
-//
-// Preferred manual override: `?localBackend=1` or `?localBackend=0`.
-// Legacy alias kept for compatibility: `?hosted=0|1`, where `hosted=1`
-// maps to `localBackend=0`.
-function parseBooleanQuery(value) {
-  if (value == null) return null;
-  const normalized = String(value).trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-  return null;
-}
-
-function hostnameLooksLocal(hostname) {
-  const value = String(hostname || '').trim().toLowerCase();
-  if (!value) return true;
-  if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(value)) return true;
-  if (value.endsWith('.local')) return true;
-  if (/^10(?:\.\d{1,3}){3}$/.test(value)) return true;
-  if (/^192\.168(?:\.\d{1,3}){2}$/.test(value)) return true;
-  const private172 = value.match(/^172\.(\d{1,3})(?:\.\d{1,3}){2}$/);
-  if (private172) {
-    const secondOctet = Number(private172[1]);
-    if (secondOctet >= 16 && secondOctet <= 31) return true;
-  }
-  return false;
-}
-
-const _location = globalThis.location ?? { search: '', hostname: '' };
-const _query = new URLSearchParams(_location.search);
-const _forcedLocalBackend = parseBooleanQuery(_query.get('localBackend'));
-const _legacyHosted = parseBooleanQuery(_query.get('hosted'));
-export const HAS_LOCAL_BACKEND = _forcedLocalBackend != null
-  ? _forcedLocalBackend
-  : _legacyHosted != null
-  ? !_legacyHosted
-  : hostnameLooksLocal(_location.hostname);
-
-// Extends APP_ALIASES with runtime image stack roots (segImgs, …).
-const ALIASES = {
-  ...APP_ALIASES,
-  segImgs: 'segImgs',
-  segVoxels: 'segVoxels',
-  symImgs: 'symImgs',
-  symVoxels: 'symVoxels',
-  regionImgs: 'regionImgs',
-  regionVoxels: 'regionVoxels',
-  fusionImgs: 'fusionImgs',
-  fusionVoxels: 'fusionVoxels',
-};
-
-const ALIAS_ENTRIES = Object.entries(ALIASES).map(([key, path]) => [key, path.split('.')]);
 const listeners = new Map();
 const proxyCache = new WeakMap();
 const proxyTargets = new WeakMap();
 const pending = new Map();
-// Skip nested proxying for compare peer stacks.
 const PASSTHROUGH_ROOT_KEYS = new Set(['cmpStacks']);
 
 let batchDepth = 0;
@@ -80,10 +27,6 @@ if (duplicateRootKeys.length) {
 
 function rootSource(key) {
   return runtimeRootKeys.has(key) ? runtimeRaw : appRaw;
-}
-
-function isAliasKey(key) {
-  return String(key) === key && Object.hasOwn(ALIASES, key);
 }
 
 function createLinkedRaw() {
@@ -117,10 +60,7 @@ function isProxyable(value) {
 
 function toPath(key) {
   if (Array.isArray(key)) return key.map(String);
-  const parts = String(key).split('.');
-  const alias = Object.hasOwn(ALIASES, parts[0]) ? ALIASES[parts[0]] : null;
-  if (!alias) return parts;
-  return [...alias.split('.'), ...parts.slice(1)];
+  return String(key).split('.');
 }
 
 function resolvePath(path) {
@@ -140,56 +80,14 @@ function getAtPath(target, path) {
   return cur;
 }
 
-function setAtPath(target, path, value) {
-  if (target === raw) {
-    const resolved = resolvePath(path);
-    return setAtPath(resolved.target, resolved.path, value);
-  }
-  const parent = getAtPath(target, path.slice(0, -1));
-  const key = path[path.length - 1];
-  if (!parent) return false;
-  const next = unwrap(value);
-  if (Object.is(parent[key], next)) return true;
-  parent[key] = next;
-  markChanged(path);
-  return true;
-}
-
-function deleteAtPath(target, path) {
-  if (target === raw) {
-    const resolved = resolvePath(path);
-    return deleteAtPath(resolved.target, resolved.path);
-  }
-  const parent = getAtPath(target, path.slice(0, -1));
-  const key = path[path.length - 1];
-  if (!parent || !(key in parent)) return true;
-  delete parent[key];
-  markChanged(path);
-  return true;
-}
-
 function unwrap(value) {
   return proxyTargets.get(value) || value;
-}
-
-function matchAlias(path, aliasPath) {
-  if (path.length < aliasPath.length) return null;
-  for (let i = 0; i < aliasPath.length; i++) {
-    if (path[i] !== aliasPath[i]) return null;
-  }
-  return path.slice(aliasPath.length);
 }
 
 function expandKeys(path) {
   const keys = new Set();
   for (let i = path.length; i > 0; i--) {
     keys.add(path.slice(0, i).join('.'));
-  }
-  for (const [alias, aliasPath] of ALIAS_ENTRIES) {
-    const suffix = matchAlias(path, aliasPath);
-    if (!suffix) continue;
-    keys.add(alias);
-    if (suffix.length) keys.add(`${alias}.${suffix.join('.')}`);
   }
   return keys;
 }
@@ -234,18 +132,12 @@ function createProxy(target, path = []) {
 
   const proxy = new Proxy(target, {
     get(obj, key) {
-      if (isAliasKey(key) && path.length === 0) {
-        return createProxy(getAtPath(raw, ALIASES[key].split('.')), toPath(key));
-      }
       if (String(key) === key && path.length === 0 && (key.startsWith('_') || PASSTHROUGH_ROOT_KEYS.has(key))) {
         return obj[key];
       }
       return createProxy(obj[key], [...path, String(key)]);
     },
     set(obj, key, value) {
-      if (isAliasKey(key) && path.length === 0) {
-        return setAtPath(raw, ALIASES[key].split('.'), value);
-      }
       const next = unwrap(value);
       if (Object.is(obj[key], next)) return true;
       obj[key] = next;
@@ -253,9 +145,6 @@ function createProxy(target, path = []) {
       return true;
     },
     deleteProperty(obj, key) {
-      if (isAliasKey(key) && path.length === 0) {
-        return deleteAtPath(raw, ALIASES[key].split('.'));
-      }
       if (!(key in obj)) return true;
       delete obj[key];
       markChanged([...path, String(key)]);
@@ -305,10 +194,9 @@ function buildSnapshot() {
   snapshot.voxelsKey = runtimeRaw.voxelsKey;
   snapshot.cmpStacks = cloneValue(runtimeRaw.cmpStacks);
   snapshot.viewerSession = cloneValue(runtimeRaw.viewerSession);
-  snapshot.segImgs = cloneValue(runtimeRaw.segImgs);
-  snapshot.symImgs = cloneValue(runtimeRaw.symImgs);
-  snapshot.regionImgs = cloneValue(runtimeRaw.regionImgs);
-  snapshot.fusionImgs = cloneValue(runtimeRaw.fusionImgs);
+  for (const cache of Object.values(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE)) {
+    snapshot[cache.imgs] = cloneValue(runtimeRaw[cache.imgs]);
+  }
   snapshot.hrVoxels = cloneValue(runtimeRaw.hrVoxels);
   snapshot.hrKey = runtimeRaw.hrKey;
   return snapshot;
@@ -323,7 +211,6 @@ function deepFreeze(value) {
 
 export const state = createProxy(raw);
 
-/** Subscribe to a state key or namespace path and receive `(value, key)` on changes. */
 export function subscribe(key, fn) {
   const name = String(key);
   if (!listeners.has(name)) listeners.set(name, new Set());
@@ -331,7 +218,6 @@ export function subscribe(key, fn) {
   return () => listeners.get(name)?.delete(fn);
 }
 
-/** Batch synchronous or async state writes and flush subscriptions once at the end. */
 export function batch(fn) {
   batchDepth++;
   const finish = () => {
@@ -351,7 +237,6 @@ export function batch(fn) {
   }
 }
 
-/** Set one entry inside a passthrough root bucket and notify subscribers. */
 export function setPassthroughRootEntry(rootKey, entryKey, value) {
   const bucket = rootSource(rootKey)[rootKey];
   if (!isObject(bucket)) return false;
@@ -362,7 +247,6 @@ export function setPassthroughRootEntry(rootKey, entryKey, value) {
   return true;
 }
 
-/** Delete one entry inside a passthrough root bucket and notify subscribers. */
 export function deletePassthroughRootEntry(rootKey, entryKey) {
   const bucket = rootSource(rootKey)[rootKey];
   if (!isObject(bucket) || !(entryKey in bucket)) return true;
@@ -371,12 +255,6 @@ export function deletePassthroughRootEntry(rootKey, entryKey) {
   return true;
 }
 
-/** Return a deep-frozen snapshot that plugins and tests can read without mutating live state. */
 export function getStateSnapshot() {
-  const snapshot = buildSnapshot();
-  for (const [alias, path] of ALIAS_ENTRIES) {
-    const snapshotValue = Object.hasOwn(snapshot, path[0]) ? getAtPath(snapshot, path) : undefined;
-    snapshot[alias] = snapshotValue === undefined ? cloneValue(getAtPath(raw, path)) : snapshotValue;
-  }
-  return deepFreeze(snapshot);
+  return deepFreeze(buildSnapshot());
 }

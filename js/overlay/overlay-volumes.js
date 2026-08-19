@@ -5,30 +5,18 @@ import { createImageBitmapBatch } from '../image-bitmap-batch.js';
 import { flattenImageBitmapsInWorker } from '../volume/volume-worker-client.js';
 import { hasDenseLoadedImages, workerFlattenAvailable } from '../volume/volume-image-readiness.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
+import { OVERLAY_CACHE_BY_KIND, OVERLAY_CACHE_BY_TYPE, overlayImgsKey, overlayVoxelsKey } from '../runtime/overlay-cache-keys.js';
 import { syncViewerRuntimeSession } from '../runtime/viewer-session.js';
-import { seriesIdentityKey } from '../series/series-identity.js';
+import { seriesIdentityKey } from '../core/series-identity.js';
+import { setOverlayVoxels } from '../runtime/viewer-runtime.js';
 import { readImageByteData } from './overlay-data.js';
 
-const TYPES = ['seg', 'regions', 'sym', 'fusion'];
 const _pending = new Map();
 let _onReady = () => {};
 
 function stackForType(type) {
-  return {
-    seg: state.segImgs,
-    regions: state.regionImgs,
-    sym: state.symImgs,
-    fusion: state.fusionImgs,
-  }[type] || null;
-}
-
-function stateKeyForType(type) {
-  return {
-    seg: 'segVoxels',
-    regions: 'regionVoxels',
-    sym: 'symVoxels',
-    fusion: 'fusionVoxels',
-  }[type];
+  const key = overlayImgsKey(type);
+  return key ? state[key] : null;
 }
 
 function localRegionVolume(series, W, H, D) {
@@ -76,7 +64,8 @@ async function buildVolumeFromWorker(type, seriesKey, imgs, W, H, D, requestId, 
 }
 
 function buildVolumeFromStack(type, series, W, H, D) {
-  if (type === 'regions') {
+  const cache = OVERLAY_CACHE_BY_TYPE[type];
+  if (cache?.usesLocalRegionVolume) {
     const local = localRegionVolume(series, W, H, D);
     if (local) return local;
   }
@@ -100,9 +89,8 @@ function buildVolumeFromStack(type, series, W, H, D) {
         || seriesIdentityKey(activeSeries, state.manifest) !== seriesKey
         || stackForType(type) !== imgs
       ) return;
-      const stateKey = stateKeyForType(type);
-      if (!stateKey) return;
-      state[stateKey] = voxels;
+      if (!overlayVoxelsKey(type)) return;
+      setOverlayVoxels(type, voxels);
       syncViewerRuntimeSession(activeSeries);
       _onReady(type);
     });
@@ -121,20 +109,22 @@ function buildVolumeFromStack(type, series, W, H, D) {
 
 /**
  * Synchronously return the full region label volume for a series, building it
- * from the local label slices or the decoded region image stack when
- * state.regionVoxels is not yet cached. Used by mesh export, which needs the
+ * from the local label slices or the decoded region image stack when the
+ * labels voxel slot is not yet cached. Used by mesh export, which needs the
  * complete 3D mask regardless of whether the colour overlay is enabled. Returns
  * null when the source slices are not all decoded yet.
  */
 export function ensureRegionVoxelsSync(series = state.manifest?.series?.[state.seriesIdx]) {
   if (!series) return null;
+  const cache = OVERLAY_CACHE_BY_KIND.labels;
   const W = series.width;
   const H = series.height;
   const D = series.slices;
-  if (state.regionVoxels?.length === W * H * D) return state.regionVoxels;
+  const cached = state[cache.voxels];
+  if (cached?.length === W * H * D) return cached;
   const local = localRegionVolume(series, W, H, D);
   if (local) return local;
-  const imgs = state.regionImgs;
+  const imgs = state[cache.imgs];
   if (!hasDenseLoadedImages(imgs, D)) return null;
   if (imgs._voxels?.length === W * H * D) return imgs._voxels;
   const voxels = new Uint8Array(W * H * D);
@@ -156,18 +146,16 @@ export function ensureActiveOverlayVolumes() {
   const H = series.height;
   const D = series.slices;
 
-  for (const type of TYPES) {
-    const stateKey = stateKeyForType(type);
+  for (const [type, entry] of Object.entries(OVERLAY_CACHE_BY_TYPE)) {
+    const stateKey = entry.voxels;
     if (!stateKey) continue;
-    const enabled = {
-      seg: overlays.tissue.enabled,
-      regions: overlays.labels.enabled,
-      sym: overlays.heatmap.enabled,
-      fusion: overlays.fusion.enabled,
-    }[type];
     const current = state[stateKey];
-    const built = enabled ? buildVolumeFromStack(type, series, W, H, D) : null;
-    state[stateKey] = enabled ? (built || current || null) : null;
+    // Disable is a paint flag. Evicting voxels here would break mesh export
+    // and any other consumer that needs the cached mask while the overlay is off.
+    if (!overlays[entry.kind]?.enabled) continue;
+    const built = buildVolumeFromStack(type, series, W, H, D);
+    if (!built || current === built || current?.length === built.length) continue;
+    setOverlayVoxels(type, built);
   }
   syncViewerRuntimeSession(series);
 }

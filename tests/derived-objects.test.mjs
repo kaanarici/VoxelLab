@@ -36,6 +36,18 @@ test('validateDerivedObjectBinding accepts a valid binding', () => {
   assert.deepEqual(errors, []);
 });
 
+test('validateDerivedObjectBinding accepts empty FrameOfReferenceUID when slug-bound', () => {
+  const errors = validateDerivedObjectBinding({
+    derivedKind: 'seg',
+    frameOfReferenceUID: '',
+    sourceSeriesSlug: 'local_nifti_source',
+    requiresRegistration: false,
+    affineCompatibility: 'exact',
+  });
+
+  assert.deepEqual(errors, []);
+});
+
 test('validateDerivedObjectBinding accepts a slug fallback when no DICOM UID exists', () => {
   const errors = validateDerivedObjectBinding({
     derivedKind: 'seg',

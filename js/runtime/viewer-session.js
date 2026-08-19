@@ -1,11 +1,10 @@
 import { batch, state } from '../core/state.js';
 import { beginPerfTrace, dropPendingPerfTraces, endPerfTrace, hasPendingPerfTrace } from '../core/perf-trace.js';
-import { activeOverlayStateForSeries } from './active-overlay-state.js';
-import { overlaySessionForSeries, hasHrVolume, reviewReadinessForSeries } from './review-readiness.js';
 import {
   createViewerSessionState,
   VIEWER_SESSION_STAGE_ORDER,
-} from './viewer-session-shape.js';
+} from '../core/viewer-session-shape.js';
+import { overlaySessionForSeries, hasHrVolume, reviewReadinessForSeries } from './review-readiness.js';
 
 const PERF_NAMES = [
   'runtime-first-slice',
@@ -14,17 +13,6 @@ const PERF_NAMES = [
   'runtime-quality-ready',
   'runtime-3d-ready',
 ];
-
-function overlayKindsForSeries(series) {
-  const active = activeOverlayStateForSeries(series);
-  const kinds = createViewerSessionState().overlayKinds;
-  for (const kind of Object.keys(kinds)) {
-    kinds[kind].available = !!active[kind]?.available;
-    kinds[kind].enabled = !!active[kind]?.enabled;
-    kinds[kind].ready = !!active[kind]?.ready;
-  }
-  return kinds;
-}
 
 function stageForReadiness(readiness) {
   let stage = 'idle';
@@ -62,11 +50,10 @@ function startRuntimePerf(session) {
   for (const name of PERF_NAMES) beginPerfTrace(name, detail);
 }
 
-// Shape: { stage: "overlay-ready", baseSource: "hr", overlayKinds: { labels: ... } }.
+// Shape: { stage: "overlay-ready", baseSource: "hr", overlaySession: { labels: ... } }.
 export function syncViewerRuntimeSession(series = state.manifest?.series?.[state.seriesIdx]) {
   const session = state.viewerSession;
   if (!series || session.slug !== series.slug) return session;
-  const overlayKinds = overlayKindsForSeries(series);
   const overlaySession = overlaySessionForSeries(series);
   const readiness = reviewReadinessForSeries(series, { overlaySession });
   const stage = stageForReadiness(readiness);
@@ -74,7 +61,6 @@ export function syncViewerRuntimeSession(series = state.manifest?.series?.[state
     session.seriesIdx = state.seriesIdx;
     session.baseSource = hasHrVolume(series) ? 'raw' : readiness.baseVolume ? 'png-stack' : '';
     session.firstSliceIdx = readiness.firstSlice ? state.sliceIdx : -1;
-    session.overlayKinds = overlayKinds;
     session.overlaySession = overlaySession;
     session.readiness = { ...readiness, stage };
   });

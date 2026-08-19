@@ -4,12 +4,15 @@ import { test } from 'node:test';
 globalThis.location = new URL('http://127.0.0.1/');
 
 const { state } = await import('../js/core/state.js');
+const { beginViewerRuntimeSession, resetViewerRuntimeSession, syncViewerRuntimeSession } = await import('../js/runtime/viewer-session.js');
 const {
-  beginViewerRuntimeSession,
-  resetViewerRuntimeSession,
-  syncViewerRuntimeSession,
-} = await import('../js/runtime/viewer-session.js');
-const { RUNTIME_OVERLAY_KIND_BY_TYPE } = await import('../js/runtime/viewer-session-shape.js');
+  OVERLAY_ENABLE_KINDS,
+  overlayEnableFromSeriesFlags,
+  overlayEnableSnapshot,
+  RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE,
+  RUNTIME_OVERLAY_KIND_BY_TYPE,
+  RUNTIME_OVERLAY_TYPE_BY_KIND,
+} = await import('../js/core/viewer-session-shape.js');
 
 function setSeriesState({
   slug = 'viewer_session_case',
@@ -32,23 +35,23 @@ function setSeriesState({
   state.hrVoxels = null;
   state.segVoxels = null;
   state.regionVoxels = null;
-  state.regionMeta = null;
+  state.overlays.regionMeta = null;
   state.symVoxels = null;
-  state.fusionSlug = '';
+  state.overlays.fusionSlug = '';
   state.fusionVoxels = null;
-  state.useSeg = false;
-  state.useRegions = false;
-  state.useSym = false;
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+  state.overlays.heatmap = false;
   state.threeRuntime.seriesIdx = -1;
   state.threeRuntime.mesh = null;
 }
 
 test('viewer runtime session tracks progressive readiness stages', () => {
   setSeriesState({ slug: 'runtime_progression', hasRaw: true, hasSeg: true, hasRegions: true, hasSym: true });
-  state.useSeg = true;
-  state.useRegions = true;
-  state.useSym = true;
-  state.fusionSlug = 'peer_series';
+  state.overlays.tissue = true;
+  state.overlays.labels = true;
+  state.overlays.heatmap = true;
+  state.overlays.fusionSlug = 'peer_series';
 
   beginViewerRuntimeSession(state.manifest.series[0], { requestId: 7 });
   assert.equal(state.viewerSession.readiness.stage, 'idle');
@@ -63,7 +66,7 @@ test('viewer runtime session tracks progressive readiness stages', () => {
 
   state.segVoxels = new Uint8Array(4 * 4 * 3);
   state.regionVoxels = new Uint8Array(4 * 4 * 3);
-  state.regionMeta = { colors: {}, legend: {} };
+  state.overlays.regionMeta = { colors: {}, legend: {} };
   state.symVoxels = new Uint8Array(4 * 4 * 3);
   state.fusionVoxels = new Uint8Array(4 * 4 * 3);
   syncViewerRuntimeSession();
@@ -80,11 +83,11 @@ test('viewer runtime session tracks progressive readiness stages', () => {
   assert.equal(state.viewerSession.baseSource, 'raw');
 });
 
-test('viewer runtime session exposes canonical overlay kinds without changing legacy flags', () => {
+test('viewer runtime session stores overlaySession in canonical kinds', () => {
   setSeriesState({ slug: 'overlay_kinds', hasSeg: true, hasRegions: true, hasSym: true });
-  state.useSeg = true;
-  state.useRegions = true;
-  state.fusionSlug = 'peer';
+  state.overlays.tissue = true;
+  state.overlays.labels = true;
+  state.overlays.fusionSlug = 'peer';
 
   beginViewerRuntimeSession(state.manifest.series[0], { requestId: 8 });
   const session = syncViewerRuntimeSession();
@@ -92,17 +95,32 @@ test('viewer runtime session exposes canonical overlay kinds without changing le
   assert.equal(RUNTIME_OVERLAY_KIND_BY_TYPE.seg, 'tissue');
   assert.equal(RUNTIME_OVERLAY_KIND_BY_TYPE.regions, 'labels');
   assert.equal(RUNTIME_OVERLAY_KIND_BY_TYPE.sym, 'heatmap');
-  assert.deepEqual(session.overlayKinds, {
-    tissue: { available: true, enabled: true, ready: false, sourceType: 'seg' },
-    labels: { available: true, enabled: true, ready: false, sourceType: 'regions' },
-    heatmap: { available: true, enabled: false, ready: false, sourceType: 'sym' },
-    fusion: { available: true, enabled: true, ready: false, sourceType: 'fusion' },
-  });
+  assert.equal(RUNTIME_OVERLAY_TYPE_BY_KIND.tissue, 'seg');
+  assert.equal(RUNTIME_OVERLAY_TYPE_BY_KIND.labels, 'regions');
+  assert.equal(RUNTIME_OVERLAY_TYPE_BY_KIND.heatmap, 'sym');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.seg.imgs, 'segImgs');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.seg.voxels, 'segVoxels');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.seg.bytes, 'segBytes');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.seg.availableFlag, 'hasSeg');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.fusion.bytes, 'fusionBytes');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.fusion.availableFlag, null);
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.fusion.refuseInOverlayStack, true);
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.fusion.peerSlugField, 'fusionSlug');
+  assert.equal(RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE.regions.needsRegionMeta, true);
+  assert.equal(session.overlaySession.tissue.enabled, true);
+  assert.equal(session.overlaySession.labels.enabled, true);
+  assert.equal(session.overlaySession.heatmap.enabled, false);
+  assert.equal(session.overlaySession.fusion.enabled, true);
+  assert.deepEqual(Object.keys(session.overlaySession), Object.values(RUNTIME_OVERLAY_KIND_BY_TYPE));
+  assert.equal('sourceType' in session.overlaySession.tissue, false);
+  assert.equal('sourceType' in session.overlaySession.labels, false);
+  assert.equal('sourceType' in session.overlaySession.heatmap, false);
+  assert.equal('sourceType' in session.overlaySession.fusion, false);
 });
 
 test('viewer runtime session does not report 3d-ready while enabled overlays are still warming', () => {
   setSeriesState({ slug: 'three_overlay_wait', hasRegions: true });
-  state.useRegions = true;
+  state.overlays.labels = true;
   state.voxels = new Uint8Array(4 * 4 * 3);
   state.threeRuntime.seriesIdx = 0;
   state.threeRuntime.mesh = {};
@@ -127,28 +145,22 @@ test('viewer runtime session reset clears the active selection state', () => {
     requestId: 0,
     baseSource: '',
     firstSliceIdx: -1,
-    overlayKinds: {
-      tissue: { available: false, enabled: false, ready: false, sourceType: 'seg' },
-      labels: { available: false, enabled: false, ready: false, sourceType: 'regions' },
-      heatmap: { available: false, enabled: false, ready: false, sourceType: 'sym' },
-      fusion: { available: false, enabled: false, ready: false, sourceType: 'fusion' },
-    },
     overlaySession: {
       tissue: {
-        available: false, enabled: false, currentSliceReady: false, volumeReady: false,
-        metaReady: false, blockingReason: '', sourceType: 'seg',
+        available: false, enabled: false, currentSliceReady: false, voxelsReady: false, volumeReady: false,
+        metaReady: false, blockingReason: '',
       },
       labels: {
-        available: false, enabled: false, currentSliceReady: false, volumeReady: false,
-        metaReady: false, blockingReason: '', sourceType: 'regions',
+        available: false, enabled: false, currentSliceReady: false, voxelsReady: false, volumeReady: false,
+        metaReady: false, blockingReason: '',
       },
       heatmap: {
-        available: false, enabled: false, currentSliceReady: false, volumeReady: false,
-        metaReady: false, blockingReason: '', sourceType: 'sym',
+        available: false, enabled: false, currentSliceReady: false, voxelsReady: false, volumeReady: false,
+        metaReady: false, blockingReason: '',
       },
       fusion: {
-        available: false, enabled: false, currentSliceReady: false, volumeReady: false,
-        metaReady: false, blockingReason: '', sourceType: 'fusion',
+        available: false, enabled: false, currentSliceReady: false, voxelsReady: false, volumeReady: false,
+        metaReady: false, blockingReason: '',
       },
     },
     readiness: {
@@ -165,4 +177,26 @@ test('viewer runtime session reset clears the active selection state', () => {
       compareReady: false,
     },
   });
+});
+
+test('OVERLAY_ENABLE_KINDS is derived from cache rows with an availableFlag', () => {
+  assert.deepEqual(OVERLAY_ENABLE_KINDS, ['tissue', 'labels', 'heatmap']);
+});
+
+test('overlayEnableSnapshot walks persist kinds instead of listing them', () => {
+  assert.deepEqual(
+    overlayEnableSnapshot({ useBrain: 1, tissue: 1, labels: 0, heatmap: true, extra: true }),
+    { useBrain: true, tissue: true, labels: false, heatmap: true },
+  );
+});
+
+test('overlayEnableFromSeriesFlags walks the cache table, not a handwritten hasSeg map', () => {
+  assert.deepEqual(
+    overlayEnableFromSeriesFlags({ hasSeg: true, hasRegions: false, hasSym: true }),
+    { tissue: true, labels: false, heatmap: true },
+  );
+  assert.deepEqual(
+    overlayEnableFromSeriesFlags({}),
+    { tissue: false, labels: false, heatmap: false },
+  );
 });

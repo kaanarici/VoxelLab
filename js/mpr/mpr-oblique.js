@@ -25,6 +25,7 @@
 import { getFusedWLLut, getFusedWLU32 } from '../colormap.js';
 import { drawCompositeSlice } from '../slice-compositor.js';
 import { dot3 } from '../core/geometry.js';
+import { OVERLAY_CACHE_BY_KIND, overlayBytesPresent } from '../runtime/overlay-cache-keys.js';
 import { projectDiscreteSlabLabel, projectVolumeSample } from './mpr-projection.js';
 import { obliqueBasis } from './mpr-oblique-geometry.js';
 import { sampleTrilinear } from './mpr-sampling.js';
@@ -135,18 +136,15 @@ function ensureObliqueBuffers(target, width, height, overlays) {
   next.width = width;
   next.height = height;
   if (!next.baseBytes || next.baseBytes.length !== planeSize) next.baseBytes = new Uint8Array(planeSize);
-  if (overlays.segVoxels) {
-    if (!next.segBytes || next.segBytes.length !== planeSize) next.segBytes = new Uint8Array(planeSize);
-  } else next.segBytes = null;
-  if (overlays.regionVoxels) {
-    if (!next.regionBytes || next.regionBytes.length !== planeSize) next.regionBytes = new Uint8Array(planeSize);
-  } else next.regionBytes = null;
-  if (overlays.symVoxels) {
-    if (!next.symBytes || next.symBytes.length !== planeSize) next.symBytes = new Uint8Array(planeSize);
-  } else next.symBytes = null;
-  if (overlays.fusionVoxels) {
-    if (!next.fusionBytes || next.fusionBytes.length !== planeSize) next.fusionBytes = new Uint8Array(planeSize);
-  } else next.fusionBytes = null;
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    if (overlays[cache.voxels]) {
+      if (!next[cache.bytes] || next[cache.bytes].length !== planeSize) {
+        next[cache.bytes] = new Uint8Array(planeSize);
+      }
+    } else {
+      next[cache.bytes] = null;
+    }
+  }
   return next;
 }
 
@@ -155,7 +153,7 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
   const { W, H, D } = dims;
   const overlayState = overlays || {};
   const sampled = ensureObliqueBuffers(target, width, height, overlayState);
-  const { baseBytes, segBytes, regionBytes, symBytes, fusionBytes } = sampled;
+  const { baseBytes } = sampled;
   const extent = normalizedPlaneExtent(extentMm);
   const basis = obliqueBasis(yaw, pitch);
   const samplingCenter = obliqueSamplingCenterVoxel(center, spacing, yaw, pitch, extent);
@@ -183,10 +181,10 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
 
       if (vx < 0 || vx > maxVx || vy < 0 || vy > maxVy || vz < 0 || vz > maxVz) {
         baseBytes[sampleIndex] = 0;
-        if (segBytes) segBytes[sampleIndex] = 0;
-        if (regionBytes) regionBytes[sampleIndex] = 0;
-        if (symBytes) symBytes[sampleIndex] = 0;
-        if (fusionBytes) fusionBytes[sampleIndex] = 0;
+        for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+          const dest = sampled[cache.bytes];
+          if (dest) dest[sampleIndex] = 0;
+        }
         continue;
       }
 
@@ -196,21 +194,17 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
           : projectVolumeSample(vox, vx, vy, vz, dims, sampleVolume, projection))
         * voxScale,
       );
-      if (segBytes) segBytes[sampleIndex] = projectDiscreteSlabLabel(overlayState.segVoxels, vox, vx, vy, vz, dims, sampleVolume, projection);
-      if (regionBytes) regionBytes[sampleIndex] = projectDiscreteSlabLabel(overlayState.regionVoxels, vox, vx, vy, vz, dims, sampleVolume, projection);
-      if (symBytes) {
-        symBytes[sampleIndex] = sampleByte(
-          isThinProjection
-            ? sampleVolume(overlayState.symVoxels, vx, vy, vz, W, H, D)
-            : projectVolumeSample(overlayState.symVoxels, vx, vy, vz, dims, sampleVolume, projection),
-        );
-      }
-      if (fusionBytes) {
-        fusionBytes[sampleIndex] = sampleByte(
-          isThinProjection
-            ? sampleVolume(overlayState.fusionVoxels, vx, vy, vz, W, H, D)
-            : projectVolumeSample(overlayState.fusionVoxels, vx, vy, vz, dims, sampleVolume, projection),
-        );
+      for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+        const dest = sampled[cache.bytes];
+        if (!dest) continue;
+        const volume = overlayState[cache.voxels];
+        dest[sampleIndex] = cache.sample === 'nearest'
+          ? projectDiscreteSlabLabel(volume, vox, vx, vy, vz, dims, sampleVolume, projection)
+          : sampleByte(
+            isThinProjection
+              ? sampleVolume(volume, vx, vy, vz, W, H, D)
+              : projectVolumeSample(volume, vx, vy, vz, dims, sampleVolume, projection),
+          );
       }
     }
   }
@@ -253,7 +247,7 @@ export function drawObliqueMPR(canvas, vox, voxScale, dims, spacing, center, yaw
     projection,
   );
   const sampled = canvas._obliqueComposite;
-  const hasOverlays = !!(sampled.segBytes || sampled.regionBytes || sampled.symBytes || sampled.fusionBytes);
+  const hasOverlays = overlayBytesPresent(sampled);
 
   if (!hasOverlays) {
     const imgData = canvas._obliqueImageData?.width === outW && canvas._obliqueImageData?.height === outH
@@ -267,23 +261,18 @@ export function drawObliqueMPR(canvas, vox, voxScale, dims, spacing, center, yaw
     return;
   }
 
+  const forceTextureUploads = { base: true };
+  for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+    forceTextureUploads[cache.type] = !!sampled[cache.bytes];
+  }
   drawCompositeSlice(ctx, outW, outH, {
     baseBytes: sampled.baseBytes,
-    segBytes: sampled.segBytes,
-    symBytes: sampled.symBytes,
-    regionBytes: sampled.regionBytes,
-    fusionBytes: sampled.fusionBytes,
+    overlayBytes: sampled,
     wlLut: getFusedWLLut(),
     regionColors: overlays?.regionColors || null,
     regionAlpha: overlays?.regionAlpha,
     fusionAlpha: overlays?.fusionAlpha,
     hotLut: overlays?.hotLut || null,
-    forceTextureUploads: {
-      base: true,
-      seg: !!sampled.segBytes,
-      sym: !!sampled.symBytes,
-      regions: !!sampled.regionBytes,
-      fusion: !!sampled.fusionBytes,
-    },
+    forceTextureUploads,
   });
 }

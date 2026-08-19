@@ -19,7 +19,7 @@
 //
 // All fields are optional. Missing fields use defaults.
 
-import { HAS_LOCAL_BACKEND } from './core/state.js';
+import { HAS_LOCAL_BACKEND } from './core/local-backend.js';
 
 let _config = null;
 

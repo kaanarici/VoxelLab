@@ -4,6 +4,7 @@ import { $ } from '../dom.js';
 import { effectiveSliceSpacing } from '../mpr/mpr-geometry.js';
 import { ensureOverlayStack } from '../overlay/overlay-stack.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
+import { OVERLAY_CACHE_BY_KIND } from '../runtime/overlay-cache-keys.js';
 import { setOverlayEnabled, setSliceIndex } from '../core/state/viewer-commands.js';
 
 export function renderVolumes() {
@@ -11,13 +12,13 @@ export function renderVolumes() {
   const host = $('volumes');
   const series = state.manifest.series[state.seriesIdx];
   const overlays = activeOverlayStateForSeries(series);
-  if (!overlays.tissue.available || !state.segVoxels) {
+  if (!overlays.tissue.available || !overlays.tissue.voxels) {
     panel.hidden = true;
     return;
   }
   const voxelMl = (series.pixelSpacing[0] * series.pixelSpacing[1] * effectiveSliceSpacing(series)) / 1000;
   const counts = [0, 0, 0, 0];
-  const sv = state.segVoxels;
+  const sv = overlays.tissue.voxels;
   for (let i = 0; i < sv.length; i++) counts[sv[i]]++;
   const csfMl = counts[1] * voxelMl;
   const gmMl = counts[2] * voxelMl;
@@ -32,19 +33,19 @@ export function renderVolumes() {
   const pct = (v) => ((v / total) * 100).toFixed(1);
 
   let extra = '';
-  if (state.stats) {
-    if (state.stats.ventricleEstimateMl !== undefined) {
-      extra += `<div class="vol-row vol-row-spaced"><span class="vk">Ventricle est.</span><span class="vv">${state.stats.ventricleEstimateMl} mL</span></div>`;
+  if (state.overlays.stats) {
+    if (state.overlays.stats.ventricleEstimateMl !== undefined) {
+      extra += `<div class="vol-row vol-row-spaced"><span class="vk">Ventricle est.</span><span class="vv">${state.overlays.stats.ventricleEstimateMl} mL</span></div>`;
     }
-    if (state.stats.wmh && Number.isFinite(state.stats.wmh.volume_ml)) {
-      extra += `<div class="vol-row" data-tip="Threshold estimate: bright white-matter voxels above the WMH threshold are counted; not a validated quantitative biomarker." data-tip-pos="left"><span class="vk">WMH (heuristic)</span><span class="vv">${state.stats.wmh.volume_ml.toFixed(1)} mL</span></div>`;
+    if (state.overlays.stats.wmh && Number.isFinite(state.overlays.stats.wmh.volume_ml)) {
+      extra += `<div class="vol-row" data-tip="Threshold estimate: bright white-matter voxels above the WMH threshold are counted; not a validated quantitative biomarker." data-tip-pos="left"><span class="vk">WMH (heuristic)</span><span class="vv">${state.overlays.stats.wmh.volume_ml.toFixed(1)} mL</span></div>`;
     }
-    if (state.stats.microbleeds && Number.isFinite(state.stats.microbleeds.count)) {
-      const mb = state.stats.microbleeds;
+    if (state.overlays.stats.microbleeds && Number.isFinite(state.overlays.stats.microbleeds.count)) {
+      const mb = state.overlays.stats.microbleeds;
       extra += `<div class="vol-row"><span class="vk">Microbleed candidates</span><span class="vv vv-link" id="jump-mb">${mb.count}</span></div>`;
     }
-    if (state.stats.symmetryScores && state.stats.symmetryScores.length) {
-      const scores = state.stats.symmetryScores;
+    if (state.overlays.stats.symmetryScores && state.overlays.stats.symmetryScores.length) {
+      const scores = state.overlays.stats.symmetryScores;
       let peakZ = 0;
       let peakV = -Infinity;
       for (let z = 0; z < scores.length; z++) {
@@ -87,9 +88,9 @@ export function renderVolumes() {
   panel.hidden = false;
 
   const jump = $('jump-sym');
-  if (jump && state.stats && state.stats.symmetryScores) {
+  if (jump && state.overlays.stats && state.overlays.stats.symmetryScores) {
     jump.onclick = () => {
-      const scores = state.stats.symmetryScores;
+      const scores = state.overlays.stats.symmetryScores;
       let peakZ = 0;
       let peakV = -Infinity;
       for (let z = 0; z < scores.length; z++) {
@@ -99,17 +100,17 @@ export function renderVolumes() {
         }
       }
       jumpToSlice(peakZ);
-      if (!state.useSym && activeOverlayStateForSeries(series).heatmap.available) {
-        setOverlayEnabled('useSym', true);
-        ensureOverlayStack('sym');
+      if (!state.overlays.heatmap && activeOverlayStateForSeries(series).heatmap.available) {
+        setOverlayEnabled('heatmap', true);
+        ensureOverlayStack(OVERLAY_CACHE_BY_KIND.heatmap.type);
         $('btn-sym').classList.add('active');
       }
     };
   }
   const jumpMb = $('jump-mb');
-  if (jumpMb && state.stats && state.stats.microbleeds && state.stats.microbleeds.per_slice) {
+  if (jumpMb && state.overlays.stats && state.overlays.stats.microbleeds && state.overlays.stats.microbleeds.per_slice) {
     jumpMb.onclick = () => {
-      const per = state.stats.microbleeds.per_slice;
+      const per = state.overlays.stats.microbleeds.per_slice;
       let peakZ = 0;
       let peakV = -1;
       for (let z = 0; z < per.length; z++) {

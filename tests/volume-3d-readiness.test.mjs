@@ -26,10 +26,10 @@ test('syncThreeSurfaceState hides the spinner once the 3D surface is already vis
   state.seriesIdx = 0;
   state.sliceIdx = 0;
   state.mode = '3d';
-  state.useRegions = true;
+  state.overlays.labels = true;
   state.voxels = new Uint8Array(8);
   state.regionVoxels = null;
-  state.regionMeta = null;
+  state.overlays.regionMeta = null;
   state.threeRuntime.seriesIdx = 0;
   state.threeRuntime.mesh = {};
   beginViewerRuntimeSession(state.manifest.series[0], { requestId: 1 });

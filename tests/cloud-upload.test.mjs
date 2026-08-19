@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { overlayKindsForSeries } from '../js/runtime/overlay-kinds.js';
-import { normalizeCloudSeriesEntry } from '../js/series/series-contract.js';
 
 const CLOUD_OPTIONS = {
   trustedUploadOrigins: ['https://upload.example'],
@@ -452,7 +451,7 @@ test('cloud normalization exposes canonical overlay kinds without changing legac
   const cloud = await freshCloudModule();
   cloud.initCloud('https://modal.example/', 'https://r2.example/', CLOUD_OPTIONS);
 
-  const series = normalizeCloudSeriesEntry({
+  const series = cloud.ingestCloudSeriesEntry({
     ...VALID_SERIES_ENTRY,
     hasSeg: true,
     hasRegions: true,
@@ -464,9 +463,10 @@ test('cloud normalization exposes canonical overlay kinds without changing legac
   assert.equal(series.hasRegions, true);
   assert.equal(series.hasSym, true);
   assert.deepEqual(overlays.availableKinds, ['tissue', 'labels', 'heatmap']);
-  assert.equal(overlays.byKind.tissue.source, 'cloud-seg');
-  assert.equal(overlays.byKind.labels.source, 'cloud-regions');
-  assert.equal(overlays.byKind.heatmap.source, 'cloud-sym');
+  assert.equal(overlays.byKind.tissue.available, true);
+  assert.equal(overlays.byKind.labels.available, true);
+  assert.equal(overlays.byKind.heatmap.available, true);
+  assert.equal('source' in overlays.byKind.tissue, false);
 });
 
 test('cloud upload requests presigned URLs in batches and uploads every file before starting', async (t) => {

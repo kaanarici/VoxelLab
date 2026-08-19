@@ -22,12 +22,13 @@ import {
 import { zoomToFit } from './shell/viewport.js';
 import { updateClipReadouts } from './clip-readouts.js';
 import { syncPanelRangeFills } from './panel-range-fills.js';
-import { canUseMpr3D } from './series/series-capabilities.js';
+import { OVERLAY_CACHE_BY_KIND } from './runtime/overlay-cache-keys.js';
+import { canUseMpr3D } from './core/series-capabilities.js';
 import { showAnatomyLabels, setShowAnatomyLabels } from './atlas/atlas-prefs.js';
 import { setAtlas2DActive } from './atlas/atlas-2d.js';
 import { ensureOverlayStack } from './overlay/overlay-stack.js';
 import { subscribe } from './core/state.js';
-import { seriesIdentityKey } from './series/series-identity.js';
+import { seriesIdentityKey } from './core/series-identity.js';
 import { syncAskModeAfterViewChange } from './ask-mode.js';
 import { syncHistogramPanel } from './sparkline.js';
 import { getThreeRuntime } from './runtime/viewer-runtime.js';
@@ -64,9 +65,9 @@ export function setMode(mode) {
   // can't build from a partial 2D prefetch). Re-ensure active overlays so they
   // load all slices promptly instead of trickling in.
   if (is3d || isMpr) {
-    if (state.useSeg) ensureOverlayStack('seg');
-    if (state.useRegions) ensureOverlayStack('regions');
-    if (state.useSym) ensureOverlayStack('sym');
+    for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
+      if (state.overlays[cache.kind]) ensureOverlayStack(cache.type);
+    }
   }
   $('panel-3d').hidden = !is3d;
   if (is3d) {
@@ -118,11 +119,11 @@ function syncAnatomyLabelsToggle() {
 // Region labels are an overlay (never a mode) AND independent of the colour
 // overlay: they float over the 2D slice / 3D volume whenever the Labels toggle is
 // on and the series has region data — with or without the Anatomy colour on. They
-// load their own region data and never touch the Anatomy (useRegions) state.
+// load their own region data and never touch the Anatomy (labels) state.
 function syncAtlasLabels() {
   const series = state.manifest?.series?.[state.seriesIdx];
   const on = showAnatomyLabels() && !!series?.hasRegions;
-  if (on) ensureOverlayStack('regions'); // labels need region masks/meta even if the colour overlay is off
+  if (on) ensureOverlayStack(OVERLAY_CACHE_BY_KIND.labels.type); // labels need region masks/meta even if the colour overlay is off
   setAtlas2DActive(state.mode === '2d' && on);
   set3DLabels(is3dActive() && on);
   syncAnatomyLabelsToggle();
@@ -136,7 +137,7 @@ export function toggleAnatomyLabels() {
 
 /** Wire the anatomy-labels coupling: labels follow (Anatomy on && toggle on). */
 export function initAnatomyLabels() {
-  subscribe('useRegions', syncAtlasLabels);
+  subscribe('overlays.labels', syncAtlasLabels);
   // Relabel the 3D view presets to the new series' true anatomy on every series
   // switch (the volume-rebuild path doesn't reliably re-run setMode in 3D).
   subscribe('seriesIdx', () => {
@@ -182,7 +183,7 @@ export function hydrateCTWindowPills() {
 }
 
 export function syncCTWindowActive() {
-  const active = detectCTWindow(state.lowT, state.highT);
+  const active = detectCTWindow(state.three.lowT, state.three.highT);
   document.querySelectorAll('#ct-window .pill').forEach((pill) => {
     pill.classList.toggle('active', !!active && pill.dataset.window === active);
   });

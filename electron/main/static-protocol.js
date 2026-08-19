@@ -2,36 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { APP_HOST } from '../shared/desktop-contracts.js';
+import { PACKAGE_PATHS, ROOT_DIRS, ROOT_FILES } from './host-policy.js';
 
 const INDEX_PATH = '/index.html';
 export const EMPTY_DESKTOP_MANIFEST = Object.freeze({ patient: 'anonymous', studyDate: '', series: [] });
-const ROOT_FILES = new Set([
-  'config.json',
-  'config.local.json',
-  'favicon.svg',
-  'icons.svg',
-  'index.html',
-  'sw.js',
-  'viewer.js',
-]);
-const ROOT_DIRS = ['css', 'data', 'js', 'templates'];
-const PACKAGE_PATHS = [
-  'node_modules/@cornerstonejs/codec-charls/dist/',
-  'node_modules/@cornerstonejs/codec-openjpeg/dist/',
-  'node_modules/dcmjs/build/dcmjs.es.js',
-  'node_modules/fzstd/esm/index.mjs',
-  'node_modules/onnxruntime-web/dist/esm/ort.min.js',
-  'node_modules/onnxruntime-web/dist/ort-training-wasm-simd.wasm',
-  'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm',
-  'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
-  'node_modules/onnxruntime-web/dist/ort-wasm-simd.jsep.wasm',
-  'node_modules/onnxruntime-web/dist/ort-wasm-simd.wasm',
-  'node_modules/onnxruntime-web/dist/ort-wasm-threaded.wasm',
-  'node_modules/onnxruntime-web/dist/ort-wasm.wasm',
-  'node_modules/pako/dist/pako.esm.mjs',
-  'node_modules/three/build/three.module.js',
-  'node_modules/three/examples/jsm/controls/TrackballControls.js',
-];
 
 function allowedRelativePath(relativePath) {
   const normalized = relativePath.split(path.sep).join('/');

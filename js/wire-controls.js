@@ -4,6 +4,7 @@ import { $, escapeHtml, showDialog, initModals } from './dom.js';
 import { notify } from './notify.js';
 import { collectDroppedFiles } from './file-drop.js';
 import { toggleAskMode } from './ask-mode.js';
+import { getAskSession } from './ask-session.js';
 import {
   hydrateCTWindowPills,
   setCTWindow,
@@ -17,7 +18,7 @@ import {
   toggleROI, isROIMode, currentROIMode, cancelROI,
 } from './roi.js';
 import {
-  updateScrubFill as _updateScrubFill, startCine, stopCine, toggleCine,
+  updateScrubFill as _updateScrubFill, isCinePlaying, startCine, stopCine, toggleCine,
 } from './cine.js';
 import { initScrubberMarkers, magnetizeSliceValue } from './scrubber-markers.js';
 import { updateScaleBar } from './overlay/scale-bar.js';
@@ -33,9 +34,8 @@ import { COLORMAPS, setColormap } from './colormap.js';
 import { is3dActive, isMprActive } from './core/mode-flags.js';
 import { clearCurrentSliceDrawings } from './clear-slice-drawings.js';
 import { drawingCountsForSlice } from './overlay/annotation-graph.js';
-import { ensureOverlayStack } from './overlay/overlay-stack.js';
+import { toggleSeriesOverlay } from './overlay/overlay-toggle.js';
 import { loadImageStack } from './series/series-image-stack.js';
-import { rememberPreferredOverlay, forgetPreferredOverlay } from './overlay/overlay-preferences.js';
 import { syncOverlays } from './sync.js';
 import { initSlimSAMTool, isSlimSAMMode, toggleSlimSAM } from './overlay/slimsam-tool.js';
 import {
@@ -46,7 +46,6 @@ import {
   ensureHRVoxels,
   buildVolume,
   syncThreeSurfaceState,
-  updateLabelTexture,
 } from './volume/volume-3d.js';
 import {
   updateSliceDisplay as _updateSliceDisplay,
@@ -65,9 +64,9 @@ import {
   setClipAxis,
   setFusionOpacity,
   setLoaded,
+  setComparePeers,
   resetCompareViewport,
   resetMprViewport,
-  setOverlayEnabled,
   setOverlayOpacity,
   setRenderMode,
   setSliceIndex,
@@ -76,11 +75,8 @@ import {
 } from './core/state/viewer-commands.js';
 import { zoomByFactor } from './view-transform.js';
 import { syncMrPresetActiveState, syncToolbarReadyState } from './shell/toolbar-chrome.js';
-import { invalidateVoxelCache } from './runtime/viewer-runtime.js';
-import { beginPerfTrace } from './core/perf-trace.js';
-import { rememberSeriesViewState } from './core/state/series-view-memory.js';
-import { activeOverlayStateForSeries } from './runtime/active-overlay-state.js';
-import { volumeProjectionSamplingSupport } from './volume/volume-raycast-steps.js';
+import { setSeriesImageStacks, transitionVolumeCaches } from './runtime/viewer-runtime.js';
+import { volumeProjectionSamplingSupport } from './core/volume-limits.js';
 
 function wireDesktopBridgeIfAvailable(selectSeries) {
   if (!globalThis.voxellabDesktop) return;
@@ -133,10 +129,10 @@ export function wireControls(deps) {
   }
 
   $('sparkline').addEventListener('click', (e) => {
-    if (!state.stats || !state.stats.symmetryScores) return;
+    if (!state.overlays.stats || !state.overlays.stats.symmetryScores) return;
     const r = e.currentTarget.getBoundingClientRect();
     const frac = (e.clientX - r.left) / r.width;
-    const n = state.stats.symmetryScores.length;
+    const n = state.overlays.stats.symmetryScores.length;
     setSliceIndex(Math.max(0, Math.min(n - 1, Math.floor(frac * n))));
   });
 
@@ -144,7 +140,7 @@ export function wireControls(deps) {
   $('fps').addEventListener('input', (e) => {
     setCineFps(e.target.value);
     $('fps-val').textContent = state.cineFps;
-    if (state.cineTimer) { stopCine(); startCine(); }
+    if (isCinePlaying()) { stopCine(); startCine(); }
   });
 
   const openStudyUpload = async () => {
@@ -410,7 +406,7 @@ export function wireControls(deps) {
     if (except !== 'angle' && isAngleMode()) toggleAngle();
     if (except !== 'slimsam' && isSlimSAMMode()) toggleSlimSAM();
     if (except !== 'annotate' && state.annotateMode) toggleAnnotate();
-    if (except !== 'ask' && state.askMode) toggleAskMode();
+    if (except !== 'ask' && getAskSession().mode) toggleAskMode();
     if (except !== 'roi' && isROIMode()) { cancelROI(); toggleROI(currentROIMode()); }
   };
   $('btn-measure').onclick = () => {
@@ -453,52 +449,15 @@ export function wireControls(deps) {
 
   $('btn-help').onclick = toggleHelp;
 
-  // Seg and regions are mutually exclusive; sym is independent.
-  // Shared toggle: flip state, deactivate the rival if exclusive, load stack, redraw.
-  const toggleLabelOverlay = (type, stateKey, hasKey, exclusive) => {
-    const s = state.manifest.series[state.seriesIdx];
-    const overlays = activeOverlayStateForSeries(s);
-    const kind = {
-      hasSeg: 'tissue',
-      hasRegions: 'labels',
-      hasSym: 'heatmap',
-    }[hasKey];
-    if (!kind || !overlays[kind]?.available) return;
-    const next = !state[stateKey];
-    setOverlayEnabled(stateKey, next, exclusive);
-    if (next) {
-      beginPerfTrace('overlay-toggle-paint', {
-        slug: s?.slug || '',
-        overlay: type,
-      });
-    }
-    // Track preferred overlays per modality for prefetch on later series opens.
-    if (next) {
-      rememberPreferredOverlay(s.modality, type);
-    } else {
-      forgetPreferredOverlay(s.modality, type);
-    }
-    syncOverlays();
-    if (next) {
-      ensureOverlayStack(type)?.then(() => {
-        if (state[stateKey]) syncOverlays();
-      });
-    }
-    const nextOverlays = activeOverlayStateForSeries(s);
-    $('btn-seg')?.classList.toggle('active', nextOverlays.tissue.enabled);
-    $('btn-regions')?.classList.toggle('active', nextOverlays.labels.enabled);
-    $('btn-sym')?.classList.toggle('active', nextOverlays.heatmap.enabled);
-    // Persist the new overlay state now so it survives a refresh (previously only
-    // remembered on series switch, so toggling then reloading lost it).
-    rememberSeriesViewState();
-    if (is3dActive()) { invalidateVoxelCache(); if (ensureVoxels()) void updateLabelTexture(); }
-    if (state.mode === 'cmp') {
-      loadComparePeers().then(() => drawCompare());
-    }
+  const syncOverlayButtons = (overlays) => {
+    if (!overlays) return;
+    $('btn-seg')?.classList.toggle('active', overlays.tissue.enabled);
+    $('btn-regions')?.classList.toggle('active', overlays.labels.enabled);
+    $('btn-sym')?.classList.toggle('active', overlays.heatmap.enabled);
   };
-  $('btn-regions').onclick = () => toggleLabelOverlay('regions', 'useRegions', 'hasRegions', ['useSeg']);
-  $('btn-seg').onclick     = () => toggleLabelOverlay('seg',     'useSeg',     'hasSeg',     ['useRegions']);
-  $('btn-sym').onclick     = () => toggleLabelOverlay('sym',     'useSym',     'hasSym');
+  $('btn-regions').onclick = () => syncOverlayButtons(toggleSeriesOverlay('labels', ['tissue']));
+  $('btn-seg').onclick = () => syncOverlayButtons(toggleSeriesOverlay('tissue', ['labels']));
+  $('btn-sym').onclick = () => syncOverlayButtons(toggleSeriesOverlay('heatmap'));
 
   $('fusion-select').addEventListener('change', async (e) => {
     const { loadFusion } = await import('./fusion-loader.js');
@@ -506,7 +465,7 @@ export function wireControls(deps) {
   });
   $('fusion-opacity').addEventListener('input', (e) => {
     setFusionOpacity(e.target.value);
-    $('fusion-opacity-val').textContent = Math.round(state.fusionOpacity * 100) + '%';
+    $('fusion-opacity-val').textContent = Math.round(state.overlays.fusionOpacity * 100) + '%';
   });
 
   document.querySelectorAll('#render-mode .pill').forEach((pill) => {
@@ -621,7 +580,7 @@ export function wireControls(deps) {
     const referenceIndex = seriesList.findIndex(series => series.slug === referenceSlug);
     const movingIndex = seriesList.findIndex(series => series.slug === movingSlug);
     if (referenceIndex < 0 || movingIndex < 0) return;
-    state.cmpManualSlugs = [referenceSlug, movingSlug];
+    setComparePeers([referenceSlug, movingSlug]);
     if (state.seriesIdx !== referenceIndex) await selectSeries(referenceIndex, { preserveSlice: true });
     if (state.mode !== 'cmp') await toggleCompare();
     else {
@@ -636,16 +595,21 @@ export function wireControls(deps) {
     if (!s.hasBrain) return;
     const requestId = state.selectRequestId;
     const slug = s.slug;
-    const nextUseBrain = !state.useBrain;
+    const nextUseBrain = !state.overlays.useBrain;
     const variant = nextUseBrain ? `${s.slug}_brain` : s.slug;
     const { imgs, loaders } = loadImageStack(variant, s.slices, state.imgs, s);
-    setBrainStack({ nextUseBrain, imgs });
-    $('btn-brain').classList.toggle('active', state.useBrain);
+    transitionVolumeCaches(s, () => {
+      setBrainStack({ nextUseBrain });
+      setSeriesImageStacks({ imgs, cmpStacks: {} });
+    }, {
+      resetViewerSessionState: false,
+    });
+    $('btn-brain').classList.toggle('active', state.overlays.useBrain);
     if (is3dActive()) syncThreeSurfaceState(s);
     const isCurrentBrainStack = () => (
       state.selectRequestId === requestId
       && state.manifest.series[state.seriesIdx]?.slug === slug
-      && state.useBrain === nextUseBrain
+      && state.overlays.useBrain === nextUseBrain
     );
 
     try {
@@ -696,8 +660,8 @@ export function wireControls(deps) {
   $('preset-full').onclick = () => applyTransferShortcut({ lowT: 0, highT: 1.0, clipMin: [0, 0, 0], clipMax: [1, 1, 1], clipPlaneEnabled: false });
   $('preset-surface').onclick = () => applyTransferShortcut({ lowT: 0.25, highT: 1.0, clipMin: [0, 0, 0], clipMax: [1, 1, 1], clipPlaneEnabled: false });
   $('preset-inside').onclick = () => applyTransferShortcut({ lowT: 0, highT: 0.6, clipMin: [0, 0, 0], clipMax: [1, 1, 1], clipPlaneEnabled: false });
-  $('preset-halfx').onclick = () => applyTransferShortcut({ lowT: state.lowT, highT: state.highT, clipMin: [0, 0, 0], clipMax: [0.5, 1, 1], clipPlaneEnabled: false });
-  $('preset-halfy').onclick = () => applyTransferShortcut({ lowT: state.lowT, highT: state.highT, clipMin: [0, 0, 0], clipMax: [1, 0.5, 1], clipPlaneEnabled: false });
+  $('preset-halfx').onclick = () => applyTransferShortcut({ lowT: state.three.lowT, highT: state.three.highT, clipMin: [0, 0, 0], clipMax: [0.5, 1, 1], clipPlaneEnabled: false });
+  $('preset-halfy').onclick = () => applyTransferShortcut({ lowT: state.three.lowT, highT: state.three.highT, clipMin: [0, 0, 0], clipMax: [1, 0.5, 1], clipPlaneEnabled: false });
   $('preset-reset').onclick = () => applyTransferShortcut({ lowT: 0.08, highT: 1.0, intensity: 1.6, clipMin: [0, 0, 0], clipMax: [1, 1, 1], clipPlaneEnabled: false });
 
   wireViewCanvas({ clientToCanvasPx, step, hideHover });

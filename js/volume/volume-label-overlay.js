@@ -17,7 +17,7 @@ export function updateLabelTexture() {
   const selected = activeThreeLabelOverlay(series);
   let { mode, source, colors } = selected;
   let opacities = null;
-  const overlayAlpha = Number.isFinite(Number(state.overlayOpacity)) ? Number(state.overlayOpacity) : 0.5;
+  const overlayAlpha = Number.isFinite(Number(state.overlays.overlayOpacity)) ? Number(state.overlays.overlayOpacity) : 0.5;
   u.uLabelAlpha.value = Number.isFinite(Number(selected.opacity)) ? Number(selected.opacity) : overlayAlpha;
   // Anatomy regions: drive per-label LUT alpha from the overlay-opacity slider
   // (previously a flat constant, so the slider did nothing in 3D).
@@ -89,7 +89,7 @@ export function updateLabelTexture() {
     hidden: state.hiddenLabels,
     locked: state.lockedLabels,
     preview: state.previewLabel,
-    allLabels: allLabelsFromMeta(state.regionMeta),
+    allLabels: allLabelsFromMeta(state.overlays.regionMeta),
   });
   for (const idx of effHidden) {
     if (idx >= 0 && idx < 256) lut[idx * 4 + 3] = 0;

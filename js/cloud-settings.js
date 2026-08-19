@@ -1,4 +1,4 @@
-import { HAS_LOCAL_BACKEND } from './core/state.js';
+import { HAS_LOCAL_BACKEND } from './core/local-backend.js';
 import { localApiHeaders } from './config.js';
 
 function settingsHost() {

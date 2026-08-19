@@ -19,7 +19,7 @@ export function renderFusionPicker() {
   panel.classList.remove('panel-init-hidden');
   panel.hidden = false;
   sel.innerHTML = `<option value="">None</option>`
-    + peers.map((p) => `<option value="${p.slug}" ${p.slug === state.fusionSlug ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+    + peers.map((p) => `<option value="${p.slug}" ${p.slug === state.overlays.fusionSlug ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
   enhanceSelectLikeDropdowns(panel);
 }
 
@@ -27,13 +27,13 @@ export function renderRegionLegend() {
   const panel = $('regions-panel');
   const host = $('regions-legend');
   if (!panel || !host) return;
-  if (!state.regionMeta || !state.regionMeta.regions) {
+  if (!state.overlays.regionMeta || !state.overlays.regionMeta.regions) {
     panel.hidden = true;
     return;
   }
   panel.classList.remove('panel-init-hidden');
   panel.hidden = false;
-  const rs = state.regionMeta.regions;
+  const rs = state.overlays.regionMeta.regions;
   const rows = Object.entries(rs)
     .filter(([, r]) => r.mL >= 0.1)
     .sort((a, b) => (b[1].mL || 0) - (a[1].mL || 0))

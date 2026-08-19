@@ -1,7 +1,7 @@
 // Atlas overlay for the 3D volume. Labels match the CURRENT scrubber slice (the
 // same regions the 2D view shows for that slice) — projected onto the slice's
 // depth plane and re-projected every frame, so the leader lines stay glued to
-// the structures and sweep as you orbit, while the pills live in two evenly-
+// the structures and sweep as you orbit or zoom, while the pills live in two evenly-
 // spaced screen columns aligned just outside the model. Hidden when the cut face
 // turns away from the camera, or when the clip box / transfer function removes
 // the structure.
@@ -12,6 +12,7 @@
 import { state, subscribe } from '../core/state.js';
 import { $ } from '../dom.js';
 import { getThreeRuntime } from '../runtime/viewer-runtime.js';
+import { OVERLAY_CACHE_BY_KIND } from '../runtime/overlay-cache-keys.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
 import { regionsForSlice, invalidateRegionIndex } from './region-index.js';
 import { layoutAtlasLabels } from './atlas-layout.js';
@@ -21,6 +22,7 @@ import { anatomyBadge } from '../region-source.js';
 import { volumeTip } from './label-inspect.js';
 import { installSelectionUI, teardownSelectionUI } from './atlas-selection-ui.js';
 import { onThreePostRender } from '../volume/volume-three-bootstrap.js';
+import { cameraViewChanged } from './atlas-camera-change.js';
 import * as THREE from '../volume/vendor-three.js';
 
 const PAD = 16;
@@ -39,7 +41,8 @@ let _unsubs = [];
 let _dirty = true;
 let _lastW = 0;
 let _lastH = 0;
-const _lastCam = new Float64Array(16);
+const _lastWorld = new Float64Array(16);
+const _lastProj = new Float64Array(16);
 
 const _world = new THREE.Vector3();
 const _view = new THREE.Vector3();
@@ -50,13 +53,7 @@ const _faceN = new THREE.Vector3();
 const _camToFace = new THREE.Vector3();
 
 function cameraMoved(camera) {
-  const e = camera.matrixWorld.elements;
-  let moved = false;
-  for (let i = 0; i < 16; i += 1) {
-    if (Math.abs(e[i] - _lastCam[i]) > 1e-6) moved = true;
-    _lastCam[i] = e[i];
-  }
-  return moved;
+  return cameraViewChanged(camera, _lastWorld, _lastProj);
 }
 
 function updateLabels() {
@@ -114,10 +111,10 @@ function updateLabels() {
   const D = series.slices | 0;
   const lz = (state.sliceIdx + 0.5) / D - 0.5; // current slice's depth plane in local box space
   const tz = (state.sliceIdx + 0.5) / D; // ...in [0,1] texcoord, for clip-box testing
-  const lowT = Number.isFinite(state.lowT) ? state.lowT : 0;
-  const highT = Number.isFinite(state.highT) ? state.highT : 1;
-  const clipMin = state.clipMin || [0, 0, 0];
-  const clipMax = state.clipMax || [1, 1, 1];
+  const lowT = Number.isFinite(state.three.lowT) ? state.three.lowT : 0;
+  const highT = Number.isFinite(state.three.highT) ? state.three.highT : 1;
+  const clipMin = state.three.clipMin || [0, 0, 0];
+  const clipMax = state.three.clipMax || [1, 1, 1];
   mesh.updateWorldMatrix(true, false);
 
   // World-space normal of the slice plane (local +z, the cut face exposed by the
@@ -203,7 +200,7 @@ function updateLabels() {
     pillCenterY: it.y,
     colW,
     locked: locked.has(it.label),
-    tip: volumeTip(series, state.regionMeta, it.label),
+    tip: volumeTip(series, state.overlays.regionMeta, it.label),
   }));
   renderAtlasPills(svg, items, items.length ? anatomyBadge(series) : '', w, h);
 }
@@ -225,7 +222,8 @@ export function setAtlas3DActive(active) {
     if (svg) installSelectionUI(svg, { is3d: true });
     if (!_unhookRender) _unhookRender = onThreePostRender(updateLabels);
     if (!_unsubs.length) {
-      const rebuild = ['regionVoxels', 'regionImgs', 'regionMeta', 'useRegions', 'voxels', 'hrVoxels', 'useBrain'];
+      const labels = OVERLAY_CACHE_BY_KIND.labels;
+      const rebuild = [labels.voxels, labels.imgs, 'overlays.regionMeta', 'overlays.labels', 'voxels', 'hrVoxels', 'overlays.useBrain'];
       const rerender = ['sliceIdx', 'hiddenLabels', 'lockedLabels', 'lowT', 'highT', 'intensity', 'clipMin', 'clipMax'];
       _unsubs = [
         ...rebuild.map((key) => subscribe(key, () => invalidate(true))),

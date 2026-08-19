@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contracts import ORTHONORMAL_TOLERANCE, PROJECTION_MODALITIES, SLICE_AXIS_ALIGNMENT_MIN
 from engine_sources import projection_manifest_errors, registration_manifest_errors, ultrasound_manifest_errors
 from geometry import (
     cross3,
@@ -12,7 +13,6 @@ from geometry import (
     sort_datasets_spatially,
 )
 
-PROJECTION_MODALITIES = {"CR", "DX", "IO", "MG", "PX", "RF", "XA"}
 PROJECTION_IMAGE_MARKERS = {"LOCALIZER", "SCOUT", "PROJECTION"}
 
 
@@ -51,7 +51,7 @@ def _same_number(left: float, right: float, tolerance: float = 1e-3) -> bool:
     return abs(float(left) - float(right)) <= max(tolerance, abs(float(right)) * tolerance)
 
 
-def _orthonormal_iop(iop: list[float], tolerance: float = 1e-3) -> tuple[list[float], list[float], str]:
+def _orthonormal_iop(iop: list[float], tolerance: float = ORTHONORMAL_TOLERANCE) -> tuple[list[float], list[float], str]:
     if len(iop) < 6:
         return [], [], "MPR volume processing requires ImageOrientationPatient"
     row_raw = iop[:3]
@@ -144,7 +144,7 @@ def mpr_geometry_error(slices: list) -> str:
     row, col = orientation[:3], orientation[3:6]
     row_norm = norm3(row)
     col_norm = norm3(col)
-    if abs(row_norm - 1) > 0.02 or abs(col_norm - 1) > 0.02 or abs(dot3(row, col)) > 0.02:
+    if abs(row_norm - 1) > ORTHONORMAL_TOLERANCE or abs(col_norm - 1) > ORTHONORMAL_TOLERANCE or abs(dot3(row, col)) > ORTHONORMAL_TOLERANCE:
         return "MPR volume processing requires orthonormal row/column orientation"
 
     first_ipp = float_list(getattr(first, "ImagePositionPatient", []), 3)
@@ -159,7 +159,7 @@ def mpr_geometry_error(slices: list) -> str:
     if normal_norm <= 1e-6 or span_norm <= 1e-6:
         return "MPR volume processing requires nonzero slice normal and slice span"
     alignment = abs(dot3(span, normal)) / (span_norm * normal_norm)
-    if alignment < 0.9999:
+    if alignment < SLICE_AXIS_ALIGNMENT_MIN:
         return "MPR volume processing requires slice positions aligned with the orientation normal"
     stats = geometry.get("sliceSpacingStats", {})
     if len(slices) > 2 and stats and not stats.get("regular", False):

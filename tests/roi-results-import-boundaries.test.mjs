@@ -22,7 +22,7 @@ const {
 } = await import('../js/overlay/annotation-graph.js');
 const { initROI } = await import('../js/roi.js');
 const { importRoiResultsBundle, roiResultsImportStatusText } = await import('../js/roi/roi-results.js');
-const { seriesPersistenceKey } = await import('../js/series/series-identity.js');
+const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 
 initROI({ state });
 
