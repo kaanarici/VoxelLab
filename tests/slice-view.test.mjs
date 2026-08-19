@@ -12,7 +12,7 @@ globalThis.localStorage = {
 };
 
 const { state } = await import('../js/core/state.js');
-const { drawSlice, showHoverAt } = await import('../js/slice-view.js');
+const { drawSlice, markViewAwaitingSliceFade, showHoverAt } = await import('../js/slice-view.js');
 
 function createOffscreenCanvas() {
   let currentImage = null;
@@ -360,4 +360,25 @@ test('drawSlice composites every overlay-table kind including labels voxels', ()
   assert.notDeepEqual(rgbaAt(fused, 1), rgbaAt(gray, 1));
   assert.notDeepEqual(rgbaAt(fused, 2), rgbaAt(gray, 2));
   assert.equal(state.regionVoxels.length, plane);
+});
+
+test('markViewAwaitingSliceFade collapses leftover canvas CSS so a hidden 512 box cannot overflow', () => {
+  const view = createVisibleCanvas();
+  view.style.width = '512px';
+  view.style.height = '512px';
+  const xform = { classList: createClassList(['ui-fade-in']) };
+  globalThis.document = {
+    getElementById(id) {
+      if (id === 'view') return view;
+      if (id === 'view-xform') return xform;
+      return null;
+    },
+  };
+
+  markViewAwaitingSliceFade();
+
+  assert.equal(view.style.width, '0px');
+  assert.equal(view.style.height, '0px');
+  assert.equal(xform.classList.contains('view-awaiting-slice'), true);
+  assert.equal(xform.classList.contains('ui-fade-in'), false);
 });

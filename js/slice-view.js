@@ -41,6 +41,12 @@ export function markViewAwaitingSliceFade() {
   if (!el) return;
   el.classList.remove(UI_FADE_SLICE);
   el.classList.add(VIEW_AWAITING_SLICE);
+  const canvas = $('view');
+  // visibility:hidden still occupies layout; collapse the leftover CSS box.
+  if (canvas?.style) {
+    canvas.style.width = '0px';
+    canvas.style.height = '0px';
+  }
 }
 
 function revealViewSliceIfPending() {

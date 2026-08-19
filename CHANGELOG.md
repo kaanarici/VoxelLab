@@ -6,6 +6,16 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fitting a newly opened series sizes the slice canvas from series geometry
+  before zoom, so a leftover 512 placeholder cannot overflow the window.
+
+### Changed
+
+- README screenshot and setup examples now match the current viewer and both
+  local AI providers (Claude Code and Codex).
+
 ## [1.2.2] - 2026-08-19
 
 ### Fixed

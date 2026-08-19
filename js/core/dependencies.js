@@ -1,5 +1,5 @@
 /** Bump when static assets must replace SW caches; no query-string cache busting elsewhere. */
-export const SERVICE_WORKER_VERSION = '2026-08-19-3';
+export const SERVICE_WORKER_VERSION = '2026-08-19-4';
 export const IMAGE_CACHE_VERSION = '2026-04-11-2';
 export const IMAGE_CACHE_NAME = `voxellab-images-${IMAGE_CACHE_VERSION}`;
 export const VOLUME_CACHE_VERSION = '2026-04-11-1';
