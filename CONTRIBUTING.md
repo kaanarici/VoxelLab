@@ -40,6 +40,7 @@ GPU still requires the steps in [R2_SETUP.md](R2_SETUP.md).
 ```bash
 npm run setup -- --pipeline
 npm run setup -- --ai --provider claude
+npm run setup -- --ai --provider codex
 npm run setup -- --rtk
 ```
 

@@ -37,9 +37,15 @@ test('README states the local privacy boundary and explicit cloud exception', ()
   assert.match(readme, /Never put patient data, credentials, or\s+private workspace URLs/);
 });
 
+test('README documents both local AI providers', () => {
+  assert.match(readme, /npm run setup -- --ai --provider claude/);
+  assert.match(readme, /npm run setup -- --ai --provider codex/);
+  assert.match(readme, /--provider` is only valid with `--ai/);
+});
+
 test('README has a real JPEG screenshot', () => {
   const screenshot = fileURLToPath(new URL('../.github/assets/voxellab-viewer.jpg', import.meta.url));
-  assert.match(readme, /!\[VoxelLab showing a research volume\]\(\.github\/assets\/voxellab-viewer\.jpg\)/);
+  assert.match(readme, /!\[VoxelLab showing an OpenNeuro T1-weighted research volume\]\(\.github\/assets\/voxellab-viewer\.jpg\)/);
   assert.equal(existsSync(screenshot), true);
   assert.ok(statSync(screenshot).size > 0);
   assert.deepEqual([...readFileSync(screenshot).subarray(0, 3)], [0xff, 0xd8, 0xff]);
