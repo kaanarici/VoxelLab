@@ -182,7 +182,8 @@ export function toggleInvert() {
 }
 export function isInverted() { return !!state.invertDisplay; }
 
-// Fit canvas pixels inside the stage (ignores CSS scale; uses canvas width/height).
+// Fit the physical in-plane box inside the stage. Size the CSS box first so
+// --zoom is not applied to the 512×512 HTML placeholder.
 export function zoomToFit() {
   const canvas = $('view');
   const stage = $('view-stage');
@@ -191,9 +192,13 @@ export function zoomToFit() {
 
   const imgW = canvas.width;
   const imgH = canvas.height;
-  if (imgW <= 0 || imgH <= 0) return;
   const series = state.manifest?.series?.[state.seriesIdx];
   const displaySize = series ? inPlaneDisplaySize(series) : { width: imgW, height: imgH };
+  if (displaySize.width <= 0 || displaySize.height <= 0) return;
+  if (canvas.style) {
+    canvas.style.width = `${displaySize.width}px`;
+    canvas.style.height = `${displaySize.height}px`;
+  }
 
   const stageR = stage.getBoundingClientRect();
   const padX = Math.max(40, stageR.width * 0.1);

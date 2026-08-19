@@ -60,6 +60,7 @@ test('setup help advertises the dedicated AI lock', () => {
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /--ai\s+requirements\/ai\.lock/);
+  assert.match(result.stdout, /--provider claude\|codex/);
   assert.match(result.stdout, /Do not combine --rtk with them/);
   assert.equal(result.stderr, '');
 });

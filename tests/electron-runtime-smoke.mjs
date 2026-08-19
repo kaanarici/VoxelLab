@@ -22,6 +22,7 @@ import {
   assertSmokeWindowVisibility,
   closeApp,
   launchVoxelLab,
+  waitForShellFits,
   writeTinyDicom,
   writeTinyNifti,
   writeTinyOmeZarrFolder,
@@ -1047,10 +1048,11 @@ test('Electron runtime starts configured desktop conversion and reopens the OME-
       const statuses = (globalThis.__voxellabConversionEvents || []).map(job => job.status);
       return statuses.includes('running') && statuses.includes('completed');
     }, null, { timeout: 15_000 });
+    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'converted', null, { timeout: 15_000 });
     const recentsAfterReopen = await page.evaluate(() => globalThis.voxellabDesktop.getRecentDocuments());
     assert.equal(recentsAfterReopen[0]?.name, 'cells.czi');
     assert.equal(recentsAfterReopen.some(item => /\.ome\.tiff$/i.test(item.name)), false, 'recent reopen should not remember converted temp outputs');
-    await assertShellFits(page);
+    await waitForShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
     await closeApp(app);

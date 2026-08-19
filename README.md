@@ -2,11 +2,11 @@
 
 [![Check](https://github.com/kaanarici/VoxelLab/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/kaanarici/VoxelLab/actions/workflows/check.yml)
 
-VoxelLab is a local-first desktop and browser viewer for research imaging data.
-It opens supported medical volumes and microscopy stacks without an account or
-uploading local files.
+VoxelLab is a local-first desktop and browser viewer for research imaging.
+It opens supported DICOM, NIfTI, and microscopy files on your computer. There
+is no account, and local files are not uploaded unless you start a cloud job.
 
-![VoxelLab showing a research volume](.github/assets/voxellab-viewer.jpg)
+![VoxelLab showing an OpenNeuro T1-weighted research volume](.github/assets/voxellab-viewer.jpg)
 
 > [!WARNING]
 > VoxelLab is research and educational software. It is not a medical device and
@@ -21,6 +21,9 @@ Download [VoxelLab v1.2.2](https://github.com/kaanarici/VoxelLab/releases/latest
 |---|---|---|
 | macOS on Apple Silicon | `VoxelLab-1.2.2-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
 | Windows 10 or 11 on x64 | `VoxelLab-1.2.2-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
+
+There is no Linux or Intel Mac installer. Use [Run From Source](#run-from-source)
+on those machines.
 
 Use `SHA256SUMS` from the release to verify either download. Updates are manual:
 open **Help → Check for Updates**, download the new installer, and install it
@@ -45,12 +48,15 @@ The demo is derived from the CC0-licensed
 
 ## Features
 
-- 2D, MPR, 3D, and compare views for supported DICOM and NIfTI volumes.
+- 2D, MPR, 3D, and compare views when the volume has trustworthy geometry.
 - Calibrated OME-TIFF, ImageJ TIFF, TIFF sequence, and OME-Zarr workflows.
 - Distance, angle, region, line-profile, and two-channel colocalization tools.
-- Overlays, annotations, and limited DICOM derived-object support.
-- CSV, JSON, PNG, TIFF, DICOM SR, and VoxelLab sidecar exports where supported.
-- Optional local Python and explicitly configured cloud processing.
+- Overlays, annotations, and import of DICOM SEG, RTSTRUCT, RT Dose metadata,
+  and VoxelLab measurement notes.
+- CSV, JSON, PNG, TIFF, DICOM SR, and VoxelLab sidecar export for those same
+  supported workflows.
+- Optional local Ask/Consult (Claude Code or Codex) and optional Modal/R2
+  cloud jobs. Both stay off until you configure them.
 
 ## Supported Data
 
@@ -63,6 +69,8 @@ The demo is derived from the CC0-licensed
 | OME-Zarr / NGFF 0.4 and 0.5 | Bounded local import and public URL streaming for supported Zarr v2 and unsharded v3 arrays. URLs require CORS; unsupported codecs, filters, sharding, and oversized chunks fail closed. |
 | DICOM SEG, RTSTRUCT, RT Dose, and VoxelLab SR | Limited session-backed overlays, ROIs, metadata, and measurement-note import. Dose rendering and full clinical round-trip are not supported. |
 | CZI, ND2, LIF, OIB, OIF, and LSM | Require a configured local reader or external OME-TIFF converter. Unsupported setups fail closed. |
+
+Ultrasound and X-ray / CR / DX series open as 2D images or cine.
 
 VoxelLab enables volumetric and calibrated tools only when the input provides
 enough trustworthy geometry. See [Architecture](ARCHITECTURE.md) for the data
@@ -91,12 +99,15 @@ npm start
 
 Open <http://localhost:8000>. Run `npm run desktop:start` for the Electron app.
 
-Optional dependencies are installed only when requested:
+Optional extras. `--provider` is only valid with `--ai`; omitting it defaults
+to Claude Code. `--pipeline` and `--cloud` install the same lock. Do not
+combine `--rtk` with `--ai`, `--pipeline`, or `--cloud`.
 
 ```bash
 npm run setup -- --help
-npm run setup -- --pipeline
 npm run setup -- --ai --provider claude
+npm run setup -- --ai --provider codex
+npm run setup -- --pipeline
 npm run setup -- --rtk
 ```
 

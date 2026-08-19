@@ -220,6 +220,26 @@ export async function closeApp(app) {
   }
 }
 
+export async function waitForShellFits(page, timeout = 15_000) {
+  await page.waitForFunction(() => {
+    const view = document.getElementById('view');
+    const xform = document.getElementById('view-xform');
+    if (!view || xform?.classList.contains('view-awaiting-slice')) return false;
+    const box = view.getBoundingClientRect();
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    if (width < 1024 || height < 720 || box.height < 1 || box.width < 1) return false;
+    const root = document.documentElement;
+    const body = document.body;
+    return root.scrollWidth <= width + 1
+      && body.scrollWidth <= width + 1
+      && root.scrollHeight <= height + 1
+      && body.scrollHeight <= height + 1
+      && box.bottom <= height + 1;
+  }, null, { timeout });
+  await assertShellFits(page);
+}
+
 export async function assertShellFits(page) {
   const metrics = await page.evaluate(() => ({
     width: window.innerWidth,
