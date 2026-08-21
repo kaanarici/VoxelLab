@@ -74,6 +74,7 @@ def validate_ask_payload(body, known_slugs: set[str]) -> tuple[dict, tuple[int, 
         "y": None,
         "region": None,
         "viewer_context": "",
+        "local_image": None,
     }
 
     if has_region:
@@ -100,8 +101,27 @@ def validate_ask_payload(body, known_slugs: set[str]) -> tuple[dict, tuple[int, 
         parsed["y"] = y
     # else: neither location → study-scope question (x/y/region stay None)
 
+    local_image = body.get("localImage")
     if slug not in known_slugs:
-        return {}, (400, {"error": f"unknown slug: {slug}"})
+        if not slug.startswith("local_") or not isinstance(local_image, dict):
+            return {}, (400, {"error": f"unknown slug: {slug}"})
+        data_url = local_image.get("dataUrl")
+        try:
+            width = int(local_image.get("width"))
+            height = int(local_image.get("height"))
+        except (TypeError, ValueError):
+            return {}, (400, {"error": "localImage requires positive width and height"})
+        if not isinstance(data_url, str) or not re.fullmatch(r"data:image/(?:png|jpeg);base64,[A-Za-z0-9+/=]+", data_url):
+            return {}, (400, {"error": "localImage must be a PNG or JPEG data URL"})
+        if width < 1 or height < 1 or width > 10000 or height > 10000:
+            return {}, (400, {"error": "localImage requires positive width and height"})
+        parsed["local_image"] = {
+            "data_url": data_url,
+            "width": width,
+            "height": height,
+            "name": str(local_image.get("name") or slug)[:200],
+            "modality": str(local_image.get("modality") or "")[:32],
+        }
     if slice_idx < 0:
         return {}, (400, {"error": "slice must be a non-negative integer"})
     if not question:
@@ -436,7 +456,7 @@ def handle_ai_post(
         if limited is not None:
             handler._json(*limited)
             return
-        body = handler._read_json_payload_or_error()
+        body = handler._read_json_payload_or_error(1024 * 1024)
         if body is None:
             return
         ask_req, invalid = validate_ask_payload(body, valid_slugs())
@@ -452,6 +472,8 @@ def handle_ai_post(
                 }
                 if ask_req.get("viewer_context"):
                     kwargs["viewer_context"] = ask_req["viewer_context"]
+                if ask_req["local_image"]:
+                    kwargs["local_image"] = ask_req["local_image"]
                 result = lazy_ask().ask(ask_req["slug"], ask_req["slice_idx"], ask_req["question"], **kwargs)
             else:
                 kwargs = {
@@ -462,6 +484,8 @@ def handle_ai_post(
                 }
                 if ask_req.get("viewer_context"):
                     kwargs["viewer_context"] = ask_req["viewer_context"]
+                if ask_req["local_image"]:
+                    kwargs["local_image"] = ask_req["local_image"]
                 result = lazy_ask().ask(ask_req["slug"], ask_req["slice_idx"], ask_req["question"], **kwargs)
             handler._json(200, result)
         except ValueError as e:
@@ -476,7 +500,7 @@ def handle_ai_post(
         if limited is not None:
             handler._json(*limited)
             return
-        body = handler._read_json_payload_or_error()
+        body = handler._read_json_payload_or_error(1024 * 1024)
         if body is None:
             return
         ask_req, invalid = validate_ask_payload(body, valid_slugs())
@@ -503,6 +527,8 @@ def handle_ai_post(
             loc["x"], loc["y"] = ask_req["x"], ask_req["y"]
         if ask_req.get("viewer_context"):
             loc["viewer_context"] = ask_req["viewer_context"]
+        if ask_req["local_image"]:
+            loc["local_image"] = ask_req["local_image"]
         try:
             result = lazy_ask().ask(
                 ask_req["slug"], ask_req["slice_idx"], ask_req["question"], on_event=emit,

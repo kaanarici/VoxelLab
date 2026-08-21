@@ -362,6 +362,36 @@ function cropPreviewDataUrl(x0, y0, x1, y1) {
   }
 }
 
+function localAskImagePayload(ctx) {
+  if (!String(ctx?.slug || '').startsWith('local_')) return null;
+  const series = state.manifest?.series?.[state.seriesIdx];
+  if (!series || series.slug !== ctx.slug) return null;
+  const source = state._localStacks?.[ctx.slug]?.[ctx.slice] || $('view');
+  const width = Number(series.width) || source?.naturalWidth || source?.width || 0;
+  const height = Number(series.height) || source?.naturalHeight || source?.height || 0;
+  if (!source || width < 1 || height < 1) return null;
+  try {
+    const maxSide = 768;
+    const scale = Math.min(1, maxSide / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
+    return {
+      dataUrl: canvas.toDataURL('image/jpeg', 0.86),
+      width,
+      height,
+      name: String(series.name || ctx.slug),
+      modality: String(series.modality || ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function formatAskLocMeta(series, loc) {
   const sl = `Slice ${loc.slice + 1}`;
   if (loc.region) {
@@ -494,8 +524,13 @@ function syncAskDisclosure(choice) {
   const note = $('ask-composer-note');
   if (!note) return;
   const disclosure = askModelDisclosure(choice);
-  note.textContent = disclosure.text;
-  note.title = disclosure.title;
+  const localSliceOnly = String(_ask?.slug || '').startsWith('local_');
+  note.textContent = localSliceOnly
+    ? disclosure.text.replace('current slice, selections, and study details', 'current slice, selections, and series details')
+    : disclosure.text;
+  note.title = localSliceOnly
+    ? 'Images leave this device when you send a question. The selected provider receives the current slice, selected regions, and series details; other slices from this browser-local import are not sent.'
+    : disclosure.title;
 }
 
 function applyAskModel(key) {
@@ -749,7 +784,7 @@ function _syncScopeMeta() {
   const title = el.querySelector('.ask-scope-title');
   const loc = $('ask-scope-loc');
   if (!atts.length) {
-    if (title) title.textContent = 'Ask about this study';
+    if (title) title.textContent = _ask.slug.startsWith('local_') ? 'Ask about this slice' : 'Ask about this study';
     if (loc) loc.textContent = _ask.studyLoc || '';
     return;
   }
@@ -781,7 +816,9 @@ function renderPopStudies() {
   if (!list || !_ask) return;
   const series = state.manifest?.series || [];
   const attached = new Set(_ask.attachments.filter((a) => a.type === 'study').map((a) => a.slug));
-  const others = series.filter((s) => s.slug !== _ask.slug && !attached.has(s.slug));
+  const others = _ask.slug.startsWith('local_')
+    ? []
+    : series.filter((s) => s.slug !== _ask.slug && !attached.has(s.slug));
   list.innerHTML = '';
   if (sep) sep.hidden = !others.length;
   if (head) head.hidden = !others.length;
@@ -841,12 +878,15 @@ function openAskComposer(ctx) {
   ta.value = '';
   ta.style.height = 'auto';
   ta.disabled = !_ask.available;
-  ta.placeholder = _ask.available ? 'Ask anything about this study…' : 'AI is unavailable';
+  ta.placeholder = _ask.available
+    ? (_ask.slug.startsWith('local_') ? 'Ask about this slice…' : 'Ask anything about this study…')
+    : 'AI is unavailable';
   if (!_ask.available && _ask.unavailableMessage) {
     appendThreadNotice(_ask.unavailableMessage);
   }
 
   renderAttachments();
+  syncAskDisclosure(currentAskModel());
 
   // A region is now selected, so the slice is no longer a selection target:
   // drop the crosshair cursor (class sources + the inline one the canvas
@@ -1205,6 +1245,7 @@ async function submitAskQuestion() {
         slice: ctx.slice,
         region,
         question,
+        localImage: localAskImagePayload(ctx),
         viewerContext: viewerContext.join('\n\n') || undefined,
         ...askModelRequestFields(currentAskModel()),
       }),

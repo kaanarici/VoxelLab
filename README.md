@@ -15,12 +15,12 @@ is no account, and local files are not uploaded unless you start a cloud job.
 
 ## Download
 
-Download [VoxelLab v1.2.2](https://github.com/kaanarici/VoxelLab/releases/latest).
+Download [VoxelLab v1.2.3](https://github.com/kaanarici/VoxelLab/releases/latest).
 
 | Platform | File | First launch |
 |---|---|---|
-| macOS on Apple Silicon | `VoxelLab-1.2.2-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
-| Windows 10 or 11 on x64 | `VoxelLab-1.2.2-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
+| macOS on Apple Silicon | `VoxelLab-1.2.3-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
+| Windows 10 or 11 on x64 | `VoxelLab-1.2.3-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
 
 There is no Linux or Intel Mac installer. Use [Run From Source](#run-from-source)
 on those machines.
