@@ -34,6 +34,39 @@ def test_ai_post_guard_reports_unready_provider() -> None:
     assert "config broken" in body["error"]
 
 
+def test_validate_ask_payload_accepts_image_for_browser_local_slug() -> None:
+    parsed, invalid = ai_routes.validate_ask_payload({
+        "slug": "local_fixture_1",
+        "slice": 0,
+        "question": "What is visible?",
+        "localImage": {
+            "dataUrl": "data:image/jpeg;base64,/9j/2Q==",
+            "width": 512,
+            "height": 512,
+            "name": "Local fixture",
+            "modality": "MR",
+        },
+    }, set())
+
+    assert invalid is None
+    assert parsed["local_image"]["width"] == 512
+
+
+def test_validate_ask_payload_keeps_unknown_nonlocal_slug_closed() -> None:
+    _parsed, invalid = ai_routes.validate_ask_payload({
+        "slug": "missing",
+        "slice": 0,
+        "question": "What is visible?",
+        "localImage": {
+            "dataUrl": "data:image/jpeg;base64,/9j/2Q==",
+            "width": 512,
+            "height": 512,
+        },
+    }, set())
+
+    assert invalid == (400, {"error": "unknown slug: missing"})
+
+
 def test_handler_local_api_token_accepts_matching_header() -> None:
     handler = object.__new__(serve.Handler)
     handler.headers = {"X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN}

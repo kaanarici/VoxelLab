@@ -22,10 +22,14 @@ Invoked by serve.py via /api/ask and /api/consult. Also runnable directly:
 """
 
 import argparse
+import base64
+import binascii
 import hashlib
+import io
 import json
 import re
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -644,6 +648,121 @@ def _ask_study(
     return normalize_ask_result({"cached": False, **entry})
 
 
+def _ask_local_image(
+    slug: str,
+    slice_idx: int,
+    question: str,
+    *,
+    local_image: dict,
+    x: int | None,
+    y: int | None,
+    region: tuple[int, int, int, int] | None,
+    model: str | None,
+    provider: str | None,
+    viewer_context: str | None,
+    on_event: SliceEvent | None,
+) -> dict:
+    if not isinstance(question, str) or not question.strip():
+        raise ValueError("empty question")
+    if len(question) > MAX_QUESTION_LEN:
+        raise ValueError(f"question too long (max {MAX_QUESTION_LEN} chars)")
+    slice_idx = int(slice_idx)
+    if slice_idx < 0 or slice_idx > MAX_SLICE_INDEX:
+        raise ValueError(f"slice out of range: {slice_idx}")
+    try:
+        encoded = str(local_image["data_url"]).split(",", 1)[1]
+        raw = base64.b64decode(encoded, validate=True)
+    except (KeyError, IndexError, ValueError, binascii.Error) as exc:
+        raise ValueError("invalid local image") from exc
+    if len(raw) > 750_000:
+        raise ValueError("local image is too large")
+    if Image is None:
+        raise RuntimeError("PIL not available — install pillow")
+    try:
+        image = Image.open(io.BytesIO(raw))
+        if image.width > 2048 or image.height > 2048:
+            raise ValueError("local image dimensions are too large")
+        image = image.convert("L")
+        _ = image.load()
+    except Exception as exc:
+        raise ValueError("invalid local image") from exc
+
+    source_width = int(local_image["width"])
+    source_height = int(local_image["height"])
+    viewer_context_text, viewer_context_fingerprint = _viewer_context_prompt(viewer_context)
+    selection_mode = "slice"
+    point_x = point_y = 0
+    region_bounds = None
+    crop = image
+    if region is not None:
+        if x is not None or y is not None:
+            raise ValueError("pass either region= or (x, y), not both")
+        l, t, r, b = _clamp_region(*(int(value) for value in region), source_width, source_height)
+        if r - l < 1 or b - t < 1:
+            raise ValueError("selection region is empty")
+        scale_x = image.width / source_width
+        scale_y = image.height / source_height
+        crop = image.crop((round(l * scale_x), round(t * scale_y), round((r + 1) * scale_x), round((b + 1) * scale_y)))
+        crop = _downscale_max_side(crop, 512)
+        point_x, point_y = (l + r) // 2, (t + b) // 2
+        region_bounds = (l, t, r, b)
+        selection_mode = "region"
+        key = _ask_region_key(slice_idx, l, t, r, b, question)
+    elif x is not None or y is not None:
+        if x is None or y is None:
+            raise ValueError("expected both x and y")
+        point_x, point_y = int(x), int(y)
+        if point_x < 0 or point_y < 0 or point_x >= source_width or point_y >= source_height:
+            raise ValueError(f"coordinates out of range: ({point_x}, {point_y})")
+        key = _ask_key(slice_idx, point_x, point_y, question)
+    else:
+        key = f"{slice_idx}:local:{hashlib.sha1(question.strip().lower().encode()).hexdigest()[:10]}"
+
+    _ = require_provider_ready(provider)
+    with tempfile.TemporaryDirectory(prefix="voxellab-ask-") as temp_dir:
+        temp_root = Path(temp_dir)
+        slice_path = temp_root / "current-slice.jpg"
+        crop_path = temp_root / "selection.jpg"
+        image.save(slice_path, quality=92)
+        crop.save(crop_path, quality=92)
+        name = str(local_image.get("name") or slug)
+        modality = str(local_image.get("modality") or "unknown")
+        if selection_mode == "region":
+            l, t, r, b = region_bounds
+            scope = f"The user selected the region [{l}, {t}] to [{r}, {b}] on this slice."
+            images = [crop_path, slice_path]
+        else:
+            scope = "No region was selected. Answer only from this current slice; the rest of the locally opened study was not transmitted."
+            images = [slice_path]
+        prompt = (
+            f"This is the currently displayed slice from a browser-local import named {name!r}, modality {modality}, "
+            f"slice index {slice_idx}, source dimensions {source_width}x{source_height}. {scope}\n\n"
+            f"The user asks:\n\"{question}\"\n"
+            f"{viewer_context_text}\n\n"
+            "Answer in plain, educational language in 2-4 sentences. Describe only directly visible image content. "
+            "Do not diagnose, recommend treatment, or imply that this single displayed slice represents the whole study. "
+            "Say when the image cannot answer the question. Respond with JSON {answer: \"...\"}."
+        )
+        out = _call_ai(
+            prompt, ASK_SYSTEM, ASK_SCHEMA, model=model, provider=provider, images=images,
+            allow_agent_tools=False, on_event=on_event,
+        )
+    entry: dict = {
+        "key": key,
+        "slice": slice_idx,
+        "x": point_x,
+        "y": point_y,
+        "question": question,
+        "answer": _clean_answer((out or {}).get("answer")),
+        "crop": "local-current-slice",
+    }
+    if region_bounds is not None:
+        entry["region"] = list(region_bounds)
+    if viewer_context_fingerprint:
+        entry["contextFingerprint"] = viewer_context_fingerprint
+    return normalize_ask_result({"cached": False, **entry})
+
+
 def ask(
     slug: str,
     slice_idx: int,
@@ -655,6 +774,7 @@ def ask(
     model: str | None = DEFAULT_MODEL,
     provider: str | None = None,
     viewer_context: str | None = None,
+    local_image: dict | None = None,
     on_event: SliceEvent | None = None,
 ) -> dict:
     """Ask about a slice: either a point (x, y) or an inclusive rectangular region.
@@ -662,6 +782,11 @@ def ask(
     Pass ``region=(x0,y0,x1,y1)`` for marquee selection; otherwise pass ``x`` and ``y`` for point mode.
     """
     slug = _validate_slug(slug)
+    if local_image is not None:
+        return _ask_local_image(
+            slug, slice_idx, question, local_image=local_image, x=x, y=y, region=region,
+            model=model, provider=provider, viewer_context=viewer_context, on_event=on_event,
+        )
     meta = _series_meta(slug)
     if not isinstance(question, str) or not question.strip():
         raise ValueError("empty question")

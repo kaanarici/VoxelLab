@@ -14,6 +14,10 @@ test('project rename dialog traps focus and returns to the folder menu button', 
   const folder = page.locator('.project-folder').last();
   const menuButton = folder.locator('.project-menu-btn');
   await menuButton.click();
+  const menuBox = await page.locator('.folder-menu').boundingBox();
+  expect(menuBox.width).toBeLessThan(240);
+  expect(menuBox.x).toBeGreaterThanOrEqual(8);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual((await page.evaluate(() => innerWidth)) - 8);
   await page.locator('.folder-menu .popover-item', { hasText: 'Rename' }).click();
 
   const dialog = page.locator('.project-rename-overlay');

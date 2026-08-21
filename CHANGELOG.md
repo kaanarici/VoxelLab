@@ -6,8 +6,14 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-08-22
+
 ### Fixed
 
+- Ask can use the currently displayed slice from a browser-local DICOM or NIfTI
+  import instead of rejecting its `local_*` series identifier.
+- Folder option menus keep their compact width instead of stretching across or
+  beyond the viewer window.
 - Fitting a newly opened series sizes the slice canvas from series geometry
   before zoom, so a leftover 512 placeholder cannot overflow the window.
 
@@ -176,6 +182,7 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clinical DICOM workstation.
 - VoxelLab is not a medical device and is not for clinical use.
 
+[1.2.3]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.3
 [1.2.2]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.2
 [1.2.1]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kaanarici/VoxelLab/releases/tag/v1.2.0

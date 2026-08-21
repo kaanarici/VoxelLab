@@ -1,11 +1,41 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
 from pathlib import Path
 
 import pytest
 
 import ask
+
+
+def test_ask_accepts_current_slice_from_browser_local_import(monkeypatch) -> None:
+    Image = pytest.importorskip("PIL.Image")
+    buffer = io.BytesIO()
+    Image.new("L", (8, 6), 100).save(buffer, format="PNG")
+    local_image = {
+        "data_url": f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}",
+        "width": 8,
+        "height": 6,
+        "name": "Local MR",
+        "modality": "MR",
+    }
+    calls = []
+    monkeypatch.setattr(ask, "require_provider_ready", lambda provider=None: {"ready": True})
+    monkeypatch.setattr(
+        ask,
+        "_call_ai",
+        lambda prompt, system, schema, **kwargs: calls.append((prompt, kwargs)) or {"answer": "Visible slice description."},
+    )
+
+    result = ask.ask("local_fixture_1", 2, "What is visible?", local_image=local_image, provider="codex")
+
+    assert result["answer"] == "Visible slice description."
+    assert result["cached"] is False
+    assert result["crop"] == "local-current-slice"
+    assert "rest of the locally opened study was not transmitted" in calls[0][0]
+    assert len(calls[0][1]["images"]) == 1
 
 
 def test_ask_rejects_coordinates_outside_series_bounds(monkeypatch, tmp_path: Path) -> None:

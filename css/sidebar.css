@@ -375,14 +375,13 @@
   .project-menu-anchor {
     position: relative;
   }
-  .folder-menu,
+  .folder-menu {
+    min-width: 130px;
+  }
   .sort-popover {
     top: 100%;
     right: 0;
     margin-top: var(--space-xs);
-    min-width: 130px;
-  }
-  .sort-popover {
     min-width: 150px;
   }
   .popover-label-grow {
