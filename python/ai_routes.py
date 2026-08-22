@@ -314,7 +314,7 @@ def start_analysis(
         running[analysis_key] = analysis_status_entry(
             time_module, proc=None, status="running", last="starting...", analysis_key=analysis_key, slug=slug,
         )
-    cmd = [python_executable, "-u", str(root / "analyze.py")]
+    cmd = [python_executable, "-u", str(root / "python" / "analyze.py")]
     if force:
         cmd.append("--force")
     if slices is not None:

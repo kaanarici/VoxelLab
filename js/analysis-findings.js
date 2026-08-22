@@ -8,10 +8,12 @@ import { cachedFetchResponse, cachedFetchJson } from './cached-fetch.js';
 import { setAnalysis, setAnalysisBusy, setSliceIndex } from './core/state/viewer-commands.js';
 import { seriesPersistenceKey } from './core/series-identity.js';
 import { setScrubMarkers } from './scrubber-markers.js';
+import { notify } from './notify.js';
 
 let _renderScrubTicks = () => {};
 let activeAnalysisRequest = null;
 let analysisRequestId = 0;
+let analysisError = null;
 const ANALYSIS_POLL_DEADLINE_MS = 20 * 60 * 1000;
 const MAX_CONSECUTIVE_ANALYSIS_STATUS_FAILURES = 12;
 const ANALYSIS_POLL_DELAY_MS = 2000;
@@ -115,10 +117,44 @@ function finishAnalysisRequest(request) {
 
 function showAnalysisError(message, request = null) {
   if (request && !isCurrentAnalysisRequest(request)) return;
-  const st = $('gen-status');
-  if (st) st.textContent = `Error: ${message}`;
+  const detail = friendlyAnalysisError(message);
+  analysisError = { slug: request?.slug || state.manifest?.series?.[state.seriesIdx]?.slug || '', detail };
   if (request) finishAnalysisRequest(request);
   else setAnalysisBusy(false);
+  renderFindings();
+  setAnalysisStatus(`Analysis failed: ${detail}`, 'error');
+  if (document.querySelectorAll instanceof Function) {
+    notify(`AI observation failed: ${detail}`, { kind: 'error', duration: 7000 });
+  }
+}
+
+function friendlyAnalysisError(message) {
+  const detail = String(message || 'Unknown error')
+    .replace(/^analyze\.py exited with code -?\d+:\s*/i, '')
+    .replace(/^ERROR:\s*/i, '')
+    .trim();
+  if (/can't open file .*analyze\.py/i.test(detail)) {
+    return 'the local observation runner could not start. Restart VoxelLab and try again.';
+  }
+  return detail || 'the observation runner stopped unexpectedly.';
+}
+
+function friendlyAnalysisProgress(message) {
+  const detail = String(message || '').trim();
+  if (!detail || detail === 'starting...') return 'Preparing the observation runner…';
+  if (/^Using provider\b/i.test(detail)) return 'Connected to the configured AI provider…';
+  if (/^===/.test(detail)) return 'Reviewing the selected slice images…';
+  const reviewed = detail.match(/^slice\s+(\d+)\s+/i);
+  if (reviewed) return `Reviewed slice ${Number(reviewed[1]) + 1}; continuing…`;
+  if (/wrote analysis-/i.test(detail)) return 'Saving observations locally…';
+  return 'Running AI observation…';
+}
+
+function setAnalysisStatus(message, kind = '') {
+  const status = $('gen-status');
+  const text = $('gen-status-text') || status;
+  if (text) text.textContent = message;
+  status?.classList.toggle('is-error', kind === 'error');
 }
 
 // Series selection and a replacement request both cancel browser polling. This
@@ -148,6 +184,7 @@ export function renderFindings() {
   const legacyCount = hasFindings ? a.findings.length - groundedCount : 0;
   const aiFlags = viewerAiFlags();
   const canRunAnalysis = aiFlags.localAiActionsEnabled;
+  const currentError = analysisError?.slug === slug ? analysisError.detail : '';
 
   if (!hasFindings) {
     const statusMsg = !HAS_LOCAL_BACKEND
@@ -157,20 +194,23 @@ export function renderFindings() {
       : !aiFlags.localAiAvailable
       ? aiFlags.aiUnavailableMessage
       : state.overlays.analysisBusy
-      ? 'Sending slices to the local AI runner…'
+      ? 'Preparing the observation runner…'
       : '';
     host.innerHTML = `
       ${canRunAnalysis ? `
         <div class="gen-actions">
-          <button class="gen-btn" id="gen-current-analysis">
-            ${state.overlays.analysisBusy ? '<span class="spinner"></span> Analyzing…' : `Observe slice ${state.sliceIdx + 1}`}
+          <button class="gen-btn" id="gen-current-analysis" ${state.overlays.analysisBusy ? 'disabled' : ''}>
+            Observe slice ${state.sliceIdx + 1}
           </button>
-          <button class="gen-btn" id="gen-analysis">
-            ${state.overlays.analysisBusy ? 'Queued' : '5-slice overview'}
+          <button class="gen-btn" id="gen-analysis" ${state.overlays.analysisBusy ? 'disabled' : ''}>
+            5-slice overview
           </button>
         </div>
       ` : ''}
-      <div class="gen-note" id="gen-status">${statusMsg || 'Not a diagnosis. Unverified AI output, cached locally.'}</div>
+      <div class="gen-note${state.overlays.analysisBusy ? ' is-running' : ''}${currentError ? ' is-error' : ''}" id="gen-status" role="status" aria-live="polite">
+        ${state.overlays.analysisBusy ? '<span class="spinner" aria-hidden="true"></span>' : ''}
+        <span id="gen-status-text">${escapeHtml(currentError ? `Analysis failed: ${currentError}` : statusMsg || 'Not a diagnosis. Unverified AI output, cached locally.')}</span>
+      </div>
     `;
     if (!canRunAnalysis) return;
     const btn = $('gen-analysis');
@@ -204,7 +244,7 @@ export function renderFindings() {
         : ''}
     </div>
     ${items}
-    <div class="gen-note">Not a diagnosis. Unverified AI output.</div>
+    <div class="gen-note${currentError ? ' is-error' : ''}" id="gen-status" role="status" aria-live="polite">${escapeHtml(currentError ? `Analysis failed: ${currentError}` : 'Not a diagnosis. Unverified AI output.')}</div>
   `;
   host.querySelectorAll('.finding').forEach((el) => {
     el.addEventListener('click', () => {
@@ -224,6 +264,7 @@ export async function startAnalysis(slug, force = false, slices = null) {
   }
   const series = state.manifest?.series?.[state.seriesIdx];
   if (!series || series.slug !== slug) return;
+  analysisError = null;
   const analysisKey = seriesPersistenceKey(series, state.manifest);
   if (!analysisKey) {
     const st = $('gen-status');
@@ -324,8 +365,7 @@ export async function startAnalysis(slug, force = false, slices = null) {
     }
     const terminalStatus = active.status || (active.running ? 'running' : '');
     if (terminalStatus === 'running') {
-      const st = $('gen-status');
-      if (st) st.textContent = active.last || 'running...';
+      setAnalysisStatus(friendlyAnalysisProgress(active.last));
       scheduleAnalysisPoll(request, poll, ANALYSIS_POLL_DELAY_MS);
       return;
     }

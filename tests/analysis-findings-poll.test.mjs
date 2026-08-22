@@ -166,7 +166,7 @@ test('analysis poll surfaces terminal error status', async (t) => {
   await runQueuedTimers(timers);
 
   assert.equal(state.overlays.analysisBusy, false);
-  assert.match(document.getElementById('gen-status').textContent, /provider offline/);
+  assert.match(document.getElementById('gen-status-text').textContent, /provider offline/);
 });
 
 test('analysis poll fails after sustained status HTTP errors', async (t) => {
@@ -186,7 +186,7 @@ test('analysis poll fails after sustained status HTTP errors', async (t) => {
   await runQueuedTimers(timers);
 
   assert.equal(statusChecks, 12);
-  assert.match(document.getElementById('gen-status').textContent, /status check kept failing \(HTTP 502\)/);
+  assert.match(document.getElementById('gen-status-text').textContent, /status check kept failing \(HTTP 502\)/);
 });
 
 test('analysis poll fails when status entry disappears', async (t) => {
@@ -207,7 +207,7 @@ test('analysis poll fails when status entry disappears', async (t) => {
   await runQueuedTimers(timers);
 
   assert.equal(sidecarFetched, false);
-  assert.match(document.getElementById('gen-status').textContent, /status missing for the current source series/);
+  assert.match(document.getElementById('gen-status-text').textContent, /status missing for the current source series/);
 });
 
 test('analysis poll enforces a client deadline', async (t) => {
@@ -231,7 +231,7 @@ test('analysis poll enforces a client deadline', async (t) => {
   now = 20 * 60 * 1000;
   await runQueuedTimers(timers, 1);
 
-  assert.match(document.getElementById('gen-status').textContent, /timed out after 20 minutes/);
+  assert.match(document.getElementById('gen-status-text').textContent, /timed out after 20 minutes/);
 });
 
 test('analysis cancellation aborts an in-flight status poll without changing state', async (t) => {
@@ -440,5 +440,5 @@ test('analysis completion rejects a keyed payload bound to another slug', async 
 
   assert.equal(state.overlays.analysis, null);
   assert.equal(state.overlays.analysisBusy, false);
-  assert.match(document.getElementById('gen-status').textContent, /mismatched source-series identity/);
+  assert.match(document.getElementById('gen-status-text').textContent, /mismatched source-series identity/);
 });

@@ -3,6 +3,7 @@ const STORAGE_KEY = 'voxellab.keyboardShortcuts.v1';
 const commands = new Map();
 const order = [];
 const listeners = new Set();
+const RESERVED_KEYS = new Set(['Escape', 'Enter', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
 let overrides = readOverrides();
 
 const isMac = () => /Mac|iPhone|iPad|iPod/i.test(globalThis.navigator?.platform || '');
@@ -157,6 +158,8 @@ export function commandForShortcut(shortcut, exceptId = '') {
 export function setShortcut(commandId, shortcut) {
   const normalized = normalizeShortcut(shortcut);
   if (!commands.has(commandId) || !normalized) return { ok: false };
+  const key = normalized.split('+').at(-1);
+  if (RESERVED_KEYS.has(key)) return { ok: false, reserved: key };
   const conflict = commandForShortcut(normalized, commandId);
   if (conflict) return { ok: false, conflict };
   overrides = { ...overrides, [commandId]: normalized };
@@ -173,12 +176,16 @@ export function clearShortcut(commandId) {
 }
 
 export function resetShortcut(commandId) {
-  if (!commands.has(commandId)) return;
+  if (!commands.has(commandId)) return { ok: false };
+  const defaultShortcut = commands.get(commandId).defaultShortcut || '';
+  const conflict = commandForShortcut(defaultShortcut, commandId);
+  if (conflict) return { ok: false, conflict };
   const next = { ...overrides };
   delete next[commandId];
   overrides = next;
   writeOverrides();
   emitChange();
+  return { ok: true };
 }
 
 export function matchCommandShortcutEvent(e, commandId) {

@@ -84,14 +84,6 @@ export function wireKeyboardShortcuts(deps) {
       return;
     }
     if (await handleMicroscopyStackShortcut(e, key)) return;
-    if (key === 'k' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-      const ask = $('btn-ask');
-      if (ask && !ask.classList.contains('hidden')) {
-        e.preventDefault();
-        ask.click();
-        return;
-      }
-    }
     if (key === 'ArrowUp') { step(-1); e.preventDefault(); return; }
     if (key === 'ArrowDown') { step(1); e.preventDefault(); return; }
     if (key === 'ArrowLeft') { selectSeries((state.seriesIdx - 1 + state.manifest.series.length) % state.manifest.series.length); return; }

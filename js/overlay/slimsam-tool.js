@@ -180,6 +180,9 @@ function wireSlimSAMMenu() {
   menu.addEventListener('click', (event) => event.stopPropagation());
   $('slimsam-enable')?.addEventListener('click', () => void activateFromMenu());
   $('slimsam-refresh')?.addEventListener('click', () => void updateSlimSAMStatus(true));
+  $('segmentation-cloud-run')?.addEventListener('click', () => {
+    void openSegmentationCloudAction({ name: 'CT/MR segmentation' });
+  });
   $('segmentation-cloud-settings')?.addEventListener('click', () => {
     void import('../cloud-settings-ui.js').then(mod => mod.openCloudSettingsModal());
   });
@@ -260,7 +263,7 @@ async function updateSlimSAMStatus(loadModule) {
     }
     setSlimSAMStatus(
       'missing',
-      'SlimSAM click masks do not need a Modal key, but this scan does not have local SAM embeddings yet. Generate the sidecars, or use Cloud settings for GPU-backed segmentation adapters.',
+      'This series does not have local click-to-segment embeddings yet. Use Run Cloud GPU above for guided segmentation, or generate local embeddings with the command below.',
       slimsamEmbedCommand(series.slug),
     );
     return info;
@@ -374,7 +377,7 @@ function createSegmentationEngineAction(engine) {
   const button = document.createElement('button');
   button.className = 'segmentation-engine-action';
   button.type = 'button';
-  button.textContent = 'Cloud GPU';
+  button.textContent = 'Run on Cloud GPU';
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     void openSegmentationCloudAction(engine);
@@ -390,7 +393,7 @@ async function openSegmentationCloudAction(engine) {
   setSlimSAMMenuOpen(false);
   const { showStudyUploadModal } = await import('../projects/study-upload-modal.js');
   await showStudyUploadModal(_selectSeries, {
-    contextTitle: `${engine.name} cloud action`,
+    contextTitle: `${engine.name || 'CT/MR segmentation'} · Cloud GPU`,
     contextBody: 'Select the original CT/MR DICOM stack. VoxelLab checks cloud eligibility before any upload.',
   });
 }
