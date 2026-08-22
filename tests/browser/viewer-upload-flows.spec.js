@@ -1370,9 +1370,14 @@ test('persisted SEG overlays hydrate on the first series selection after reload'
   });
 
   const volumesPanel = page.locator('[data-panel="region-volumes"]');
+  await expect(volumesPanel).toHaveAttribute('data-collapse-wired', '1');
   if (await volumesPanel.evaluate(panel => panel.classList.contains('collapsed'))) {
-    await volumesPanel.locator('.sec-title').click();
+    await volumesPanel.getByText('Regional Volumes', { exact: true }).click();
   }
+  await expect(volumesPanel.locator('.sec-title')).toHaveAttribute('aria-expanded', 'true');
+  await volumesPanel.locator('.rp-body').evaluate(async (body) => {
+    await Promise.all(body.getAnimations().map(animation => animation.finished));
+  });
   await expect(page.locator('#regional-volumes-export-csv')).toBeVisible();
   const regionalCsvDownloadPromise = page.waitForEvent('download');
   await page.locator('#regional-volumes-export-csv').click();

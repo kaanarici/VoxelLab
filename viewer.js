@@ -77,6 +77,7 @@ import { applyLocalBackendMode } from './js/local-backend-mode.js';
 import { autoWindowLevel } from './js/auto-window-level.js';
 import { wireControls } from './js/wire-controls.js';
 import { registerCommands } from './js/command-palette.js';
+import { displayShortcutParts, getShortcut, onShortcutsChange } from './js/keyboard-shortcuts.js';
 import { initCloudResults } from './js/cloud-results.js';
 import { ensureTemplate } from './js/template-loader.js';
 import { getRawSliceData } from './js/raw-slice-data.js';
@@ -181,6 +182,7 @@ initReactiveSync({
   renderVolumeTable,
   renderRoiResults,
   renderMicroscopyHyperstackControls,
+  renderFindings,
 });
 
 init();
@@ -482,6 +484,7 @@ async function toggleHelp() {
       versionLabel.textContent = 'Manual updates';
     }
   }
+  syncShortcutHints($('help-modal'));
   const shortcutsButton = $('help-shortcuts-open');
   if (shortcutsButton && shortcutsButton.dataset.wired !== 'true') {
     shortcutsButton.dataset.wired = 'true';
@@ -496,6 +499,18 @@ async function toggleHelp() {
   if (willShow) openModal('help-modal');
   else closeModal('help-modal');
 }
+
+function syncShortcutHints(root = document) {
+  for (const element of root.querySelectorAll('[data-shortcut-id]')) {
+    const parts = displayShortcutParts(getShortcut(element.dataset.shortcutId));
+    const label = parts.join(' + ');
+    if (element.matches('kbd')) element.textContent = label || '—';
+    else if (label) element.dataset.key = parts.join('').toLowerCase();
+    else delete element.dataset.key;
+  }
+}
+
+onShortcutsChange(() => syncShortcutHints());
 
 // Theme toggle — instant, no transition (initial glyph sync: bootstrap.js + end of init())
 syncThemeIcons();

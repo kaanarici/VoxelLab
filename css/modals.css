@@ -211,7 +211,11 @@
     box-shadow: 0 0 0 1px var(--border);
   }
   .help-subtitle kbd { padding: 1px 5px; }
-  .help-body { padding: var(--space-lg) var(--space-xl) var(--space-xs); overflow-y: auto; }
+  .help-body {
+    min-height: 0;
+    padding: var(--space-lg) var(--space-xl) var(--space-md);
+    overflow-y: auto;
+  }
   .help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 32px; }
   .help-sec h3 {
     font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--muted);
@@ -225,15 +229,18 @@
   .help-row .hk-keys { display: inline-flex; gap: var(--space-xs); }
   .help-row kbd { padding: var(--space-2xs) var(--space-2sm); }
   .help-about {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: var(--space-sm) var(--space-md);
-    align-items: baseline;
     margin-top: var(--space-lg);
     padding: var(--space-md) var(--space-14);
     border-radius: var(--radius);
     background: var(--elev);
     box-shadow: inset 0 0 0 var(--border-w) var(--border);
+  }
+  .help-about-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
   }
   .help-about-title {
     color: var(--text);
@@ -263,7 +270,16 @@
     border-top: var(--border-w) solid var(--border);
   }
   .help-release { display: flex; align-items: center; gap: var(--space-sm); }
-  .help-version { color: var(--muted); font-family: var(--ff-mono); font-size: var(--fs-caption); }
+  .help-version {
+    flex: 0 0 auto;
+    padding: var(--space-2xs) var(--space-2sm);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    box-shadow: inset 0 0 0 var(--border-w) var(--border);
+    color: var(--muted);
+    font-family: var(--ff-mono);
+    font-size: var(--fs-caption);
+  }
   .help-footer a.annot-btn { text-decoration: none; }
   .shortcuts-card {
     width: min(960px, calc(100vw - 32px));
@@ -897,9 +913,6 @@
     }
     .shortcut-actions {
       justify-content: flex-start;
-    }
-    .help-about {
-      grid-template-columns: 1fr;
     }
     .format-capability-head {
       display: none;

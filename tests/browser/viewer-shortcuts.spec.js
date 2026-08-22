@@ -27,9 +27,9 @@ test('page metadata and Help describe the experimental local-first build', async
   await expect(page.locator('#help-version')).toHaveText(/^Version \d+\.\d+\.\d+$/);
   await expect(page.locator('#help-check-updates')).toHaveAttribute(
     'href',
-    'https://github.com/kaanarici/VoxelLab/releases/latest',
+    'https://github.com/kaanarici/VoxelLab/releases',
   );
-  await page.context().route('https://github.com/kaanarici/VoxelLab/releases/latest', route => route.fulfill({
+  await page.context().route('https://github.com/kaanarici/VoxelLab/releases', route => route.fulfill({
     status: 200,
     contentType: 'text/html',
     body: '<title>VoxelLab releases</title>',
@@ -37,7 +37,7 @@ test('page metadata and Help describe the experimental local-first build', async
   const popupPromise = page.waitForEvent('popup');
   await page.locator('#help-check-updates').click();
   const popup = await popupPromise;
-  await expect(popup).toHaveURL('https://github.com/kaanarici/VoxelLab/releases/latest');
+  await expect(popup).toHaveURL('https://github.com/kaanarici/VoxelLab/releases');
   await popup.close();
 });
 
@@ -66,6 +66,30 @@ test('sidebar toggle stays aligned with the sidebar action icon column', async (
     showLeft: document.querySelector('#btn-show-left svg').getBoundingClientRect().left,
   }));
   expect(collapsedMetrics.showLeft).toBeCloseTo(openMetrics.hideLeft, 1);
+});
+
+test('right sidebar restores open sections and collapsed controls are inert', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('mri-viewer/collapsed/v1', JSON.stringify({ 'roi-results': false }));
+  });
+  const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
+  expect(response?.ok()).toBe(true);
+  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+
+  const roiSection = page.locator('.rp-section[data-panel="roi-results"]');
+  await expect(roiSection).not.toHaveClass(/collapsed/);
+  await expect(roiSection.locator('.sec-title')).toHaveAttribute('aria-expanded', 'true');
+  expect(await roiSection.locator('.rp-body').evaluate(body => body.inert)).toBe(false);
+
+  await roiSection.locator('.sec-title').click();
+  await expect(roiSection).toHaveClass(/collapsed/);
+  await expect(roiSection.locator('.sec-title')).toHaveAttribute('aria-expanded', 'false');
+  expect(await roiSection.locator('.rp-body').evaluate(body => body.inert)).toBe(true);
+
+  const regionsSection = page.locator('.rp-section[data-panel="regions"]');
+  const wasCollapsed = await regionsSection.evaluate(section => section.classList.contains('collapsed'));
+  await page.locator('#info-regions').evaluate(icon => icon.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  expect(await regionsSection.evaluate(section => section.classList.contains('collapsed'))).toBe(wasCollapsed);
 });
 
 async function shortcutChipColors(page) {
@@ -221,6 +245,23 @@ test('shortcut customizer edits, clears, resets, and blocks duplicate bindings',
   await expect(screenshotRow.locator('.shortcut-keycaps kbd')).toHaveText('X');
   await expect(page.getByLabel('Reset shortcut for Screenshot')).toBeVisible();
   await expect(page.getByLabel('Clear shortcut for Screenshot')).toBeVisible();
+
+  await page.locator('#shortcuts-close').click();
+  await page.locator('#btn-help').click();
+  await expect(page.locator('#help-modal kbd[data-shortcut-id="screenshot"]')).toHaveText('X');
+  await expect(page.locator('#btn-shot')).toHaveAttribute('data-key', 'x');
+  await page.evaluate(() => {
+    window.__screenshotShortcutRuns = 0;
+    document.querySelector('#btn-shot').onclick = () => { window.__screenshotShortcutRuns += 1; };
+  });
+  await page.locator('#help-close').click();
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('X');
+  await page.keyboard.press('S');
+  expect(await page.evaluate(() => window.__screenshotShortcutRuns)).toBe(1);
+  await page.locator('#btn-help').click();
+  await page.locator('#help-shortcuts-open').click();
+  await expect(page.locator('#shortcuts-modal')).toHaveClass(/visible/);
 
   const mprRow = page.locator('.shortcut-row', { hasText: 'MPR mode' });
   await mprRow.hover();
