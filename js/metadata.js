@@ -467,6 +467,8 @@ export function renderQuantificationPanel() {
 function regionalVolumesEmptyLine(reason) {
   const hint = reason === 'zeroVolume'
     ? 'Labels did not yield any volume above the reporting threshold.'
+    : reason === 'loading'
+      ? 'Loading segmentation details…'
     : 'No segmentation sidecar for this series.';
   return `<p class="rp-empty-minimal" role="status">${hint}</p>`;
 }
@@ -529,14 +531,14 @@ export function renderVolumeTable() {
   const host = $('volume-table');
   const volLine = $('volumes-info-line');
   if (!host) return;
+  const series = state.manifest?.series?.[state.seriesIdx];
   if (!state.overlays.regionMeta || !state.overlays.regionMeta.regions) {
     if (volLine) volLine.hidden = true;
-    host.innerHTML = regionalVolumesEmptyLine('noSidecar');
+    host.innerHTML = regionalVolumesEmptyLine(series?.hasRegions ? 'loading' : 'noSidecar');
     return;
   }
   const regions = state.overlays.regionMeta.regions;
   const colors = state.overlays.regionMeta.colors || {};
-  const series = state.manifest?.series?.[state.seriesIdx];
   // When the series has no trusted voxel spacing, the sidecar's mL was computed
   // against assumed 1 mm spacing — reporting it as authoritative millilitres is
   // fabricated precision. Degrade to honest voxel counts instead (same policy as

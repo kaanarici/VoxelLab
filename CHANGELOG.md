@@ -16,11 +16,23 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   beyond the viewer window.
 - Fitting a newly opened series sizes the slice canvas from series geometry
   before zoom, so a leftover 512 placeholder cannot overflow the window.
+- Remote slice controls, anatomy labels, and AI context stay attached to the
+  image on screen until the requested cloud slice has actually loaded.
+- AI observations launch the packaged Python runner from its real location and
+  present progress as status text instead of a misleading queued action.
+- Customized shortcuts now replace their defaults in execution, toolbar hints,
+  and the Help reference.
+- The Help modal links to the complete releases page, keeps build version with
+  the About section, and refreshes offline caches for this release.
+- Right-sidebar sections restore their saved open state, keep collapsed controls
+  out of keyboard focus, and no longer collapse when their info icon is used.
 
 ### Changed
 
 - README screenshot and setup examples now match the current viewer and both
   local AI providers (Claude Code and Codex).
+- Cloud GPU segmentation is a primary guided action in the Segmentation menu,
+  with source-file and eligibility guidance before upload.
 
 ## [1.2.2] - 2026-08-19
 

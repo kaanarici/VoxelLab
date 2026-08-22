@@ -12,7 +12,7 @@ import { $ } from './dom.js';
 import { state, subscribe } from './core/state.js';
 import { updateScrubFill } from './cine.js';
 import { updateScrubMarkers } from './scrubber-markers.js';
-import { syncMprSliceIndex } from './core/state/viewer-commands.js';
+import { setSliceIndex, syncMprSliceIndex } from './core/state/viewer-commands.js';
 import {
   updateSliceDisplay,
   drawSlice,
@@ -38,6 +38,7 @@ import { renderStructuresPanel } from './atlas/structures-panel.js';
 import { syncViewerRuntimeSession } from './runtime/viewer-session.js';
 import { syncDisplayControlAvailability, syncMrPresetActiveState } from './shell/toolbar-chrome.js';
 import { renderQuantificationPanel } from './metadata.js';
+import { clearSpinnerPendingPrefix, setSpinnerPending } from './spinner.js';
 
 let _wired = false;
 const SLICE_WINDOW_RADIUS = 5;
@@ -120,13 +121,24 @@ function syncSliceUI({ scrub = true } = {}) {
   syncZScrubberSlider();
 }
 
+function syncPendingSliceUI() {
+  if ($('scrub')) $('scrub').value = state.sliceIdx;
+  updateScrubFill();
+  updateScrubMarkers(state.sliceIdx);
+}
+
+function baseSliceReady(index = state.sliceIdx, imgs = state.imgs) {
+  const image = imgs?.[index];
+  return !!(image?.complete && image.naturalWidth > 0);
+}
+
 function canRenderMprFromVolumes() {
   const session = syncViewerRuntimeSession();
   return !!session?.readiness?.mprReady;
 }
 
 function ensureVisibleStackWindow() {
-  if (isMprActive() && canRenderMprFromVolumes()) return;
+  if (isMprActive() && canRenderMprFromVolumes()) return null;
   const radius = scrubWindowRadius();
   const currentIdx = state.sliceIdx;
   const currentImgs = state.imgs;
@@ -138,13 +150,15 @@ function ensureVisibleStackWindow() {
   const warmNearbySlices = (imgs) => {
     if (radius > 0) imgs?.ensureWindow?.(currentIdx, radius);
   };
-  redrawWhenReady(currentImgs, ensureCurrentSlice(currentImgs), () => state.imgs);
+  const basePromise = ensureCurrentSlice(currentImgs);
+  redrawWhenReady(currentImgs, basePromise, () => state.imgs);
   warmNearbySlices(currentImgs);
   for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
     const imgs = state[cache.imgs];
     redrawWhenReady(imgs, ensureCurrentSlice(imgs), () => state[cache.imgs]);
     warmNearbySlices(imgs);
   }
+  return basePromise;
 }
 
 export function initReactiveSync({
@@ -155,16 +169,47 @@ export function initReactiveSync({
   renderVolumeTable = () => {},
   renderRoiResults = () => {},
   renderMicroscopyHyperstackControls = () => {},
+  renderFindings = () => {},
 } = {}) {
   if (_wired) return;
   _wired = true;
   initOverlayStack({ onReady: syncOverlays });
 
+  let displayedSliceIdx = state.sliceIdx;
+  let pendingSliceRequestId = 0;
+
   subscribe('sliceIdx', () => {
-    ensureVisibleStackWindow();
+    const requestId = ++pendingSliceRequestId;
+    const spinnerKey = `slice-image:${requestId}`;
+    clearSpinnerPendingPrefix('slice-image');
+    const requestedIdx = state.sliceIdx;
+    const requestedImgs = state.imgs;
+    const waitForBase = state.loaded && state.mode === '2d' && !baseSliceReady(requestedIdx, requestedImgs);
+    const basePromise = ensureVisibleStackWindow();
+    if (waitForBase && basePromise) {
+      syncPendingSliceUI();
+      setSpinnerPending(spinnerKey, true);
+      Promise.resolve(basePromise).then((result) => {
+        setSpinnerPending(spinnerKey, false);
+        if (requestId !== pendingSliceRequestId || state.sliceIdx !== requestedIdx || state.imgs !== requestedImgs) return;
+        if (!result || !baseSliceReady(requestedIdx, requestedImgs)) {
+          if (displayedSliceIdx !== requestedIdx) setSliceIndex(displayedSliceIdx);
+          return;
+        }
+        displayedSliceIdx = requestedIdx;
+        syncSliceUI();
+        renderRoiResults();
+        renderMicroscopyHyperstackControls();
+        renderFindings();
+        scheduleRedraw({ force: true });
+      });
+      return;
+    }
+    displayedSliceIdx = state.sliceIdx;
     syncSliceUI();
     renderRoiResults();
     renderMicroscopyHyperstackControls();
+    renderFindings();
     if (isMprActive() && state.mpr.z !== state.sliceIdx) syncMprSliceIndex();
     scheduleRedraw();
   });

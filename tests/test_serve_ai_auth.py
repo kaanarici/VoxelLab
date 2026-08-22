@@ -865,6 +865,8 @@ def test_analyze_allows_bounded_distinct_source_identities_for_the_same_slug(mon
     assert len(launched) == 2
     assert set(running) == {first_key, second_key}
     assert all("--analysis-key" in cmd for cmd, _kwargs in launched)
+    assert all(cmd[:3] == ["python", "-u", str(tmp_path / "python" / "analyze.py")] for cmd, _kwargs in launched)
+    assert all(kwargs["cwd"] == str(tmp_path) for _cmd, kwargs in launched)
 
     third_key = "v2:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     assert ai_routes.start_analysis(

@@ -11,10 +11,10 @@
   </div>
   <div class="viewer-header-spacer"></div>
   <div class="viewer-header-actions">
-    <button class="act-btn" id="btn-shot" data-tip="Screenshot (s)" data-key="s" aria-label="Screenshot"><svg><use href="icons.svg#i-camera"/></svg></button>
+    <button class="act-btn" id="btn-shot" data-tip="Screenshot (s)" data-key="s" data-shortcut-id="screenshot" aria-label="Screenshot"><svg><use href="icons.svg#i-camera"/></svg></button>
     <span class="vh-sep vh-advanced"></span>
     <button class="act-btn vh-advanced" id="btn-sr" data-tip="DICOM SR" aria-label="DICOM SR"><svg><use href="icons.svg#i-download"/></svg></button>
-    <button class="act-btn vh-advanced" id="btn-ask" data-tip="Ask (k)" data-key="k" aria-label="Ask"><svg><use href="icons.svg#i-sparkles"/></svg></button>
+    <button class="act-btn vh-advanced" id="btn-ask" data-tip="Ask (k)" data-key="k" data-shortcut-id="ask" aria-label="Ask"><svg><use href="icons.svg#i-sparkles"/></svg></button>
     <button class="act-btn vh-advanced" id="btn-consult" data-tip="Consult" aria-label="Consult"><svg><use href="icons.svg#i-scroll"/></svg></button>
     <button class="act-btn vh-advanced" id="btn-cloud-settings" data-tip="Cloud settings" aria-label="Cloud settings"><svg><use href="icons.svg#i-settings"/></svg></button>
     <div class="slimsam-popover-wrap vh-advanced" id="slimsam-popover-wrap">
@@ -28,10 +28,12 @@
           <span class="slimsam-pill" id="slimsam-state-pill">Checking</span>
         </div>
         <div class="segmentation-summary" id="segmentation-summary">Open a series to see compatible segmentation engines.</div>
-        <div class="segmentation-engine-list" id="segmentation-engine-list"></div>
         <div class="segmentation-menu-actions">
+          <button class="btn segmentation-cloud-primary" type="button" id="segmentation-cloud-run">Run Cloud GPU</button>
           <button class="btn" type="button" id="segmentation-cloud-settings">Cloud settings</button>
         </div>
+        <div class="segmentation-cloud-hint">Choose the original CT or MR files. VoxelLab checks eligibility before upload.</div>
+        <div class="segmentation-engine-list" id="segmentation-engine-list"></div>
         <div class="segmentation-section-title">Interactive click-to-segment</div>
         <div class="slimsam-status" id="slimsam-status">Open a 2D series, then check whether this scan has embeddings.</div>
         <div class="slimsam-command" id="slimsam-command" hidden><code id="slimsam-command-code"></code></div>
@@ -55,7 +57,7 @@
       </div>
     </div>
     <span class="vh-sep vh-advanced"></span>
-    <button class="act-btn vh-advanced" id="btn-help" data-tip="Help (?)" data-key="?" aria-label="Help"><svg><use href="icons.svg#i-help"/></svg></button>
+    <button class="act-btn vh-advanced" id="btn-help" data-tip="Help (?)" data-key="?" data-shortcut-id="help" aria-label="Help"><svg><use href="icons.svg#i-help"/></svg></button>
   </div>
   <div class="viewer-header-right-actions" id="viewer-header-right-actions">
     <button class="act-btn viewer-header-toggle" id="btn-show-right" data-tip="Show Panel" data-tip-pos="bottom-end" aria-label="Show Panel" hidden>
