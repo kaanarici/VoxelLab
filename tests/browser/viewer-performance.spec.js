@@ -599,7 +599,7 @@ test('viewer defers SlimSAM integration until the menu opens', async ({ page }) 
   await expect(page.locator('#slimsam-title')).toHaveText('Segmentation');
   await expect(page.locator('#segmentation-engine-list')).toContainText('SlimSAM');
   await expect(page.locator('#slimsam-state-pill')).not.toHaveText('Blocked');
-  await expect(page.locator('#slimsam-status')).toContainText('SlimSAM click masks do not need a Modal key');
+  await expect(page.locator('#slimsam-status')).toContainText('does not have local click-to-segment embeddings yet');
   await expect(page.locator('#slimsam-command-code')).toContainText('python3 python/slimsam_embed.py');
   await expect(page.locator('label.slimsam-toggle.ui-checkbox #slimsam-smooth.ui-checkbox-input')).toBeChecked();
   await expect(page.locator('label.slimsam-toggle .ui-checkbox-box')).toBeVisible();
@@ -631,13 +631,13 @@ test('segmentation catalog cloud action opens the upload workflow lazily', async
   await expect(page.locator('#slimsam-menu')).toBeVisible();
   const totalSegmentator = page.locator('.segmentation-engine[data-engine="totalsegmentator"]');
   await expect(totalSegmentator).toContainText('TotalSegmentator');
-  await expect(totalSegmentator.locator('.segmentation-engine-action')).toHaveText('Cloud GPU');
+  await expect(totalSegmentator.locator('.segmentation-engine-action')).toHaveText('Run on Cloud GPU');
   expect(uploadRequests).toEqual([]);
 
   await totalSegmentator.locator('.segmentation-engine-action').scrollIntoViewIfNeeded();
   await totalSegmentator.locator('.segmentation-engine-action').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await expect(page.locator('#upload-context-hint')).toContainText('TotalSegmentator cloud action');
+  await expect(page.locator('#upload-context-hint')).toContainText('TotalSegmentator · Cloud GPU');
   await expect(page.locator('#upload-context-hint')).toContainText('Select the original CT/MR DICOM stack');
   await expect.poll(() => uploadRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
 });

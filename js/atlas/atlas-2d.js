@@ -43,6 +43,12 @@ function render() {
   // (available + meta) is required, so labels can show without Anatomy colour.
   if (!labels.available || !labels.meta) { clearAtlasPills(svg); _sig = ''; return; }
 
+  // Keep callouts attached to the slice that is actually painted. Remote base
+  // images and label masks can arrive independently; advancing callouts while
+  // the canvas still shows the previous slice creates a false correspondence.
+  const baseImage = state.imgs?.[state.sliceIdx];
+  if (!baseImage?.complete || baseImage.naturalWidth === 0) return;
+
   const canvas = $('view');
   const wrap = $('canvas-wrap');
   if (!canvas || !wrap) return;

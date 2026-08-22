@@ -29,10 +29,10 @@
   <div class="tool-rail-wrap" id="tool-rail-wrap">
   <div class="tool-rail" id="tool-rail">
   <div class="tool-group" data-tg="display">
-    <button class="icon-btn" id="btn-auto" data-tip="Auto contrast (a)" data-key="a" aria-label="Auto contrast"><svg class="ico"><use href="icons.svg#i-sun"/></svg></button>
-    <button class="icon-btn" id="btn-invert" data-tip="Invert (i)" data-key="i" aria-label="Invert"><svg class="ico"><use href="icons.svg#i-flip"/></svg></button>
+    <button class="icon-btn" id="btn-auto" data-tip="Auto contrast (a)" data-key="a" data-shortcut-id="auto-wl" aria-label="Auto contrast"><svg class="ico"><use href="icons.svg#i-sun"/></svg></button>
+    <button class="icon-btn" id="btn-invert" data-tip="Invert (i)" data-key="i" data-shortcut-id="invert" aria-label="Invert"><svg class="ico"><use href="icons.svg#i-flip"/></svg></button>
     <button class="icon-btn" id="btn-zoom-out" data-tip="Zoom out" aria-label="Zoom out"><svg class="ico"><use href="icons.svg#i-minus"/></svg></button>
-    <button class="icon-btn" id="btn-zoomfit" data-tip="Fit (f)" data-key="f" aria-label="Zoom to fit"><svg class="ico"><use href="icons.svg#i-maximize"/></svg></button>
+    <button class="icon-btn" id="btn-zoomfit" data-tip="Fit (f)" data-key="f" data-shortcut-id="zoomfit" aria-label="Zoom to fit"><svg class="ico"><use href="icons.svg#i-maximize"/></svg></button>
     <button class="icon-btn" id="btn-zoom-in" data-tip="Zoom in" aria-label="Zoom in"><svg class="ico"><use href="icons.svg#i-plus"/></svg></button>
     <div class="custom-dropdown" id="cmap-dropdown">
       <button class="dd-trigger" id="cmap-trigger" aria-label="Colormap" aria-haspopup="listbox" aria-expanded="false"><span id="cmap-label">Grayscale</span><svg class="dd-chevron"><use href="icons.svg#i-chevron-down"/></svg></button>
@@ -75,14 +75,14 @@
     </button>
     <div class="toolbox-panel menu-flyout menu-actions" data-tg="measure">
       <div class="menu-group-label">Measure</div>
-      <button class="icon-btn labeled menu-row" id="btn-measure" data-key="r" aria-label="Ruler"><svg class="ico"><use href="icons.svg#i-ruler"/></svg><span>Ruler</span></button>
-      <button class="icon-btn labeled menu-row" id="btn-angle" data-key="g" aria-label="Angle"><svg class="ico"><use href="icons.svg#i-corner"/></svg><span>Angle</span></button>
+      <button class="icon-btn labeled menu-row" id="btn-measure" data-key="r" data-shortcut-id="ruler" aria-label="Ruler"><svg class="ico"><use href="icons.svg#i-ruler"/></svg><span>Ruler</span></button>
+      <button class="icon-btn labeled menu-row" id="btn-angle" data-key="g" data-shortcut-id="angle" aria-label="Angle"><svg class="ico"><use href="icons.svg#i-corner"/></svg><span>Angle</span></button>
       <div class="menu-group-label">Regions</div>
-      <button class="icon-btn labeled menu-row" id="btn-roi-ell" data-key="e" aria-label="Ellipse ROI"><svg class="ico"><use href="icons.svg#i-circle"/></svg><span>Ellipse</span></button>
-      <button class="icon-btn labeled menu-row" id="btn-roi-poly" data-key="p" aria-label="Polygon ROI"><svg class="ico"><use href="icons.svg#i-polygon"/></svg><span>Polygon</span></button>
-      <button class="icon-btn labeled menu-row" id="btn-roi-point" data-key="o" aria-label="Point count ROI"><svg class="ico"><use href="icons.svg#i-pin"/></svg><span>Point</span></button>
+      <button class="icon-btn labeled menu-row" id="btn-roi-ell" data-key="e" data-shortcut-id="roi-ell" aria-label="Ellipse ROI"><svg class="ico"><use href="icons.svg#i-circle"/></svg><span>Ellipse</span></button>
+      <button class="icon-btn labeled menu-row" id="btn-roi-poly" data-key="p" data-shortcut-id="roi-poly" aria-label="Polygon ROI"><svg class="ico"><use href="icons.svg#i-polygon"/></svg><span>Polygon</span></button>
+      <button class="icon-btn labeled menu-row" id="btn-roi-point" data-key="o" data-shortcut-id="roi-point" aria-label="Point count ROI"><svg class="ico"><use href="icons.svg#i-pin"/></svg><span>Point</span></button>
       <div class="menu-group-label">Annotate</div>
-      <button class="icon-btn labeled menu-row" id="btn-annot" data-key="n" aria-label="Annotate"><svg class="ico"><use href="icons.svg#i-pin"/></svg><span>Annotate</span></button>
+      <button class="icon-btn labeled menu-row" id="btn-annot" data-key="n" data-shortcut-id="annotate" aria-label="Annotate"><svg class="ico"><use href="icons.svg#i-pin"/></svg><span>Annotate</span></button>
       <div class="menu-divider" aria-hidden="true"></div>
       <button class="icon-btn labeled menu-row menu-row--danger" id="btn-clear" aria-label="Clear"><svg class="ico"><use href="icons.svg#i-x"/></svg><span>Clear slice</span></button>
     </div>

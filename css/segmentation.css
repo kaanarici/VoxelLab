@@ -139,6 +139,7 @@
 
 .segmentation-menu-actions {
   display: flex;
+  gap: var(--space-xs);
   justify-content: flex-start;
   margin-top: var(--space-2sm);
 }
@@ -146,6 +147,19 @@
 .segmentation-menu-actions .btn {
   height: 28px;
   padding-inline: var(--space-sm);
+}
+
+.segmentation-menu-actions .segmentation-cloud-primary {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text);
+}
+
+.segmentation-cloud-hint {
+  margin-top: var(--space-xs);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
 }
 
 .segmentation-section-title {

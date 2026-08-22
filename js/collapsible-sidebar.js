@@ -3,6 +3,23 @@ const COLLAPSE_KEY = 'mri-viewer/collapsed/v1';
 
 // Set<panelName> — panels that were open on last visit and should animate open once content is ready.
 const _pendingExpand = new Set();
+const ASYNC_READY_PANELS = new Set([
+  'metadata',
+  'microscopy-stack',
+  'microscopy-analysis',
+  'structures',
+  'quantification',
+  'region-volumes',
+]);
+
+function syncSectionState(section, title) {
+  const collapsed = section.classList.contains('collapsed');
+  title.setAttribute('aria-expanded', String(!collapsed));
+  const body = section.querySelector('.rp-body');
+  if (body) body.inert = collapsed;
+  const useEl = title.querySelector('.rp-collapse-ico use');
+  if (useEl) useEl.setAttribute('href', collapsed ? 'icons.svg#i-plus' : 'icons.svg#i-minus');
+}
 
 function loadCollapsed() {
   try {
@@ -35,9 +52,7 @@ export function signalPanelReady(name) {
       section.classList.remove('collapsed');
       const title = section.querySelector('.sec-title');
       if (!title) return;
-      const useEl = title.querySelector('.rp-collapse-ico use');
-      if (useEl) useEl.setAttribute('href', 'icons.svg#i-minus');
-      title.setAttribute('aria-expanded', 'true');
+      syncSectionState(section, title);
     });
   });
 }
@@ -80,35 +95,25 @@ export function wireCollapsiblePanels() {
     }
     title.setAttribute('role', 'button');
     title.tabIndex = 0;
-    const syncIcon = () => {
-      const useEl = title.querySelector('.rp-collapse-ico use');
-      if (!useEl) return;
-      useEl.setAttribute(
-        'href',
-        section.classList.contains('collapsed') ? 'icons.svg#i-plus' : 'icons.svg#i-minus',
-      );
-    };
-    const syncAria = () => {
-      title.setAttribute(
-        'aria-expanded',
-        section.classList.contains('collapsed') ? 'false' : 'true',
-      );
-      syncIcon();
-    };
-    syncAria();
-    const toggle = () => {
+    syncSectionState(section, title);
+    const toggle = (event) => {
+      if (event?.target?.closest?.('.info-tip')) return;
       section.classList.toggle('collapsed');
-      syncAria();
+      syncSectionState(section, title);
       const cur = loadCollapsed();
       cur[name] = section.classList.contains('collapsed');
       saveCollapsed(cur);
     };
     title.addEventListener('click', toggle);
     title.addEventListener('keydown', (e) => {
+      if (e.target.closest?.('.info-tip')) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        toggle();
+        toggle(e);
       }
     });
+    if (_pendingExpand.has(name) && !ASYNC_READY_PANELS.has(name)) {
+      signalPanelReady(name);
+    }
   });
 }

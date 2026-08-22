@@ -3,7 +3,7 @@
     <div class="ask-header has-subtitle">
       <div class="ask-heading">
         <div class="ask-title" id="help-title">Keyboard &amp; tools</div>
-        <div class="help-subtitle">Quick reference. Press <kbd>?</kbd> or <kbd>Esc</kbd> to toggle.</div>
+        <div class="help-subtitle">Quick reference. Press <kbd>Esc</kbd> to close.</div>
       </div>
       <button class="ask-close" id="help-close" aria-label="Close (Esc)"><svg aria-hidden="true"><use href="icons.svg#i-x"/></svg></button>
     </div>
@@ -23,27 +23,30 @@
           <div class="help-row"><span class="hk">Pan</span><kbd>Drag</kbd></div>
           <div class="help-row"><span class="hk">Window / Level</span><kbd>Shift + Drag</kbd></div>
           <div class="help-row"><span class="hk">Zoom</span><kbd>⌘/Ctrl + Wheel</kbd></div>
-          <div class="help-row"><span class="hk">Auto contrast</span><kbd>A</kbd></div>
+          <div class="help-row"><span class="hk">Auto contrast</span><kbd data-shortcut-id="auto-wl">A</kbd></div>
           <div class="help-row"><span class="hk">Reset W/L + zoom</span><kbd>Dbl-click</kbd></div>
         </div>
         <div class="help-sec">
           <h3>Modes</h3>
-          <div class="help-row"><span class="hk">MPR</span><kbd>M</kbd></div>
-          <div class="help-row"><span class="hk">3D volume</span><kbd>3</kbd></div>
-          <div class="help-row"><span class="hk">Compare</span><kbd>C</kbd></div>
-          <div class="help-row"><span class="hk">Measure distance</span><kbd>R</kbd></div>
-          <div class="help-row"><span class="hk">Screenshot</span><kbd>S</kbd></div>
+          <div class="help-row"><span class="hk">MPR</span><kbd data-shortcut-id="mpr">M</kbd></div>
+          <div class="help-row"><span class="hk">3D volume</span><kbd data-shortcut-id="3d">3</kbd></div>
+          <div class="help-row"><span class="hk">Compare</span><kbd data-shortcut-id="compare">C</kbd></div>
+          <div class="help-row"><span class="hk">Measure distance</span><kbd data-shortcut-id="ruler">R</kbd></div>
+          <div class="help-row"><span class="hk">Screenshot</span><kbd data-shortcut-id="screenshot">S</kbd></div>
         </div>
         <div class="help-sec">
           <h3>Overlays</h3>
-          <div class="help-row"><span class="hk">Brain (skull strip)</span><kbd>B</kbd></div>
-          <div class="help-row"><span class="hk">Tissue segmentation</span><kbd>T</kbd></div>
-          <div class="help-row"><span class="hk">Symmetry heatmap</span><kbd>Y</kbd></div>
-          <div class="help-row" id="help-ai-row"><span class="hk">Ask AI (drag region)</span><kbd>K</kbd></div>
+          <div class="help-row"><span class="hk">Brain (skull strip)</span><kbd data-shortcut-id="brain">B</kbd></div>
+          <div class="help-row"><span class="hk">Tissue segmentation</span><kbd data-shortcut-id="tissue">T</kbd></div>
+          <div class="help-row"><span class="hk">Symmetry heatmap</span><kbd data-shortcut-id="heatmap">Y</kbd></div>
+          <div class="help-row" id="help-ai-row"><span class="hk">Ask AI (drag region)</span><kbd data-shortcut-id="ask">K</kbd></div>
         </div>
       </div>
       <aside class="help-about" aria-labelledby="help-about-title">
-        <div class="help-about-title" id="help-about-title">About this build</div>
+        <div class="help-about-head">
+          <div class="help-about-title" id="help-about-title">About this build</div>
+          <span class="help-version" id="help-version">Version</span>
+        </div>
         <p>VoxelLab is an experimental, local-first research imaging workbench built end-to-end through human-directed AI. It keeps source files local when possible and makes calibration and provenance boundaries explicit. Not for clinical use.</p>
       </aside>
       <div class="hc-foot">
@@ -53,8 +56,7 @@
     </div>
     <div class="help-footer">
       <div class="help-release">
-        <span class="help-version" id="help-version">Version</span>
-        <a class="annot-btn" id="help-check-updates" href="https://github.com/kaanarici/VoxelLab/releases/latest" target="_blank" rel="noreferrer">Check for updates</a>
+        <a class="annot-btn" id="help-check-updates" href="https://github.com/kaanarici/VoxelLab/releases" target="_blank" rel="noreferrer">View releases</a>
       </div>
       <button class="annot-btn" id="help-shortcuts-open" type="button">Customize shortcuts</button>
     </div>

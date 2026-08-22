@@ -110,7 +110,13 @@ function renderRow(row) {
 function render() {
   const list = $('shortcuts-list');
   if (!list) return;
+  const active = document.activeElement;
+  const activeRowId = active?.closest?.('.shortcut-row')?.dataset.shortcutId || '';
+  const activeClass = [...(active?.classList || [])].find(name => name.startsWith('shortcut-')) || '';
   list.replaceChildren(...shortcutRows().map(renderRow));
+  if (activeRowId && activeClass) {
+    list.querySelector(`[data-shortcut-id="${CSS.escape(activeRowId)}"] .${CSS.escape(activeClass)}`)?.focus();
+  }
 }
 
 function startEdit(id) {
@@ -145,7 +151,11 @@ function init() {
       if (editingId === id) finishEdit();
       else render();
     } else if (e.target.closest('.shortcut-reset')) {
-      resetShortcut(id);
+      const result = resetShortcut(id);
+      if (!result?.ok && result?.conflict) {
+        editingId = id;
+        conflictText = `Already assigned to ${result.conflict.label}. Clear that shortcut first.`;
+      }
       render();
     }
   });
@@ -166,6 +176,8 @@ function init() {
     }
     conflictText = result.conflict
       ? `Already assigned to ${result.conflict.label}. Clear that shortcut first.`
+      : result.reserved
+        ? `${result.reserved} is reserved for viewer navigation or dialog controls.`
       : 'Press a key or key combination.';
     render();
   }, true);
