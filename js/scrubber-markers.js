@@ -1,19 +1,10 @@
-// Custom reactive markers + magnetic detents for the main slice scrubber.
-//
-// The native <input type=range> stays the interaction + accessibility backbone
-// (keyboard stepping, focus, value/max sync). This module layers finding /
-// microbleed markers ON TOP of the track and gives a pointer drag a magnetic
-// "catch" at flagged slices, so reviewers land exactly on the slices the
-// analysis flagged instead of scrubbing past them.
 import { $ } from './dom.js';
 
-// All thresholds are in CSS pixels along the track, converted to slice units per
-// drag so the feel is identical whether a series has 30 slices or 300.
-const CATCH_PX = 7;     // pointer distance at which a marker grabs the thumb
-const RELEASE_PX = 12;  // must pull this far past a caught marker to break free (hysteresis = the "stuck" feel)
-const ACTIVE_PX = 18;   // marker lights up when the thumb is this close
-const UNDER_PX = 9;     // thumb is sitting on the marker — fade it so the knob absorbs it
-const HOVER_PX = 8;     // cursor proximity that lights a marker on hover
+const CATCH_PX = 7;
+const RELEASE_PX = 12;
+const ACTIVE_PX = 18;
+const UNDER_PX = 9;
+const HOVER_PX = 8;
 
 const SEV_COLOR = {
   attention: 'var(--color-attention)',
@@ -21,10 +12,10 @@ const SEV_COLOR = {
   microbleed: 'var(--color-microbleed)',
 };
 
-let markers = [];          // [{ slice, severity, el }]
+let markers = [];
 const geom = { width: 0, max: 0 };
 let dragging = false;
-let stuck = null;          // slice index the thumb is currently caught on
+let stuck = null;
 let hoverEl = null;
 
 const scrubEl = () => $('scrub');
@@ -36,7 +27,6 @@ function refreshGeom() {
   geom.max = +scrub.max || 0;
 }
 
-// Called by renderScrubTicks after it rebuilds the marker DOM.
 export function setScrubMarkers(list) {
   markers = Array.isArray(list) ? list : [];
   stuck = null;
@@ -49,9 +39,6 @@ function writeValue(v) {
   if (scrub && +scrub.value !== v) scrub.value = String(v);
 }
 
-// Transform the raw slider value mid-drag so the thumb catches on markers.
-// No-op for keyboard / cine (dragging === false) so single-slice stepping is
-// never blocked by a detent.
 export function magnetizeSliceValue(raw) {
   if (!dragging || markers.length === 0) { stuck = null; return raw; }
   if (geom.width === 0) refreshGeom();
@@ -74,8 +61,6 @@ export function magnetizeSliceValue(raw) {
   return raw;
 }
 
-// Light the marker under/near the thumb and tint the knob when parked on one.
-// Driven from syncSliceUI, so it tracks drag, keyboard, and cine alike.
 export function updateScrubMarkers(currentSlice) {
   const scrub = scrubEl();
   if (markers.length === 0) { scrub?.classList.remove('scrub--on-marker'); return; }
@@ -106,7 +91,6 @@ function clearHover() {
   if (hoverEl) { hoverEl.classList.remove('hover'); hoverEl = null; }
 }
 
-// Light the nearest marker to the cursor while hovering the track (not dragging).
 function onScrubberMove(e) {
   if (dragging || markers.length === 0) return;
   const scrub = scrubEl();

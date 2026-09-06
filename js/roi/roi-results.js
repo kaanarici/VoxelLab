@@ -1,8 +1,3 @@
-// ROI results entrypoint: aggregates the split modules so importers keep one
-// stable name. Data shaping + bundle import/export logic lives in
-// roi-results-model.js, CSV/JSON/ImageJ serialization in roi-results-export.js,
-// and the panel UI in roi-results-table.js.
-
 export {
   activateRoiResultRow,
   importRoiResultsBundle,

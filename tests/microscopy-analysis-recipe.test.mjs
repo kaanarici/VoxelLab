@@ -1,4 +1,3 @@
-/* global URL */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -158,7 +157,7 @@ test('runParticleAnalysis records a deterministic, serializable descriptor', () 
   const persistenceKey = seriesPersistenceKey(series, state.manifest);
   assert.equal(state._microscopyAnalysisLog[persistenceKey].length, 1);
   assert.equal(state._microscopyAnalysisLog.cells_t1, undefined);
-  // Serializable: non-finite values would make this round-trip invalid.
+
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(d)));
 });
 
@@ -202,7 +201,7 @@ test('replayAnalysisOp reproduces the same object ids without re-recording', () 
   const first = runParticleAnalysis(state, series, {
     threshold: { method: 'manual', value: 1, darkBackground: true }, channelName: 'C0',
   });
-  // Clear the live rows, then replay from the descriptor.
+
   setRoiEntriesForSlice('cells_t1', 0, []);
   assert.equal(roiResultRows(state).length, 0);
   const replay = replayAnalysisOp(state, series, first.descriptor);

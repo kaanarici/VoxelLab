@@ -1,4 +1,3 @@
-  /* Ask / consult modals — flat, clean, no gradient or glow */
   #ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal {
     position: fixed; inset: 0;
     background: var(--scrim);
@@ -32,8 +31,7 @@
     padding: var(--space-md) var(--space-lg);
     border-bottom: var(--border-w) solid var(--border);
   }
-  /* Two-line header (title + subtitle): pin the close button to the top-right
-     corner rather than vertically centering it against the taller block. */
+
   .ask-header.has-subtitle { align-items: flex-start; }
   .ask-heading { flex: 1; min-width: 0; }
   .ask-header .ask-title {
@@ -101,7 +99,6 @@
   .ask-foot .rerun:hover { color: var(--text); border-bottom-color: var(--text); }
   .ask-foot .rerun:active { opacity: 0.7; }
 
-  /* Annotation modal (reuses .ask-card chrome) */
   #annot-modal {
     position: fixed; inset: 0;
     background: var(--scrim);
@@ -127,8 +124,7 @@
     box-sizing: border-box;
     transition: border-color var(--dur-quick) var(--ease-swap), background var(--dur-quick) var(--ease-swap);
   }
-  /* Keyboard focus only (base.css supplies the --muted border); a programmatic
-     .focus() on modal-open shouldn't paint the field as if it's active. */
+
   .annot-textarea:focus-visible { background: var(--hover); }
   .annot-textarea::placeholder { color: var(--muted); }
 
@@ -136,7 +132,7 @@
     display: flex; align-items: center; gap: var(--space-sm);
     margin-top: var(--space-14);
   }
-  /* Skeleton shared in toolbar.css (.btn, .gen-btn, .annot-btn). */
+
   .annot-btn {
     color: var(--text);
     padding: var(--space-2sm) var(--space-14);
@@ -157,7 +153,6 @@
   #annot-delete { display: none; }
   .annot-spacer { flex: 1; }
 
-  /* Hover tooltip for annotations — floats near cursor */
   #annot-hover {
     position: absolute; pointer-events: none;
     display: none;
@@ -177,7 +172,6 @@
     color: var(--muted); margin-bottom: 3px;
   }
 
-  /* Help overlay modal */
   #help-modal {
     position: fixed; inset: 0;
     background: var(--scrim);
@@ -842,21 +836,13 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
-  /* Imported file-path / long-UID metadata rows clamp to a single line with an
-     ellipsis; the untruncated value rides the singleton data-tip tooltip
-     (data-tip-pos="left" in the right rail) so a giant raw path can never
-     overflow or wrap to many lines in the metadata panel. */
-  /* The metadata accordion body is a grid whose default auto column grows to the
-     max-content of a nowrap value, escaping the 312px rail. Cap the column and
-     zero the item min-width (scoped to this panel) so truncation can engage. */
+
   .rp-section[data-panel="metadata"] .rp-body { grid-template-columns: minmax(0, 1fr); }
   .rp-section[data-panel="metadata"] .rp-body-inner,
   #meta { min-width: 0; }
   .meta-row.meta-row--truncate { gap: var(--space-md); }
   .meta-row.meta-row--truncate .mk { flex: 0 0 auto; white-space: nowrap; }
-  /* The clamped value is a click/Enter-to-copy target: pointer cursor + a hover
-     wash signal it, and the negative right margin keeps its right edge flush with
-     the plain values above it despite the copy-target padding. */
+
   .meta-row.meta-row--truncate .mv {
     min-width: 0;
     flex: 0 1 auto;
@@ -872,7 +858,7 @@
   }
   .meta-row.meta-row--truncate .mv:hover { background: var(--hover); color: var(--text); }
   .meta-row.meta-row--truncate .mv:active { background: var(--accent-bg); }
-  /* Neutral triage tone for the "sibling folders → separate series" intake hint. */
+
   .upload-triage-row.is-info { border-left-color: var(--icon-idle); }
   .upload-triage-row.is-info .upload-triage-badge {
     background: var(--accent-bg);

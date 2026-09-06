@@ -1,9 +1,8 @@
-"""Shared preflight checks for calibrated cloud source manifests."""
-
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 from engine_sources import (
@@ -16,10 +15,8 @@ from engine_sources import (
 from pipeline_paths import is_skipped_path
 from projection_rtk import configured_rtk_command
 
-
 def module_exists(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
-
 
 def source_dicom_files(folder: Path) -> list[Path]:
     if not folder.is_dir():
@@ -36,8 +33,7 @@ def source_dicom_files(folder: Path) -> list[Path]:
             files.append(path)
     return files
 
-
-def dicom_frame_count(paths: list[Path]) -> int:
+def dicom_frame_count(paths: list[Path], *, grayscale: bool = False) -> int:
     import pydicom
 
     total = 0
@@ -45,6 +41,8 @@ def dicom_frame_count(paths: list[Path]) -> int:
         dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         if not getattr(dataset, "Rows", None) or not getattr(dataset, "Columns", None):
             raise ValueError(f"{path.name}: missing image dimensions")
+        if grayscale and int(getattr(dataset, "SamplesPerPixel", 1) or 1) != 1:
+            raise ValueError(f"{path.name}: ultrasound reconstruction requires grayscale source frames")
         try:
             frames = int(getattr(dataset, "NumberOfFrames", 1) or 1)
         except (TypeError, ValueError):
@@ -52,13 +50,11 @@ def dicom_frame_count(paths: list[Path]) -> int:
         total += frames if frames > 0 else 1
     return total
 
-
 def _load_manifest_for_preflight(folder: Path, label: str) -> tuple[dict | None, list[str]]:
     try:
         return load_source_manifest(folder), []
     except (OSError, json.JSONDecodeError) as exc:
         return None, [f"{label} source: invalid calibration manifest: {exc}"]
-
 
 def validate_projection_source(folder: Path) -> list[str]:
     errors = [f"missing Python module: pydicom"] if not module_exists("pydicom") else []
@@ -81,10 +77,11 @@ def validate_projection_source(folder: Path) -> list[str]:
     errors.extend(projection_manifest_errors(manifest, projection_count))
     projection = manifest.get("projection", {}) if isinstance(manifest, dict) else {}
     geometry = str(projection.get("geometryModel", projection.get("geometry", "")) or "")
-    if geometry in {"circular-cbct", "limited-angle-tomo"} and not configured_rtk_command():
+    if geometry and not configured_rtk_command():
         errors.append("projection source: missing RTK runtime; run `npm run setup -- --pipeline --rtk` or set MRI_VIEWER_RTK_COMMAND")
+    if not os.environ.get("MRI_VIEWER_RTK_COMMAND", "").strip() and projection.get("inputValueDomain") != "line-integral":
+        errors.append("projection source: bundled RTK requires projection.inputValueDomain=line-integral; raw detector intensities need calibrated preprocessing")
     return errors
-
 
 def validate_ultrasound_source(folder: Path) -> list[str]:
     errors = [f"missing Python module: pydicom"] if not module_exists("pydicom") else []
@@ -98,12 +95,11 @@ def validate_ultrasound_source(folder: Path) -> list[str]:
         return errors + [f"ultrasound source: missing calibration manifest ({', '.join(SOURCE_MANIFEST_NAMES)}) in {folder}"]
     if not errors:
         try:
-            frame_count = dicom_frame_count(files)
+            frame_count = dicom_frame_count(files, grayscale=True)
         except Exception as exc:
             return errors + [f"ultrasound source: invalid DICOM input: {exc}"]
         errors.extend(ultrasound_manifest_errors(manifest, frame_count))
     return errors
-
 
 def registration_series_uids(paths: list[Path]) -> tuple[set[str], list[str]]:
     import pydicom
@@ -123,7 +119,6 @@ def registration_series_uids(paths: list[Path]) -> tuple[set[str], list[str]]:
         if series_uid:
             series_uids.add(series_uid)
     return series_uids, errors
-
 
 def validate_registration_source(folder: Path) -> list[str]:
     errors = [f"missing Python module: pydicom"] if not module_exists("pydicom") else []

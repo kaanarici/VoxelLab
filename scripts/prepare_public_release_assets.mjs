@@ -1,4 +1,3 @@
-/* global console, process */
 import assert from 'node:assert/strict';
 import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';

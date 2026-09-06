@@ -20,7 +20,7 @@ function writeOverrides() {
   try {
     globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(overrides));
   } catch {
-    // Local storage can be unavailable in hardened browser contexts.
+
   }
 }
 

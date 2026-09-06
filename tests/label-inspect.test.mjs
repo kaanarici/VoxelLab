@@ -7,8 +7,6 @@ import {
   volumeTip,
 } from '../js/atlas/label-inspect.js';
 
-// 2x2x2 volume; spacing chosen so one voxel = (2 * 1 * 3) / 1000 = 0.006 mL.
-// pixelSpacing = [row=1, col=2]; firstIPP/lastIPP give sliceSpacing = 3.
 const SERIES = {
   width: 2,
   height: 2,
@@ -19,7 +17,7 @@ const SERIES = {
   lastIPP: [0, 0, 3],
 };
 const META = { regions: { 5: { name: 'Spleen', mL: 999 } }, legend: { 5: 'Spleen' } };
-// Three voxels labelled 5.
+
 const VOXELS = new Uint8Array([5, 0, 5, 0, 5, 0, 0, 0]);
 
 test('countVoxelsForLabel counts only matching bytes', () => {
@@ -33,7 +31,7 @@ test('mlApprox = count * col * row * slice / 1000 (recomputed, not echoed)', () 
   assert.equal(rec.name, 'Spleen');
   assert.equal(rec.voxelCount, 3);
   assert.equal(rec.calibrated, true);
-  // 3 * (2 * 1 * 3 / 1000) = 0.018, NOT the rounded sidecar 999.
+
   assert.ok(Math.abs(rec.mlApprox - 0.018) < 1e-9);
 });
 

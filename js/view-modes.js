@@ -1,4 +1,3 @@
-// Display mode: 2D / MPR / 3D / MPR+3D / Compare + CT 3D presets.
 import { state } from './core/state.js';
 import { $ } from './dom.js';
 import { THREE_D_PRESETS, CT_WINDOWS } from './core/constants.js';
@@ -61,9 +60,7 @@ export function setMode(mode) {
   $('btn-3d').classList.toggle('active', is3d);
   $('btn-mpr').classList.toggle('active', isMpr);
   $('btn-compare').classList.toggle('active', mode === 'cmp');
-  // Entering a volume mode needs the FULL overlay stack (the dense 3D/MPR volume
-  // can't build from a partial 2D prefetch). Re-ensure active overlays so they
-  // load all slices promptly instead of trickling in.
+
   if (is3d || isMpr) {
     for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
       if (state.overlays[cache.kind]) ensureOverlayStack(cache.type);
@@ -71,8 +68,7 @@ export function setMode(mode) {
   }
   $('panel-3d').hidden = !is3d;
   if (is3d) {
-    // Volume controls sit at the bottom of the right panel; surface them when 3D
-    // activates so the mode switch visibly brings up its own controls.
+
     requestAnimationFrame(() => $('panel-3d')?.scrollIntoView({ block: 'start' }));
     updateThreeDViewLabels(state.manifest?.series?.[state.seriesIdx]);
   }
@@ -90,11 +86,6 @@ export function setMode(mode) {
   syncHistogramPanel();
 }
 
-// ── Anatomy labels (3D). The 3D Anatomy overlay can also draw floating region
-// labels. This is a 3D feature gated by a remembered "Show labels" toggle
-// (default on) — it NEVER writes overlay/anatomy state, so it can't fight the
-// Anatomy toggle. Labels appear iff (3D mode) && (Anatomy on) && (toggle on).
-// The overlay module is lazy-loaded so Three isn't pulled in at startup / for 2D.
 let _atlas3dMod = null;
 
 function set3DLabels(on) {
@@ -109,37 +100,29 @@ function set3DLabels(on) {
 function syncAnatomyLabelsToggle() {
   const btn = $('btn-anatomy-labels');
   if (!btn) return;
-  // Labels are independent of the colour overlay — available whenever the series
-  // has region data, not only when Anatomy is enabled.
+
   const series = state.manifest?.series?.[state.seriesIdx];
   btn.hidden = !series?.hasRegions;
   btn.classList.toggle('active', showAnatomyLabels());
 }
 
-// Region labels are an overlay (never a mode) AND independent of the colour
-// overlay: they float over the 2D slice / 3D volume whenever the Labels toggle is
-// on and the series has region data — with or without the Anatomy colour on. They
-// load their own region data and never touch the Anatomy (labels) state.
 function syncAtlasLabels() {
   const series = state.manifest?.series?.[state.seriesIdx];
   const on = showAnatomyLabels() && !!series?.hasRegions;
-  if (on) ensureOverlayStack(OVERLAY_CACHE_BY_KIND.labels.type); // labels need region masks/meta even if the colour overlay is off
+  if (on) ensureOverlayStack(OVERLAY_CACHE_BY_KIND.labels.type);
   setAtlas2DActive(state.mode === '2d' && on);
   set3DLabels(is3dActive() && on);
   syncAnatomyLabelsToggle();
 }
 
-/** Toggle the "Labels" anatomy sub-option (remembered) — affects 2D and 3D. */
 export function toggleAnatomyLabels() {
   setShowAnatomyLabels(!showAnatomyLabels());
   syncAtlasLabels();
 }
 
-/** Wire the anatomy-labels coupling: labels follow (Anatomy on && toggle on). */
 export function initAnatomyLabels() {
   subscribe('overlays.labels', syncAtlasLabels);
-  // Relabel the 3D view presets to the new series' true anatomy on every series
-  // switch (the volume-rebuild path doesn't reliably re-run setMode in 3D).
+
   subscribe('seriesIdx', () => {
     if (is3dActive()) updateThreeDViewLabels(state.manifest?.series?.[state.seriesIdx]);
   });
@@ -321,10 +304,6 @@ export function enterMPR() {
   });
 }
 
-// The viewer area resized (a sidebar collapsed/expanded). Re-fit the active mode
-// so the image fills the new space instead of staying at its old fit. The 2D
-// transform and MPR/compare canvases are JS-sized, so CSS reflow alone can't do
-// it; the 3D pane self-resizes via its #three-container ResizeObserver.
 export function refitViewerLayout() {
   switch (state.mode) {
     case 'mpr':

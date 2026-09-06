@@ -4,7 +4,6 @@ from pathlib import Path
 
 from scripts.check_validation_matrix import validate_matrix
 
-
 def test_validation_matrix_accepts_claim_table(tmp_path: Path) -> None:
     matrix = tmp_path / "validation-matrix.md"
     _ = matrix.write_text(
@@ -22,7 +21,6 @@ def test_validation_matrix_accepts_claim_table(tmp_path: Path) -> None:
     )
 
     assert validate_matrix(matrix) == []
-
 
 def test_validation_matrix_rejects_duplicate_ids_and_bad_status(tmp_path: Path) -> None:
     matrix = tmp_path / "validation-matrix.md"
@@ -44,7 +42,6 @@ def test_validation_matrix_rejects_duplicate_ids_and_bad_status(tmp_path: Path) 
     assert "row 2: invalid status maybe" in errors
     assert "row 2: missing validation commands/tests" in errors
 
-
 def test_validation_matrix_records_current_microscopy_roi_boundaries() -> None:
     matrix = Path("docs/validation-matrix.md").read_text(encoding="utf-8")
 
@@ -56,7 +53,6 @@ def test_validation_matrix_records_current_microscopy_roi_boundaries() -> None:
     assert "Microscopy workflow recipes preserve supported straight-line, angle, polygon, and freehand ROI geometry" in matrix
     assert "Replay reports skipped steps visibly" in matrix
 
-
 def test_validation_matrix_records_standalone_sr_boundary() -> None:
     matrix = Path("docs/validation-matrix.md").read_text(encoding="utf-8")
 
@@ -64,7 +60,6 @@ def test_validation_matrix_records_standalone_sr_boundary() -> None:
     assert "wait in a bounded session queue until their referenced source series loads" in matrix
     assert "capped at 32 objects and 256 MiB" in matrix
     assert "never fabricates a source match" in matrix
-
 
 def test_validation_matrix_records_ome_zarr_streaming_boundaries() -> None:
     matrix = Path("docs/validation-matrix.md").read_text(encoding="utf-8")
@@ -80,7 +75,6 @@ def test_validation_matrix_records_ome_zarr_streaming_boundaries() -> None:
     assert "bounded unsharded Zarr v3 subset" in matrix
     assert "Sharded v3 arrays, non-default chunk keys, bitshuffle, arbitrary filters" in matrix
     assert "URL streaming requires CORS" in matrix
-
 
 def test_validation_matrix_records_new_scalar_and_quantification_boundaries() -> None:
     matrix = Path("docs/validation-matrix.md").read_text(encoding="utf-8")

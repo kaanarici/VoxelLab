@@ -74,7 +74,6 @@ export function syncThreeSurfaceState(series = state.manifest?.series?.[state.se
   return syncThreeSurfaceReadiness(series);
 }
 
-/** Wire orchestration callbacks from `viewer.js` after the shared viewer functions exist. */
 export function initVolume3D(deps) {
   _renderVolumes = deps.renderVolumes;
   _hideHover = deps.hideHover;
@@ -113,7 +112,6 @@ export async function toggleThreeTurntable() {
   return applyToggle();
 }
 
-/** Push threshold, intensity, clip, and render-mode changes into the live raycast uniforms. */
 export function updateUniforms() {
   const three = getThreeRuntime();
   if (!three.mesh) return;
@@ -152,7 +150,6 @@ export function updateUniforms() {
   requestThreeRender('uniforms', 120);
 }
 
-/** Ensure the Three.js renderer shell exists before any volume upload begins. */
 export async function ensureThree() {
   const { ensureThreeRenderer } = await loadThreeModules();
   ensureThreeRenderer({
@@ -162,7 +159,6 @@ export async function ensureThree() {
   requestThreeRender('ensure-three', 160);
 }
 
-/** Build or reuse the active 3D volume texture from PNG voxels or HR raw data. */
 export async function buildVolume() {
   const threeModules = await loadThreeModules();
   const {
@@ -192,7 +188,6 @@ export async function buildVolume() {
   const fullSupport = supportFor({ W, H, D });
   let previewMounted = false;
 
-  // Optional small preview raw: show first, then replace with full-res from R2.
   if (series.hasPreview && series.previewDims) {
     const [pw, ph, pd] = series.previewDims;
     const previewKey = `${variant}|preview:${series.slug}:${pw}x${ph}x${pd}`;
@@ -213,7 +208,7 @@ export async function buildVolume() {
           }
         }
       }
-    } catch { /* preview failed — fall through to full-res */ }
+    } catch {                                                 }
   }
 
   if (!fullSupport.supported) {
@@ -283,7 +278,6 @@ export async function buildVolume() {
   return true;
 }
 
-/** Upload a volume array as a 3D texture and create/replace the mesh. */
 function uploadVolumeTexture(volumeData, textureType, W, H, D, series, dataKey, threeModules, {
   maxTextureSize = 0,
   preview = false,

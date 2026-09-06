@@ -1,4 +1,3 @@
-// Single place for compound display-mode checks (2D / MPR / MPR+3D / 3D).
 import { state } from './state.js';
 
 export function isMprActive() {

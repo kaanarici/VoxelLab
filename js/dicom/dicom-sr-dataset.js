@@ -1,5 +1,3 @@
-// TID 1500 SR content tree (dcmjs-compatible naturalized dataset).
-
 import { uid, nowDicomDateTime } from './dicom-sr-utils.js';
 
 function codedValue(value, scheme, meaning) {

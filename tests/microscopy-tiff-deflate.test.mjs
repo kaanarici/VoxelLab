@@ -54,7 +54,7 @@ test('TIFF Predictor=2 reconstructs fixed little-endian unsigned 16-bit wraparou
     pixels: [65530, 2, 10],
     bits: 16,
     predictor: 2,
-    // Fixed wire values: 65530, (2 - 65530) mod 65536, (10 - 2) mod 65536.
+
     predictedBytes: [0xfa, 0xff, 0x08, 0x00, 0x08, 0x00],
   }));
 

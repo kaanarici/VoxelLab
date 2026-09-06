@@ -44,7 +44,7 @@ export function typedPixelsFromBytes(bytes, bitsAllocated, pixelRepresentation, 
   const neededBytes = pixelCount * 2;
   if (bytes.byteLength < neededBytes) return null;
   if (opts.littleEndian === false) {
-    // Byte-swap into native order; signed reinterprets the same bits.
+
     const out = new Uint16Array(pixelCount);
     const view = new DataView(bytes.buffer, bytes.byteOffset, neededBytes);
     for (let i = 0; i < pixelCount; i += 1) out[i] = view.getUint16(i * 2, false);

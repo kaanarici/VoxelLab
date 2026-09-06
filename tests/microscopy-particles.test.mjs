@@ -8,7 +8,7 @@ const { applyThreshold } = await import('../js/microscopy/microscopy-threshold.j
 
 function planeAndMask() {
   const plane = makeRectParticlePlane(PARTICLE_PLANE);
-  const mask = applyThreshold(plane, { lo: 1, hi: Infinity }); // any nonzero pixel
+  const mask = applyThreshold(plane, { lo: 1, hi: Infinity });
   return { plane, mask };
 }
 

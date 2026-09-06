@@ -34,8 +34,7 @@ export function omeChannelMetadata(description = '') {
     return {
       index,
       name: attrs.Name || attrs.ID || `Channel ${index + 1}`,
-      // OME Channel/@Color is a signed 32-bit RGBA integer; schema default -1 is solid white.
-      // https://www.openmicroscopy.org/Schemas/Documentation/Generated/OME-2016-06/ome_xsd.html#Channel_Color
+
       color: omeRgbaColorToHex(attrs.Color === undefined ? '-1' : attrs.Color),
       emissionWavelength: Number(attrs.EmissionWavelength) || null,
       emissionWavelengthUnit: normalizeLengthUnit(attrs.EmissionWavelengthUnit || 'nm'),

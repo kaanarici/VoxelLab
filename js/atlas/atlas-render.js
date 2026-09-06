@@ -1,13 +1,6 @@
-// Keyed, persistent renderer for the atlas label overlays (2D + 3D). Each label
-// owns ONE DOM node that is created once and mutated in place every frame, so
-// positions snap (no smear while orbiting/scrubbing) while state changes
-// (lock / fade / hover) animate via CSS — and nothing flashes or re-packs,
-// because the SVG is never rebuilt. Both overlays share this so there is one
-// place that owns pill lifecycle.
-
 import { createAtlasItem, updateAtlasItem, buildAtlasCaption } from './atlas-svg.js';
 
-const _state = new WeakMap(); // svg -> { nodes: Map<label, node>, caption }
+const _state = new WeakMap();
 
 function stateFor(svg) {
   let st = _state.get(svg);
@@ -15,13 +8,6 @@ function stateFor(svg) {
   return st;
 }
 
-/**
- * @param {SVGElement} svg
- * @param {Array<object>} items layout items (label, name, color, side, pillOuterX,
- *   anchorX, anchorY, pillCenterY, colW, locked, faded)
- * @param {string} captionText honesty caption (empty/falsey hides it)
- * @param {number} w @param {number} h overlay size (for caption placement)
- */
 export function renderAtlasPills(svg, items, captionText, w, h) {
   const st = stateFor(svg);
   const { nodes } = st;
@@ -46,7 +32,6 @@ export function renderAtlasPills(svg, items, captionText, w, h) {
   }
 }
 
-/** Remove every node for an overlay (mode change / teardown). */
 export function clearAtlasPills(svg) {
   const st = _state.get(svg);
   if (!st) return;

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxellab-tooling"
-version = "1.2.3"
+version = "1.2.4"
 description = "Developer tooling for VoxelLab."
 requires-python = ">=3.11"
 dependencies = []
@@ -39,14 +39,10 @@ ai = [
   "numpy",
   "Pillow>=9.1",
 ]
-# Native vendor microscopy readers — all permissive (BSD-3), no GPL / libCZI / Bio-Formats.
-# Normalized into one OME-TIFF by python/microscopy_convert.py for the shared import path.
 microscopy = [
   "numpy",
   "tifffile",
   "nd2",
-  # API traced against these versions (czifile 2026.x is a redesign vs <=2019;
-  # liffile coords['C'] channel names landed in 2026.4.11).
   "czifile>=2026.4.30",
   "liffile>=2026.4.11",
 ]
@@ -59,8 +55,6 @@ testpaths = ["tests"]
 pythonpath = ["python", "."]
 addopts = "-q"
 
-# Baseline: start with analysis mostly off, then tighten individual report* rules over time.
-# basedpyright/pyright read [tool.pyright]; keep a single source of truth for CI and editors.
 [tool.pyright]
 pythonVersion = "3.11"
 include = ["."]
@@ -74,8 +68,6 @@ exclude = [
   "synthseg_repo",
 ]
 typeCheckingMode = "standard"
-# Shape: ["scripts/check_assets.py", ...] is the current strict subset that
-# already passes higher-signal checks without pretending the full tree is strict.
 strict = [
   "scripts/check_ai_ready.py",
   "scripts/check_assets.py",
@@ -83,7 +75,6 @@ strict = [
   "scripts/check_pipeline_ready.py",
   "scripts/check_validation_matrix.py",
 ]
-# Noisy / strict rules relaxed until more annotations land (see Python type-safety plan).
 reportUnknownVariableType = "none"
 reportUnknownMemberType = "none"
 reportUnknownArgumentType = "none"
@@ -104,6 +95,5 @@ reportCallIssue = "none"
 reportIndexIssue = "none"
 reportRedeclaration = "error"
 reportGeneralTypeIssues = "none"
-# Optional stacks (modal, ants, itk, torch) are not installed in minimal [dev] venvs.
 reportMissingImports = "none"
 reportMissingModuleSource = "none"

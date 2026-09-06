@@ -1,4 +1,3 @@
-/* global URL */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -36,8 +35,6 @@ const {
 const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
 const { seriesPersistenceKey } = await import('../js/core/series-identity.js');
 
-// Historical fixtures below focus on row geometry. Stamp them as current v2
-// bundles so they exercise those concerns without reintroducing v1 matching.
 function importRoiResultsBundle(bundle, host = state) {
   const series = host?.manifest?.series?.[host?.seriesIdx];
   return importRoiResultsBundleV2({

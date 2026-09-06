@@ -1,7 +1,3 @@
-/* global URL */
-// Regression pin + D1b proof for the ROI measurement domain at the export layer.
-// Non-microscopy / unmarked rows stay 8-bit display domain (pinned); rows carrying a
-// raw_16bit valueSource export as raw intensity with derived integrated-density columns.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -55,7 +51,7 @@ test('D1b: rows carrying raw_16bit export raw intensity with derived IntDen', ()
     id: 2,
     "shape": 'ellipse',
     pts: [[1, 1], [9, 7]],
-    // Constant raw plane region — mean far above the 8-bit ceiling proves the raw domain.
+
     stats: {
       pixels: 100,
       area_mm2: 100 * 0.001 * 0.001,

@@ -18,11 +18,11 @@ export function volumeHoverPointVisible(point, voxelIndex, uniforms = {}) {
     if (plane[0] * point[0] + plane[1] * point[1] + plane[2] * point[2] + plane[3] < 0) return false;
   }
 
-  if (uniforms.uLabelMode?.value > 0 && uniforms.uIsolate?.value === 1) {
+  if (uniforms.uLabelMode?.value > 0) {
     const labels = uniforms.uLabel?.value?.image?.data;
-    const lut = uniforms.uLabelLUT?.value?.image?.data;
+    const hidden = uniforms.uHiddenLabels?.value;
     const label = Number(labels?.[voxelIndex] || 0);
-    if (!label || Number(lut?.[label * 4 + 3] || 0) < 1) return false;
+    if (((hidden?.[label >>> 5] || 0) & (1 << (label & 31))) || (uniforms.uIsolate?.value === 1 && !label)) return false;
   }
   return true;
 }

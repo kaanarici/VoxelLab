@@ -12,13 +12,11 @@ from ai_runtime import list_cli_models
 from ask_envelopes import normalize_consult_document
 from ask_event_protocol import version_ask_event
 
-
 RUNNING: dict = {}
 LOCK = threading.Lock()
 ANALYSIS_KEY_RE = re.compile(r"^v2:([0-9a-f]{32})$")
 MAX_TERMINAL_ANALYSIS_STATUS_ENTRIES = 64
 MAX_CONCURRENT_ANALYSIS_JOBS = 2
-
 
 def normalize_analysis_key(value) -> str | None:
     if not isinstance(value, str):
@@ -26,22 +24,18 @@ def normalize_analysis_key(value) -> str | None:
     match = ANALYSIS_KEY_RE.fullmatch(value)
     return f"v2:{match.group(1)}" if match else None
 
-
 def analysis_result_filename(analysis_key: str) -> str:
     normalized = normalize_analysis_key(analysis_key)
     if not normalized:
         raise ValueError("invalid analysis key")
     return f"analysis-{normalized.replace(':', '-')}.json"
 
-
 def analysis_result_url(analysis_key: str) -> str:
     return f"./data/{analysis_result_filename(analysis_key)}"
-
 
 def lazy_ask():
     import ask as ask_mod
     return ask_mod
-
 
 def valid_slugs(data_dir: Path) -> set[str]:
     try:
@@ -49,7 +43,6 @@ def valid_slugs(data_dir: Path) -> set[str]:
         return {s["slug"] for s in m.get("series", [])}
     except Exception:
         return set()
-
 
 def validate_ask_payload(body, known_slugs: set[str]) -> tuple[dict, tuple[int, dict] | None]:
     if not isinstance(body, dict):
@@ -99,7 +92,6 @@ def validate_ask_payload(body, known_slugs: set[str]) -> tuple[dict, tuple[int, 
             return {}, (400, {"error": "expected body {slug, slice, question} and either {x, y} or {region:{x0,y0,x1,y1}}"})
         parsed["x"] = x
         parsed["y"] = y
-    # else: neither location → study-scope question (x/y/region stay None)
 
     local_image = body.get("localImage")
     if slug not in known_slugs:
@@ -145,7 +137,6 @@ def validate_ask_payload(body, known_slugs: set[str]) -> tuple[dict, tuple[int, 
     parsed["model"] = model if isinstance(model, str) and model else None
     return parsed, None
 
-
 def analysis_status_entry(
     time_module,
     *,
@@ -169,7 +160,6 @@ def analysis_status_entry(
         "resultUrl": analysis_result_url(analysis_key),
     }
 
-
 def prune_terminal_statuses(
     running: dict,
     *,
@@ -192,7 +182,6 @@ def prune_terminal_statuses(
     for key, _entry in terminal[:excess]:
         running.pop(key, None)
     return min(excess, len(terminal))
-
 
 def stream_tail(proc: subprocess.Popen, analysis_key: str, slug: str, running: dict, lock, time_module) -> None:
     assert proc.stdout is not None
@@ -243,14 +232,12 @@ def stream_tail(proc: subprocess.Popen, analysis_key: str, slug: str, running: d
             )
         _ = prune_terminal_statuses(running, preserve_keys={analysis_key})
 
-
 def series_meta(data_dir: Path, slug: str) -> dict | None:
     try:
         m = json.loads((data_dir / "manifest.json").read_text())
     except Exception:
         return None
     return next((s for s in m.get("series", []) if s.get("slug") == slug), None)
-
 
 def parse_analysis_slices(raw: str, slug: str, series_meta) -> tuple[list[int] | None, str | None]:
     meta = series_meta(slug)
@@ -280,7 +267,6 @@ def parse_analysis_slices(raw: str, slug: str, series_meta) -> tuple[list[int] |
     if not selected:
         return None, "no slices selected"
     return sorted(selected), None
-
 
 def start_analysis(
     root: Path,
@@ -340,7 +326,6 @@ def start_analysis(
     threading.Thread(target=stream_tail, args=(proc, analysis_key, slug), daemon=True).start()
     return 202, f"started: {slug}{' (force)' if force else ''}"
 
-
 def status_payload(running: dict, lock, analysis_key: str | None = None) -> dict:
     normalized = normalize_analysis_key(analysis_key) if analysis_key is not None else None
     with lock:
@@ -363,7 +348,6 @@ def status_payload(running: dict, lock, analysis_key: str | None = None) -> dict
             for analysis_key, entry in entries
         }
 
-
 def consult_ready(data_dir: Path) -> bool:
     try:
         manifest = json.loads((data_dir / "manifest.json").read_text())
@@ -381,7 +365,6 @@ def consult_ready(data_dir: Path) -> bool:
             return True
     return False
 
-
 def ai_post_guard(config: dict | None, runtime_config) -> tuple[int, dict] | None:
     status = dict((config or runtime_config()).get("ai") or {})
     if not status.get("enabled", True):
@@ -393,7 +376,6 @@ def ai_post_guard(config: dict | None, runtime_config) -> tuple[int, dict] | Non
         "error": f"AI unavailable: {'; '.join(str(issue) for issue in issues)}",
         "provider": status.get("provider"),
     }
-
 
 def handle_ai_post(
     handler,
@@ -451,51 +433,7 @@ def handle_ai_post(
         })
         return
 
-    if parsed.path == "/api/ask":
-        limited = handler._enforce_rate_limit(parsed.path)
-        if limited is not None:
-            handler._json(*limited)
-            return
-        body = handler._read_json_payload_or_error(1024 * 1024)
-        if body is None:
-            return
-        ask_req, invalid = validate_ask_payload(body, valid_slugs())
-        if invalid is not None:
-            handler._json(*invalid)
-            return
-        try:
-            if ask_req["region"] is not None:
-                kwargs = {
-                    "region": ask_req["region"],
-                    "provider": ask_req.get("provider"),
-                    "model": ask_req.get("model"),
-                }
-                if ask_req.get("viewer_context"):
-                    kwargs["viewer_context"] = ask_req["viewer_context"]
-                if ask_req["local_image"]:
-                    kwargs["local_image"] = ask_req["local_image"]
-                result = lazy_ask().ask(ask_req["slug"], ask_req["slice_idx"], ask_req["question"], **kwargs)
-            else:
-                kwargs = {
-                    "x": ask_req["x"],
-                    "y": ask_req["y"],
-                    "provider": ask_req.get("provider"),
-                    "model": ask_req.get("model"),
-                }
-                if ask_req.get("viewer_context"):
-                    kwargs["viewer_context"] = ask_req["viewer_context"]
-                if ask_req["local_image"]:
-                    kwargs["local_image"] = ask_req["local_image"]
-                result = lazy_ask().ask(ask_req["slug"], ask_req["slice_idx"], ask_req["question"], **kwargs)
-            handler._json(200, result)
-        except ValueError as e:
-            handler._json(400, {"error": str(e)})
-        except Exception as e:
-            traceback.print_exc()
-            handler._json(500, {"error": str(e)})
-        return
-
-    if parsed.path == "/api/ask/stream":
+    if parsed.path in {"/api/ask", "/api/ask/stream"}:
         limited = handler._enforce_rate_limit("/api/ask")
         if limited is not None:
             handler._json(*limited)
@@ -507,8 +445,30 @@ def handle_ai_post(
         if invalid is not None:
             handler._json(*invalid)
             return
-        # Server-Sent Events: each tool call and the final answer stream as they
-        # happen. The browser reads the response body progressively.
+        kwargs = {
+            "provider": ask_req["provider"],
+            "model": ask_req["model"],
+        }
+        if ask_req["region"] is not None:
+            kwargs["region"] = ask_req["region"]
+        elif ask_req["x"] is not None:
+            kwargs["x"], kwargs["y"] = ask_req["x"], ask_req["y"]
+        if ask_req["viewer_context"]:
+            kwargs["viewer_context"] = ask_req["viewer_context"]
+        if ask_req["local_image"]:
+            kwargs["local_image"] = ask_req["local_image"]
+
+        if parsed.path == "/api/ask":
+            try:
+                result = lazy_ask().ask(ask_req["slug"], ask_req["slice_idx"], ask_req["question"], **kwargs)
+                handler._json(200, result)
+            except ValueError as e:
+                handler._json(400, {"error": str(e)})
+            except Exception as e:
+                traceback.print_exc()
+                handler._json(500, {"error": str(e)})
+            return
+
         handler.send_response(200)
         handler.send_header("Content-Type", "text/event-stream")
         handler.send_header("Cache-Control", "no-cache")
@@ -520,23 +480,13 @@ def handle_ai_post(
             handler.wfile.write(f"data: {json.dumps(version_ask_event(event))}\n\n".encode())
             handler.wfile.flush()
 
-        loc: dict = {}
-        if ask_req["region"] is not None:
-            loc["region"] = ask_req["region"]
-        elif ask_req["x"] is not None:
-            loc["x"], loc["y"] = ask_req["x"], ask_req["y"]
-        if ask_req.get("viewer_context"):
-            loc["viewer_context"] = ask_req["viewer_context"]
-        if ask_req["local_image"]:
-            loc["local_image"] = ask_req["local_image"]
         try:
             result = lazy_ask().ask(
-                ask_req["slug"], ask_req["slice_idx"], ask_req["question"], on_event=emit,
-                provider=ask_req.get("provider"), model=ask_req.get("model"), **loc,
+                ask_req["slug"], ask_req["slice_idx"], ask_req["question"], on_event=emit, **kwargs,
             )
             emit({"type": "result", "result": result})
         except (BrokenPipeError, ConnectionResetError):
-            return  # client navigated away mid-stream
+            return
         except Exception as e:
             traceback.print_exc()
             try:
@@ -563,7 +513,6 @@ def handle_ai_post(
             traceback.print_exc()
             handler._json(500, {"error": str(e)})
         return
-
 
 def handle_ai_get(handler, parsed, data_dir: Path, has_local_api_token, status_payload) -> bool:
     if parsed.path == "/api/analyze/result":

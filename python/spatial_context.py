@@ -1,9 +1,3 @@
-"""Stdlib helpers for validated spatial AI context.
-
-The generator may use image libraries, but runtime AI scripts import this file.
-Keep it dependency-free so `analyze.py` can run without pipeline extras.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -22,7 +16,6 @@ TISSUE_LABELS = {0: "background", 1: "csf", 2: "gm", 3: "wm"}
 MAX_CONTEXT_CACHE_ENTRIES = 64
 _CONTEXT_CACHE: OrderedDict[str, tuple[str, dict[str, Any] | None, str | None]] = OrderedDict()
 
-
 def _remember_context(cache_key: str, value: tuple[str, dict[str, Any] | None, str | None]) -> None:
     if cache_key in _CONTEXT_CACHE:
         _CONTEXT_CACHE.move_to_end(cache_key)
@@ -30,14 +23,11 @@ def _remember_context(cache_key: str, value: tuple[str, dict[str, Any] | None, s
     while len(_CONTEXT_CACHE) > MAX_CONTEXT_CACHE_ENTRIES:
         _ = _CONTEXT_CACHE.popitem(last=False)
 
-
 def is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
-
 def _is_num_vec(value: Any, length: int) -> bool:
     return isinstance(value, list) and len(value) == length and all(is_number(item) for item in value)
-
 
 def _validate_intensity(errors: list[str], path: str, value: Any) -> None:
     if not isinstance(value, dict):
@@ -53,9 +43,8 @@ def _validate_intensity(errors: list[str], path: str, value: Any) -> None:
         if key in value and not is_number(value[key]):
             errors.append(f"{path}.{key}: expected finite number")
 
-
 def validate_context_payload(payload: Any, slug: str, expected_slices: int) -> list[str]:
-    """Return contract errors for a `data/<slug>_context.json` payload."""
+
     if not isinstance(payload, dict):
         return ["context: expected object"]
 
@@ -145,9 +134,8 @@ def validate_context_payload(payload: Any, slug: str, expected_slices: int) -> l
             errors.append(f"context.slices: unexpected indexes {extra[:5]}")
     return errors
 
-
 def load_context(data_dir: Path, slug: str, series_meta: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
-    """Load valid context or return `(None, warning)` for runtime fallback."""
+
     if not series_meta.get("hasContext"):
         return None, None
     path = data_dir / f"{slug}_context.json"
@@ -175,7 +163,6 @@ def load_context(data_dir: Path, slug: str, series_meta: dict[str, Any]) -> tupl
     _remember_context(cache_key, (signature, payload, None))
     return payload, None
 
-
 def get_slice_context(context: dict[str, Any] | None, slice_idx: int) -> dict[str, Any] | None:
     if not context:
         return None
@@ -185,14 +172,12 @@ def get_slice_context(context: dict[str, Any] | None, slice_idx: int) -> dict[st
     item = slices[slice_idx]
     return item if isinstance(item, dict) else None
 
-
 def context_fingerprint(value: Any) -> str:
     text = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
 
-
 def voxel_to_mm(series: dict[str, Any], vx: float, vy: float, vz: float) -> list[float] | None:
-    """Python twin of `js/coords.js:voxelToMM`."""
+
     try:
         first = series["firstIPP"]
         last = series["lastIPP"]
@@ -214,7 +199,6 @@ def voxel_to_mm(series: dict[str, Any], vx: float, vy: float, vz: float) -> list
         for i in range(3)
     ]
 
-
 def _format_intensity(intensity: dict[str, Any] | None) -> str:
     if not isinstance(intensity, dict):
         return "unavailable"
@@ -228,7 +212,6 @@ def _format_intensity(intensity: dict[str, Any] | None) -> str:
     suffix = "; ".join(values) if values else "no numeric summary"
     return f"{suffix}; units {units}; source {source}"
 
-
 def region_by_label(slice_context: dict[str, Any] | None, label: int | None) -> dict[str, Any] | None:
     if label is None or not slice_context:
         return None
@@ -236,7 +219,6 @@ def region_by_label(slice_context: dict[str, Any] | None, label: int | None) -> 
         if isinstance(region, dict) and region.get("label") == label:
             return region
     return None
-
 
 def format_analysis_context(slice_context: dict[str, Any] | None, total_slices: int) -> tuple[str, set[int], str | None]:
     if not slice_context:
@@ -277,7 +259,6 @@ def format_analysis_context(slice_context: dict[str, Any] | None, total_slices: 
         + "\n".join(region_lines)
     )
     return text, labels, context_fingerprint({"analysis_context": text})
-
 
 def format_point_context(
     slice_context: dict[str, Any] | None,

@@ -1,17 +1,3 @@
-"""
-One-shot re-normalization of CT .raw volumes.
-
-The original convert_ct.py wrote .raw files with a percentile clip on
-positive HU only, which crushed soft tissue into the bottom ~4% of the
-normalized range and made lung/air indistinguishable (both clipped to 0).
-
-This script rebuilds JUST the .raw files (not the PNGs, not the manifest
-entries, not the regions/seg overlays) using the new fixed HU window
-[-1024, +2048] → [0, 1] that convert_ct.py was switched to. Run it once
-after pulling the convert_ct.py change; the PNGs / TotalSegmentator
-regions stay in place.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -22,7 +8,6 @@ import numpy as np
 
 from convert_ct import OUT, hu_to_raw_uint16, read_ct_slices, stack_to_hu
 from pipeline_paths import ENV_DICOM_ROOT, resolve_dicom_root, series_by_modality, slug_source_map
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser(description="Re-normalize CT .raw volumes in data/.")
@@ -78,7 +63,6 @@ def main() -> bool:
         print(f"  wrote {raw_path.name} ({raw_path.stat().st_size / 1024 / 1024:.1f} MB)")
         print(f"  normalization: HU [{lo:.0f}, {hi:.0f}] → [0, 1]")
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

@@ -1,5 +1,3 @@
-// Local-backend UI gating. Public/static builds keep upload and sidecar
-// reads, but hide controls that require same-origin helper APIs.
 import { $ } from './dom.js';
 import { viewerAiFlags } from './config.js';
 

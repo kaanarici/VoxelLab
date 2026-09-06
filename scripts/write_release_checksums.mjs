@@ -1,4 +1,3 @@
-/* global console, process */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readdirSync, writeFileSync } from 'node:fs';

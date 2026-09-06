@@ -1,6 +1,3 @@
-// NIfTI parsing lives beside the DICOM import path but stays isolated because
-// its header, affine, and RAS/LPS handling have different correctness rules.
-
 import { PAKO_ESM_URL } from '../core/dependencies.js';
 import { DEFAULT_IOP, normalize3 } from '../core/geometry.js';
 
@@ -118,9 +115,6 @@ const NIFTI_TEMPORAL_UNITS = Object.freeze({
   48: { name: 'radian per second', seconds: 0, kind: 'frequency', known: false },
 });
 
-// These caps cover decoded source data, normalized Float32 volumes, and the
-// RGBA canvases created for the shared local-series pipeline. They are checked
-// from the header before any of those allocations happen.
 export const NIFTI_IMPORT_LIMITS = Object.freeze({
   maxCompressedBytes: 128 * 1024 * 1024,
   maxDecodedBytes: 256 * 1024 * 1024,
@@ -145,7 +139,7 @@ function niftiVoxelReader(source, view, offset, datatype, littleEndian, length) 
 }
 
 function niftiSpatialUnit(xyztUnits) {
-  // NIfTI-1 stores spatial pixdim units in xyzt_units bits 0..2; VoxelLab stores geometry in millimeters.
+
   const code = xyztUnits & 0x07;
   const unit = NIFTI_SPATIAL_UNITS[code];
   return unit ? { code, ...unit, known: true } : { code, name: 'unknown', mm: 0, known: false };
@@ -335,7 +329,7 @@ function niftiImportSeed() {
     const uuid = globalThis.crypto?.randomUUID?.();
     if (uuid?.toLowerCase instanceof Function && uuid) return uuid.toLowerCase().replaceAll('-', '');
   } catch {
-    // Monotonic process-local fallback below.
+
   }
   fallbackImportSequence += 1;
   return `${Date.now().toString(36)}_${fallbackImportSequence.toString(36)}`;
@@ -442,7 +436,6 @@ function sliceCanvasesForNifti(rawVolume, voxelAt, volumeOffset, nx, ny, nz, scl
   return sliceCanvases;
 }
 
-/** Parse a local 3D or 4D NIfTI into independently viewable normalized series. */
 export async function parseNIfTISeries(
   file,
   onProgress = () => {},
@@ -478,8 +471,7 @@ export async function parseNIfTISeries(
     if (expectedBytes > decodedByteLimit) {
       throw niftiError(`decompressed input exceeds the ${decodedByteLimit} byte limit.`);
     }
-    // Model a Blob/decoder-owned compressed copy and one decoded-size transient
-    // in addition to the retained source and final decoded output.
+
     assertWorkingSet(
       [source.byteLength, source.byteLength, expectedBytes, expectedBytes],
       workingSetLimit,
@@ -504,7 +496,6 @@ export async function parseNIfTISeries(
   const temporalUnit = niftiTemporalUnit(xyztUnits);
   const temporalSpacing = pixdim[4];
 
-  // Rescale slope/intercept from header (may be 0/0 meaning identity)
   let scl_slope = sclSlope;
   let scl_inter = sclInter;
   if (scl_slope === 0) { scl_slope = 1; scl_inter = 0; }
@@ -532,10 +523,7 @@ export async function parseNIfTISeries(
   if (offset + payloadBytes > source.byteLength) return null;
   const rawFloatBytes = safeProduct([totalVoxels, Float32Array.BYTES_PER_ELEMENT], 'normalized raw byte count');
   const canvasBackingBytes = safeProduct([totalVoxels, 4], 'canvas backing byte count');
-  // injectLocalSeries converts every retained canvas to a data-URL-backed Image
-  // while the parsed canvas results are still alive. Model both the decoded
-  // Image backing and a conservative UTF-16 base64 representation of a
-  // worst-case RGBA PNG so this parser cannot hand an unsafe result downstream.
+
   const retainedDisplayImageBytes = canvasBackingBytes;
   const retainedDataUrlBytes = safeScaledCeil(canvasBackingBytes, 8, 3, 'retained data URL byte count');
   const totalSlices = safeProduct([nz, timepoints], 'display slice count');
@@ -559,9 +547,6 @@ export async function parseNIfTISeries(
   const voxelAt = niftiVoxelReader(source, view, offset, datatype, littleEndian, totalVoxels);
   if (!voxelAt) return null;
 
-  // Keep the scaled range in the Number domain so adjacent Uint32 values do
-  // not collapse before normalization. A second source pass fills only the
-  // retained Float32 normalized volumes while producing display slices.
   const step = Math.max(1, Math.floor(totalVoxels / 50000));
   const samples = [];
   let vMin = Infinity, vMax = -Infinity;
@@ -679,7 +664,6 @@ export async function parseNIfTISeries(
   });
 }
 
-/** Backwards-compatible 3D NIfTI entrypoint. Use parseNIfTISeries for 4D inputs. */
 export async function parseNIfTI(file, onProgress = () => {}) {
   const results = await parseNIfTISeries(file, onProgress, { allowTimeSeries: false });
   return results?.[0] || null;

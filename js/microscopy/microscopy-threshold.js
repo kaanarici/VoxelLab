@@ -1,7 +1,3 @@
-// Intensity thresholding on a raw single-channel plane. Pure, no DOM.
-// computeThreshold resolves a numeric cut (never a method string) so recipe replay is
-// deterministic; applyThreshold turns a [lo,hi] band into a binary mask.
-
 const DEFAULT_BINS = 256;
 
 function planeHistogram(plane, bins = DEFAULT_BINS) {
@@ -27,7 +23,7 @@ function planeHistogram(plane, bins = DEFAULT_BINS) {
 }
 
 function binToValue(bin, min, span, bins) {
-  // Center of the bin, mapped back to the raw value domain.
+
   return min + ((bin + 0.5) / bins) * span;
 }
 
@@ -53,7 +49,7 @@ function otsuBin(hist, bins) {
 function triangleBin(hist, bins) {
   let peak = 0;
   for (let i = 1; i < bins; i++) if (hist[i] > hist[peak]) peak = i;
-  // Longer tail side from the peak.
+
   let lo = 0; while (lo < bins && hist[lo] === 0) lo++;
   let hi = bins - 1; while (hi > 0 && hist[hi] === 0) hi--;
   const useRight = (hi - peak) >= (peak - lo);

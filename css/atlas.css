@@ -1,8 +1,3 @@
-/* Anatomy labels — floating region callouts over the 3D volume. Per-region
-   colors are set as SVG fill/stroke attributes in JS; this file owns the
-   geometry-independent styling, opacity, hover emphasis, and the overlay sizing.
-   (2D shows the plain colour overlay with no labels.) */
-
 .atlas-leader {
   fill: none;
   stroke-width: 1.25;
@@ -24,17 +19,12 @@
   cursor: pointer;
 }
 
-/* Locked structures stay emphasized even without hover. */
 .atlas-pill.locked .atlas-pill-bg {
   fill: rgba(46, 52, 64, 0.96);
   stroke: rgba(120, 170, 255, 0.7);
   stroke-width: 1.4;
 }
 
-/* Lock occupies the colour dot's slot: an icon swap. Idle shows the dot; hover
-   (or locked) cross-fades to a lock that wears the SAME structure colour
-   (--lock-color, set per-label in JS) — so the dot appears to morph into a
-   padlock, never a dot peeking behind it. Outline = hoverable; filled = locked. */
 .atlas-lock {
   cursor: pointer;
   opacity: 0;
@@ -63,7 +53,6 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dot fades out as the lock fades in (same slot) — the icon swap. */
 .atlas-pill-dot {
   stroke: rgba(0, 0, 0, 0.55);
   stroke-width: 0.75;
@@ -74,8 +63,6 @@
   opacity: 0;
 }
 
-/* Always-on honesty caption under the labels (they look authoritative; this
-   keeps "approximate / not diagnostic" in view wherever labels are shown). */
 .atlas-caption {
   fill: rgba(235, 235, 235, 0.62);
   font: var(--fw-medium) var(--fs-body) var(--ff-sans);
@@ -83,9 +70,6 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Fade is purely visual + CSS-driven (no per-frame re-render), so hover stays
-   silky. `.faded` covers the lock-isolation state (JS adds it to non-locked
-   labels); the :hover rules cover live hover (dim the rest, lift the one). */
 .atlas-item { transition: opacity var(--dur-quick) var(--ease-smooth); }
 .atlas-item.faded { opacity: 0.32; }
 #atlas2d-svg:hover .atlas-item:not(:hover),
@@ -107,9 +91,6 @@
   r: 5;
 }
 
-/* 3D overlay: floating callouts over the volume. Positioned/sized in JS to match
-   the renderer canvas. pointer-events stay off so orbiting is never blocked, and
-   a drop-shadow + stronger strokes keep labels legible over the bright render. */
 #atlas3d-svg {
   position: absolute;
   inset: 0;
@@ -143,9 +124,6 @@
   stroke-width: 1.25;
 }
 
-/* 2D overlay: region callouts over the live slice. Screen-space, sized in JS to
-   match #canvas-wrap; pointer-events stay off so pan / window-level / ROI drags
-   on the slice are never blocked. Drop-shadow keeps it legible over any slice. */
 #atlas2d-svg {
   position: absolute;
   inset: 0;
@@ -179,10 +157,6 @@
   stroke-width: 1.25;
 }
 
-/* "Labels" sits under Anatomy in the Overlays flyout — an independent toggle
-   (works with or without the colour overlay), shown whenever the series has
-   region data. The ID+attr rule outranks the .menu-row display rule so the
-   hidden attribute actually hides it. */
 .menu-row--sub {
   padding-left: var(--space-lg);
   opacity: 0.92;

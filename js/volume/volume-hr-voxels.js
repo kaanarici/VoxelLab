@@ -1,6 +1,3 @@
-// 16-bit raw volume fetch, optional zstd decompress, Cache API, worker path.
-// Invokes MPR redraw + 3D rebuild via callbacks registered in initHrVoxelsLoading.
-
 import { $ } from '../dom.js';
 import { FZSTD_ESM_URL, VOLUME_CACHE_NAME } from '../core/dependencies.js';
 import { state } from '../core/state.js';
@@ -43,7 +40,6 @@ function volumeWorkerAvailable() {
   return globalThis.Worker instanceof Function;
 }
 
-// Fire-and-forget at module load: cleanup runs once, never blocks a fetch.
 if (volumeCacheStorageAvailable()) cleanupOldVolumeCaches();
 
 async function proxyFetchInit(url, signal) {
@@ -145,13 +141,6 @@ async function readBoundedResponseBuffer(response, maxBytes, signal) {
   return output.buffer;
 }
 
-/**
- * Loads (and caches) the 16-bit raw volume for the current series,
- * normalized to a Float32Array in the [0, 1] range. Shared by 3D
- * renderer + MPR reslicer.
- *
- * Returns Promise<Float32Array | null>. Null = no data available.
- */
 export async function ensureHRVoxels() {
   const series = state.manifest.series[state.seriesIdx];
   if (!series.hasRaw && !series.rawUrl) return null;
@@ -166,7 +155,6 @@ export async function ensureHRVoxels() {
   const key = `${state.seriesIdx}:${series.slug}:${series.rawUrl || ''}`;
   if (state.hrKey === key && state.hrVoxels) return state.hrVoxels;
 
-  // Local imports: use the in-memory Float32 volume directly (no fetch needed).
   const localRaw = state._localRawVolumes?.[series.slug];
   if (localRaw) {
     if (!(localRaw instanceof Float32Array) || localRaw.length !== expected) {
@@ -193,11 +181,7 @@ export async function ensureHRVoxels() {
     let cachedEntry = false;
     let url = '';
     try {
-      // Local-first: a bundled uncompressed .raw (hasRaw) is the source of truth.
-      // The compressed rawUrl (e.g. R2) is only for deploys that don't ship the
-      // volume — series-contract auto-derives it from hasRaw, so it's set even on
-      // local series; preferring it would force a needless CDN round-trip that
-      // breaks offline. hasRaw means the file is here, so use it.
+
       const useCompressed = !series.hasRaw && Boolean(series.rawUrl);
       url = useCompressed ? rawVolumeUrlForSeries(series) : `./data/${series.slug}.raw`;
       const signal = controller.signal;

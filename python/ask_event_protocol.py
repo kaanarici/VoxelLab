@@ -1,5 +1,3 @@
-"""Versioned Ask stream event contract."""
-
 from __future__ import annotations
 
 from typing import Any, NoReturn
@@ -12,28 +10,23 @@ BASE_FIELDS = {"protocol", "version", "type"}
 TOOL_KINDS = {"read", "inspect", "measure", "voxel", "other"}
 TOOL_STATES = {"running", "done", "error"}
 
-
 class AskEventProtocolError(ValueError):
     def __init__(self, reason: str) -> None:
         self.reason = reason
         super().__init__(f"ask-event:{reason}")
 
-
 def _fail(reason: str) -> NoReturn:
     raise AskEventProtocolError(reason)
-
 
 def _object(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         _fail("not_object")
     return value
 
-
 def _allowed(payload: dict[str, Any], allowed: set[str]) -> None:
     for key in payload:
         if key not in allowed:
             _fail(f"unexpected_field:{key}")
-
 
 def _string(payload: dict[str, Any], key: str, *, allow_empty: bool = False) -> str:
     if key not in payload:
@@ -44,7 +37,6 @@ def _string(payload: dict[str, Any], key: str, *, allow_empty: bool = False) -> 
     if not allow_empty and not value:
         _fail(f"{key}_empty")
     return value
-
 
 def normalize_ask_event(value: Any) -> dict[str, Any]:
     payload = _object(value)
@@ -111,7 +103,6 @@ def normalize_ask_event(value: Any) -> dict[str, Any]:
         _allowed(payload, BASE_FIELDS)
         return base
     _fail(f"unsupported_type:{event_type}")
-
 
 def version_ask_event(event: Any) -> dict[str, Any]:
     payload = _object(event)

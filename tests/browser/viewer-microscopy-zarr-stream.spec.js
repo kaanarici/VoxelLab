@@ -1,4 +1,3 @@
-/* global URL */
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
@@ -12,8 +11,6 @@ async function openUploadModal(page) {
 
 const FIXTURE_PATH = fileURLToPath(new URL('../fixtures/zarr/idr0062A-6001240-L0-c0z0.blosc', import.meta.url));
 
-// Synthetic 3-level multiscale over the committed IDR fixture chunk. Level 2 (271x275, the
-// fixture plane) is the coarsest within the 4M pixel budget and is the only chunk fetched.
 const ZARR_HOST = 'https://idr.example.test';
 const ZARR_BASE = `${ZARR_HOST}/idr0062A/6001240.zarr`;
 const PLANE_WIDTH = 271;
@@ -61,8 +58,6 @@ function rootAttrs() {
   };
 }
 
-// Map a zarr relative path to a mock proxy response. `coarsestCompressor` lets the fail-closed
-// case swap the chosen level's codec to an unsupported one.
 function zarrRouteBody(relPath, { coarsestDimensions, coarsestCompressor = BLOSC, fixtureBytes }) {
   if (relPath === '.zattrs') return { json: rootAttrs() };
   if (relPath === '.zgroup') return { json: { zarr_format: 2 } };
@@ -75,8 +70,7 @@ function zarrRouteBody(relPath, { coarsestDimensions, coarsestCompressor = BLOSC
 
 async function mockZarrProxy(page, { coarsestDimensions, coarsestCompressor = BLOSC, requestedPaths = [] } = {}) {
   const fixtureBytes = await readFile(FIXTURE_PATH);
-  // The browser streams a user-provided OME-Zarr URL directly (anonymous CORS),
-  // so intercept the source host itself rather than the same-origin asset proxy.
+
   await page.route(`${ZARR_HOST}/**`, async (route) => {
     const target = route.request().url();
     if (!target.startsWith(ZARR_BASE)) {
@@ -118,11 +112,10 @@ test('streams a downsampled OME-Zarr pyramid level by URL with honest provenance
   await expect(page.locator('#series-name')).toHaveText('6001240');
   await expect(page.locator('#series-desc')).toContainText('OME-Zarr');
 
-  // Honest downsample-aware provenance row: streamed level 3/3, x4 downsample, blosc codec.
   const streamingRow = page.locator('#meta .meta-row').filter({ hasText: 'Streaming' });
   await expect(streamingRow).toContainText('OME-Zarr v2 streamed · level 3/3 · ×4 downsample');
   await expect(streamingRow).toContainText('blosc(lz4, byte-shuffle)');
-  // Calibration reflects the LOADED level's 2.0 µm/px scale, not level 0's 0.5 µm/px.
+
   await expect(page.locator('#meta .meta-row').filter({ hasText: 'Pixel spacing' })).toContainText('2.00 µm');
   await expect(page.locator('#meta .meta-row').filter({ hasText: 'Calibration' })).toContainText('OME-Zarr metadata');
   await expect(page.locator('#meta .meta-row').filter({ hasText: 'Dimensions' })).toContainText(`${PLANE_WIDTH} × ${PLANE_HEIGHT}`);

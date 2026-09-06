@@ -9,7 +9,6 @@ from modal_volumes import (
     volume_normalization_report,
 )
 
-
 def test_modal_volumes_normalization_and_entry_urls():
     vol = np.array([[-1000.0, 0.0, 1000.0]], dtype=np.float32)
     pngs = normalize_volume_for_pngs(vol, "CT", np)

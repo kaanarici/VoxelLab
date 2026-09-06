@@ -1,4 +1,3 @@
-/* global document */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -60,8 +59,6 @@ test('vendor microscopy inputs are presented with local and Electron converter b
   await expect(row).toContainText('not native browser import');
   await expect(row).toContainText('first-party Bio-Formats parity');
 
-  // A malformed vendor file must fail closed: the backend conversion rejects it (or reports
-  // the readers/backend are unavailable), the modal stays open, and no series is added.
   const initialSeriesCount = await page.locator('#series-list li').count();
   const path = testInfo.outputPath('sample.czi');
   await writePlaceholderFile(path);

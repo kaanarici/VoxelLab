@@ -11,7 +11,6 @@ from modal_webhooks import check_status, configure_webhooks, get_upload_urls, st
 
 FIXTURES = Path(__file__).parent / "fixtures" / "modal_webhooks"
 
-
 class FakeS3Error(Exception):
     def __init__(self, code: str, status: int):
         super().__init__(code)
@@ -19,7 +18,6 @@ class FakeS3Error(Exception):
             "Error": {"Code": code},
             "ResponseMetadata": {"HTTPStatusCode": status},
         }
-
 
 class ConditionalFakeS3:
     def __init__(self):
@@ -49,7 +47,6 @@ class ConditionalFakeS3:
                 "ETag": f'"{self.etags[Key]}"',
             }
 
-
 class TrackingBody(io.BytesIO):
     def __init__(self, payload: bytes):
         super().__init__(payload)
@@ -58,7 +55,6 @@ class TrackingBody(io.BytesIO):
     def read(self, size: int | None = -1) -> bytes:
         self.read_sizes.append(size)
         return super().read(size)
-
 
 def test_modal_webhooks_start_status_and_upload_urls(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -130,7 +126,6 @@ def test_modal_webhooks_start_status_and_upload_urls(monkeypatch):
         "ContentLength": 10,
     }]
 
-
 def test_modal_upload_urls_reject_missing_or_excessive_declared_size(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -160,7 +155,6 @@ def test_modal_upload_urls_reject_missing_or_excessive_declared_size(monkeypatch
     assert excessive["status"] == "error"
     assert excessive["maxUploadBytes"] == 100
 
-
 def test_modal_webhooks_check_status_hydrates_partial_series_entry(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -185,7 +179,6 @@ def test_modal_webhooks_check_status_hydrates_partial_series_entry(monkeypatch):
 
     assert status["status"] == "partial"
     assert status["series_entry"]["slug"] == "cloud_abcdef12"
-
 
 def test_modal_webhook_responses_match_snapshots(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -242,7 +235,6 @@ def test_modal_webhook_responses_match_snapshots(monkeypatch):
     for fixture_name, payload in cases.items():
         assert payload == json.loads((FIXTURES / fixture_name).read_text())
 
-
 def test_modal_webhooks_start_processing_is_idempotent(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -278,9 +270,8 @@ def test_modal_webhooks_start_processing_is_idempotent(monkeypatch):
     assert second["status"] == "started"
     assert second["job_id"] == "abcdef12"
     assert second["alreadyStarted"] is True
-    # The duplicate call must not spawn a second GPU container.
-    assert len(process.calls) == 1
 
+    assert len(process.calls) == 1
 
 def test_modal_webhooks_concurrent_start_spawns_once(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -312,7 +303,6 @@ def test_modal_webhooks_concurrent_start_spawns_once(monkeypatch):
     assert [result["status"] for result in results] == ["started", "started"]
     assert sum(bool(result.get("alreadyStarted")) for result in results) == 1
     assert len(process.calls) == 1
-
 
 def test_modal_webhooks_spawn_failure_fails_closed_as_dispatch_unknown(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -357,7 +347,6 @@ def test_modal_webhooks_spawn_failure_fails_closed_as_dispatch_unknown(monkeypat
     }
     assert process.attempts == 1
 
-
 def test_modal_webhooks_claim_storage_error_does_not_spawn(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -382,7 +371,6 @@ def test_modal_webhooks_claim_storage_error_does_not_spawn(monkeypatch):
 
     assert result["status"] == "error"
     assert result["error"] == "claim_unavailable"
-
 
 def test_modal_webhooks_existing_claim_read_error_is_not_treated_as_missing(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -411,7 +399,6 @@ def test_modal_webhooks_existing_claim_read_error_is_not_treated_as_missing(monk
 
     assert result["status"] == "error"
     assert result["error"] == "claim_status_unavailable"
-
 
 def test_modal_webhooks_reject_oversized_payload(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -447,7 +434,6 @@ def test_modal_webhooks_reject_oversized_payload(monkeypatch):
         "maxUploadBytes": 2048,
     }
 
-
 def test_modal_webhooks_reject_mode_input_kind_mismatch_before_spawn(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -481,7 +467,6 @@ def test_modal_webhooks_reject_mode_input_kind_mismatch_before_spawn(monkeypatch
         "error": "ultrasound_scan_conversion requires calibrated_ultrasound_source input_kind",
     }
 
-
 def test_modal_webhooks_reject_overlong_presigned_urls(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -504,7 +489,6 @@ def test_modal_webhooks_reject_overlong_presigned_urls(monkeypatch):
     })
 
     assert result == {"status": "error", "error": "upload URL expiry exceeds 15 minute limit"}
-
 
 def test_modal_webhooks_sign_mixed_uploads_with_matching_content_types(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -557,7 +541,6 @@ def test_modal_webhooks_sign_mixed_uploads_with_matching_content_types(monkeypat
     ]
     assert [call["Params"]["ContentLength"] for call in s3.calls] == [10, 20]
 
-
 def test_modal_webhooks_check_status_returns_processing_only_for_missing_status(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -576,7 +559,6 @@ def test_modal_webhooks_check_status_returns_processing_only_for_missing_status(
     result = check_status({"job_id": "abcdef12", "token": "secret-token"})
 
     assert result == {"status": "error", "error": "status_unavailable", "detail": "boom"}
-
 
 def test_modal_webhooks_check_status_returns_parse_error_for_bad_status_json(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -597,7 +579,6 @@ def test_modal_webhooks_check_status_returns_parse_error_for_bad_status_json(mon
 
     assert result["status"] == "error"
     assert result["error"] == "status_parse_failed"
-
 
 def test_modal_webhooks_check_status_caps_status_json(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -623,7 +604,6 @@ def test_modal_webhooks_check_status_caps_status_json(monkeypatch):
     assert "status JSON exceeds 5 bytes" in result["detail"]
     assert body.read_sizes == [6]
 
-
 def test_modal_webhooks_check_status_rejects_complete_without_series_json(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -646,7 +626,6 @@ def test_modal_webhooks_check_status_rejects_complete_without_series_json(monkey
     assert result["status"] == "error"
     assert result["error"] == "series_entry_unavailable"
 
-
 def test_modal_webhooks_check_status_rejects_complete_with_bad_series_json(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
 
@@ -668,7 +647,6 @@ def test_modal_webhooks_check_status_rejects_complete_with_bad_series_json(monke
 
     assert result["status"] == "error"
     assert result["error"] == "series_entry_parse_failed"
-
 
 def test_modal_webhooks_check_status_caps_series_json(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
@@ -695,7 +673,6 @@ def test_modal_webhooks_check_status_caps_series_json(monkeypatch):
     assert result["error"] == "series_entry_parse_failed"
     assert "series_entry JSON exceeds 32 bytes" in result["detail"]
     assert series_body.read_sizes == [33]
-
 
 def test_modal_webhooks_check_status_returns_processing_for_missing_key(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")

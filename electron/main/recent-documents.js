@@ -74,7 +74,7 @@ export async function rememberRecentDocuments(appLike, paths, opts = {}) {
       const record = await recentRecordForPath(filePath, openedAt);
       if (record) fresh.push(record);
     } catch {
-      // Ignore stale launch arguments or removed files; the OS recent list may still hold them.
+
     }
   }
   const freshPaths = new Set(fresh.map(record => record.path));

@@ -1,5 +1,3 @@
-// Shared overlay-volume extraction for MPR / 3D label paths.
-
 import { state } from '../core/state.js';
 import { createImageBitmapBatch } from '../image-bitmap-batch.js';
 import { flattenImageBitmapsInWorker } from '../volume/volume-worker-client.js';
@@ -107,13 +105,6 @@ function buildVolumeFromStack(type, series, W, H, D) {
   return voxels;
 }
 
-/**
- * Synchronously return the full region label volume for a series, building it
- * from the local label slices or the decoded region image stack when the
- * labels voxel slot is not yet cached. Used by mesh export, which needs the
- * complete 3D mask regardless of whether the colour overlay is enabled. Returns
- * null when the source slices are not all decoded yet.
- */
 export function ensureRegionVoxelsSync(series = state.manifest?.series?.[state.seriesIdx]) {
   if (!series) return null;
   const cache = OVERLAY_CACHE_BY_KIND.labels;
@@ -137,7 +128,6 @@ export function ensureRegionVoxelsSync(series = state.manifest?.series?.[state.s
   return voxels;
 }
 
-/** Ensure the currently-active overlay stacks have cached 3D byte volumes when possible. */
 export function ensureActiveOverlayVolumes() {
   const series = state.manifest?.series?.[state.seriesIdx];
   if (!series) return;
@@ -150,8 +140,7 @@ export function ensureActiveOverlayVolumes() {
     const stateKey = entry.voxels;
     if (!stateKey) continue;
     const current = state[stateKey];
-    // Disable is a paint flag. Evicting voxels here would break mesh export
-    // and any other consumer that needs the cached mask while the overlay is off.
+
     if (!overlays[entry.kind]?.enabled) continue;
     const built = buildVolumeFromStack(type, series, W, H, D);
     if (!built || current === built || current?.length === built.length) continue;

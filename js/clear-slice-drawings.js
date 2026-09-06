@@ -1,4 +1,3 @@
-// Confirm + clear all measurements / angles / ROIs / annotations on one slice.
 import { state } from './core/state.js';
 import { $, showDialog } from './dom.js';
 import { drawSlice } from './slice-view.js';

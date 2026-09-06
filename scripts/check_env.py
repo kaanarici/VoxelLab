@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Environment preflight checks for optional cloud/release workflows."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ import shutil
 import sys
 from typing import Protocol, cast
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_ROOT = ROOT / "python"
 if str(PYTHON_ROOT) not in sys.path:
@@ -20,10 +18,8 @@ from modal_contract import modal_endpoint
 from modal_io import get_r2_client
 from r2_config import normalize_public_r2_url, normalize_r2_bucket, normalize_r2_endpoint
 
-
 class R2HeadClient(Protocol):
     def head_bucket(self, *, Bucket: str) -> object: ...
-
 
 R2_REQUIRED = (
     "R2_ENDPOINT",
@@ -38,9 +34,8 @@ CLOUD_REQUIRED = (
     "MODAL_AUTH_TOKEN",
 )
 
-
 def load_dotenv(path: str = ".env") -> dict[str, str]:
-    """Return simple KEY=VALUE pairs from .env without adding a dependency."""
+
     env: dict[str, str] = {}
     if not os.path.exists(path):
         return env
@@ -53,17 +48,15 @@ def load_dotenv(path: str = ".env") -> dict[str, str]:
             env[key.strip()] = value.strip().strip('"').strip("'")
     return env
 
-
 def merged_env() -> dict[str, str]:
-    # Example shape: {"R2_RESULTS_BUCKET": "scan-data", "R2_PUBLIC_URL": "https://..."}
+
     env = dict(os.environ)
     for key, value in load_dotenv().items():
         _ = env.setdefault(key, value)
     return env
 
-
 def find_executable(name: str) -> str | None:
-    # Example shape: "/repo/.venv/bin/modal" when npm run setup -- --cloud created it.
+
     found = shutil.which(name)
     if found:
         return found
@@ -72,7 +65,6 @@ def find_executable(name: str) -> str | None:
         if candidate.exists():
             return str(candidate)
     return None
-
 
 def check_cloud(dry_run: bool, r2_only: bool = False) -> list[str]:
     env = merged_env()
@@ -110,7 +102,6 @@ def check_cloud(dry_run: bool, r2_only: bool = False) -> list[str]:
         errors.append(f"R2 read-only connectivity failed: {type(exc).__name__}: {exc}")
     return errors
 
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     _ = parser.add_argument("--mode", choices=["cloud"], default="cloud")
@@ -125,7 +116,6 @@ def main() -> int:
         return 1
     print("cloud env preflight ok")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

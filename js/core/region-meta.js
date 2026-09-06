@@ -1,4 +1,3 @@
-// Shape: { legend: { 7: "Thalamus" }, regions: { 7: { name: "Thalamus", mL: 4.2 } } }.
 export function normalizeRegionMeta(regionMeta) {
   if (!regionMeta) return null;
   if (!regionMeta.regions) return regionMeta.legend ? regionMeta : { ...regionMeta, legend: {} };
@@ -17,9 +16,7 @@ export function normalizeRegionMeta(regionMeta) {
 export function regionLabelName(regionMeta, label) {
   if (!regionMeta || label == null) return '';
   const key = String(label);
-  // Prefer the richer regions[].name (display/humanized name) over legend, which
-  // some sidecars carry as raw segmentation ids — keeps the labels, Structures
-  // panel, legend, and inspect tooltip all showing the same name.
+
   const region = regionMeta.regions?.[key] ?? regionMeta.regions?.[label];
   const regionName = region?.constructor === String ? region : region?.name;
   if (regionName) return regionName;

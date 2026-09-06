@@ -1,4 +1,3 @@
-// Lazy-load overlay PNG stacks (seg / sym / regions) for the current series.
 import { state } from '../core/state.js';
 import { loadImageStack, regionMetaUrlForSeries } from '../series/series-image-stack.js';
 import { cachedFetchJson } from '../cached-fetch.js';
@@ -41,8 +40,7 @@ function ensureRegionMeta(cache, series, overlays) {
 
 export function ensureOverlayStack(type) {
   const cache = OVERLAY_CACHE_BY_TYPE[type];
-  // Fusion sets refuseInOverlayStack: it is a peer stack via fusion-loader.
-  // Refusing here prevents `${slug}_fusion` even when a caller forgets to skip it.
+
   if (!cache || cache.refuseInOverlayStack) return Promise.resolve(false);
   const series = state.manifest.series[state.seriesIdx];
   const overlays = activeOverlayStateForSeries(series);
@@ -50,12 +48,7 @@ export function ensureOverlayStack(type) {
   const isRemote = !!series?.sliceUrlBase;
   const windowRadius = isRemote ? REMOTE_WINDOW_RADIUS : 5;
   const concurrency = isRemote ? REMOTE_OVERLAY_PREFETCH_CONCURRENCY : OVERLAY_PREFETCH_CONCURRENCY;
-  // 3D / MPR render the full dense volume, which can't build until EVERY overlay
-  // slice is decoded (hasDenseLoadedImages). For 2D only the current slice is
-  // needed, so prefetch caps at DEFAULT_PREFETCH_LIMIT. Without lifting that cap
-  // in volume modes, the 3D overlay only colors after many toggles / ~a minute,
-  // even though labels (current-slice only) appear instantly. So when a volume
-  // mode is active, load the whole stack aggressively.
+
   const needVolume = state.mode === '3d' || state.mode === 'mpr3d' || state.mode === 'mpr';
   const prefetchLimit = (isRemote || needVolume) ? REMOTE_OVERLAY_PREFETCH_LIMIT : DEFAULT_PREFETCH_LIMIT;
   const prefetchConcurrency = needVolume && !isRemote ? 8 : concurrency;

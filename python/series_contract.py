@@ -1,5 +1,3 @@
-"""Canonical series/manifest contract helpers."""
-
 from __future__ import annotations
 
 import copy
@@ -23,10 +21,8 @@ from geometry import compare_group_key, cross3 as _cross3, dot3 as _dot3, norm3 
 
 _CONTRACT = json.loads((Path(__file__).resolve().parent.parent / "schemas" / "series-contract.json").read_text())
 
-
 def dump_series_contract() -> dict:
     return copy.deepcopy(_CONTRACT)
-
 
 _FIELD_TYPES = {
     "string": str,
@@ -37,25 +33,20 @@ _FIELD_TYPES = {
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
-# Shape: {"slug": str, "slices": positive int, "hasSeg": bool, ...}.
 REQUIRED_SERIES_FIELDS = {
     key: _FIELD_TYPES[kind] for key, kind in _CONTRACT["requiredSeriesFields"].items()
 }
 
-# Shape: {"pixelSpacing": 2, "orientation": 6, "firstIPP": 3}.
 VECTOR_LENGTHS = dict(_CONTRACT["vectorLengths"])
 
-# Shape: ["hasSym", "hasStats", "hasAnalysis", "hasRegions", ...].
 OPTIONAL_BOOL_FIELDS = list(_CONTRACT["optionalBoolFields"])
 
-# Shape: {"volumeStack": "display-volume", "projectionSet": "requires-reconstruction"}.
 GEOMETRY_CAPABILITY = GEOMETRY_KIND_CAPABILITY
 RENDERABILITY_VALUES = set(_CONTRACT["renderabilityValues"])
 GEOMETRY_RECORD_KINDS = set(_CONTRACT["geometryRecordKinds"])
 DERIVED_OBJECT_KINDS = DERIVED_KINDS
 AFFINE_COMPATIBILITY_VALUES = set(_CONTRACT["affineCompatibilityValues"])
 
-# sourceJobId is the canonical identity; job_id is the snake_case on-wire alias.
 JOB_ID_FIELDS = tuple(_CONTRACT["jobIdFields"])
 MODAL_REQUIRED_URL_FIELDS = tuple(_CONTRACT["modalRequiredUrlFields"])
 PROJECTION_MISSING_GEOMETRY = list(_CONTRACT["projectionMissingGeometry"])
@@ -63,7 +54,6 @@ PROJECTION_MISSING_GEOMETRY = list(_CONTRACT["projectionMissingGeometry"])
 dot3 = _dot3
 norm3 = _norm3
 cross3 = _cross3
-
 
 def load_json(path: Path) -> Any:
     try:
@@ -73,20 +63,16 @@ def load_json(path: Path) -> Any:
     except json.JSONDecodeError as exc:
         raise ValueError(f"{path}: invalid JSON: {exc}") from exc
 
-
 def is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
-
 def is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
-
 
 def type_name(expected_type: Any) -> str:
     if isinstance(expected_type, tuple):
         return " or ".join(t.__name__ for t in expected_type)
     return expected_type.__name__
-
 
 def validate_vector(series_path: str, key: str, value: Any) -> list[str]:
     errors: list[str] = []
@@ -98,7 +84,6 @@ def validate_vector(series_path: str, key: str, value: Any) -> list[str]:
     if key in {"pixelSpacing", "previewDims"} and not all(v > 0 for v in value):
         errors.append(f"{series_path}.{key}: expected positive values")
     return errors
-
 
 def validate_renderability(series_path: str, value: Any, capability: str | None) -> list[str]:
     errors: list[str] = []
@@ -133,18 +118,15 @@ def validate_renderability(series_path: str, value: Any, capability: str | None)
         errors.append(f"{series_path}.renderability.canMpr3D: expected false unless reconstructionCapability is display-volume")
     return errors
 
-
 def vector3(value: Any) -> list[float] | None:
     if not isinstance(value, list) or len(value) != 3 or not all(is_number(item) for item in value):
         return None
     return [float(item) for item in value]
 
-
 def orientation_vectors(value: Any) -> tuple[list[float], list[float]] | None:
     if not isinstance(value, list) or len(value) != 6 or not all(is_number(item) for item in value):
         return None
     return [float(item) for item in value[:3]], [float(item) for item in value[3:]]
-
 
 def claims_display_volume(series: dict[str, Any]) -> bool:
     geometry = series.get("geometryKind")
@@ -155,7 +137,6 @@ def claims_display_volume(series: dict[str, Any]) -> bool:
     if renderability == "volume":
         return True
     return isinstance(renderability, dict) and renderability.get("canMpr3D") is True
-
 
 def validate_volume_geometry(series_path: str, series: dict[str, Any]) -> list[str]:
     errors: list[str] = []
@@ -210,7 +191,6 @@ def validate_volume_geometry(series_path: str, series: dict[str, Any]) -> list[s
 
     return errors
 
-
 def validate_reconstruction_fields(series_path: str, series: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     geometry = series.get("geometryKind")
@@ -231,7 +211,6 @@ def validate_reconstruction_fields(series_path: str, series: dict[str, Any]) -> 
         errors.extend(validate_renderability(series_path, series["renderability"], capability or expected_capability))
 
     return errors
-
 
 def validate_projection_set(value: Any, index: int) -> list[str]:
     path = f"projectionSets[{index}]"
@@ -289,7 +268,6 @@ def validate_projection_set(value: Any, index: int) -> list[str]:
 
     return errors
 
-
 def validate_geometry_record_fields(series_path: str, series: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     record_kind = series.get("geometryRecordKind")
@@ -341,7 +319,6 @@ def validate_geometry_record_fields(series_path: str, series: dict[str, Any]) ->
 
     return errors
 
-
 def validate_derived_object_binding(path: str, binding: Any) -> list[str]:
     if not isinstance(binding, dict):
         return [f"{path}: expected object"]
@@ -367,7 +344,6 @@ def validate_derived_object_binding(path: str, binding: Any) -> list[str]:
         errors.append(f"{path}: requiresRegistration must be true when affineCompatibility requires registration")
     return errors
 
-
 def has_trustworthy_geometry(series: dict[str, Any]) -> bool:
     return (
         isinstance(series.get("orientation"), list)
@@ -382,7 +358,6 @@ def has_trustworthy_geometry(series: dict[str, Any]) -> bool:
         and all(is_number(value) and value > 0 for value in series["pixelSpacing"][:2])
         and series.get("sliceSpacingRegular") is not False
     )
-
 
 def validate_derived_binding_semantics(series: list[Any]) -> list[str]:
     errors: list[str] = []
@@ -444,7 +419,6 @@ def validate_derived_binding_semantics(series: list[Any]) -> list[str]:
             if compat in {"requires-registration", "incompatible"} and requires_registration is False:
                 errors.append(f"{path}.requiresRegistration: expected true for {compat} binding")
     return errors
-
 
 def validate_series(series: Any, index: int) -> list[str]:
     path = f"series[{index}]"
@@ -539,7 +513,6 @@ def validate_series(series: Any, index: int) -> list[str]:
 
     return errors
 
-
 def validate_manifest_data(data: Any) -> list[str]:
     if not isinstance(data, dict):
         return ["manifest: expected object"]
@@ -594,7 +567,6 @@ def validate_manifest_data(data: Any) -> list[str]:
 
     return errors
 
-
 def normalize_series_entry(
     entry: dict[str, Any] | None,
     public_base: str = "",
@@ -603,7 +575,7 @@ def normalize_series_entry(
     region_dir_name: str = "",
     region_meta_name: str = "",
 ) -> dict[str, Any] | None:
-    # Shape: {"slug":"cloud_job123","hasRaw":true,"sliceUrlBase":"https://.../data/cloud_job123"}.
+
     if not isinstance(entry, dict) or not entry.get("slug"):
         return None
     normalized = (
@@ -645,7 +617,6 @@ def normalize_series_entry(
         normalized["sourceJobId"] = job_id
     return normalized
 
-
 def validate_modal_series(entry: dict[str, Any], public_base: str = "") -> list[str]:
     errors = [error.replace("series[0]", "series", 1) for error in validate_series(entry, 0)]
     for key in MODAL_REQUIRED_URL_FIELDS:
@@ -656,12 +627,11 @@ def validate_modal_series(entry: dict[str, Any], public_base: str = "") -> list[
     errors.extend(validate_public_series_urls(entry, public_base))
     return errors
 
-
 def find_existing_series_index(manifest: dict[str, Any], entry: dict[str, Any], job_id: str | None = None) -> int | None:
     series = manifest.get("series") if isinstance(manifest, dict) else None
     if not isinstance(series, list):
         raise ValueError("manifest.series: expected list")
-    # Shape: {1: ["slug"], 3: ["job_id"]} for one manifest series selected by canonical identity only.
+
     matches: dict[int, list[str]] = {}
     slug = entry.get("slug")
     if isinstance(slug, str) and slug:
@@ -676,7 +646,6 @@ def find_existing_series_index(manifest: dict[str, Any], entry: dict[str, Any], 
         detail = ", ".join(f"series[{index}] via {','.join(keys)}" for index, keys in sorted(matches.items()))
         raise ValueError(f"series result matches multiple manifest entries: {detail}")
     return next(iter(matches), None)
-
 
 def upsert_projection_set(manifest: dict[str, Any], projection_entry: dict[str, Any] | None) -> None:
     if projection_entry is None:
@@ -696,7 +665,6 @@ def upsert_projection_set(manifest: dict[str, Any], projection_entry: dict[str, 
     merged = dict(manifest["projectionSets"][existing_index])
     merged.update(normalized)
     manifest["projectionSets"][existing_index] = merged
-
 
 def merge_manifest_series(
     manifest: dict[str, Any],
@@ -730,7 +698,6 @@ def merge_manifest_series(
     if errors:
         raise ValueError("\n".join(errors))
     return next_manifest, action, index
-
 
 def merge_manifest_path(
     manifest_path: Path,

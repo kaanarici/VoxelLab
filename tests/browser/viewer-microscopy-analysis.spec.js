@@ -1,4 +1,3 @@
-/* global document */
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -52,20 +51,16 @@ test('first useful workflow exports calibrated microscopy particle evidence', as
   await mkdir(dirname(omeTiffPath), { recursive: true });
   await writeCalibratedChannelTimeOmeTiff(omeTiffPath);
   await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
-  // Wait for the uploaded microscopy series to become active (the auto-loaded default study
-  // would otherwise satisfy waitForCanvasPaint before the upload switches series).
+
   await expect(page.locator('#series-name')).toHaveText('cells-channel-time');
   await waitForCanvasPaint(page, '#view');
 
   await ensurePanelOpen(page, '#microscopy-stack-panel');
   await expect(page.locator('#microscopy-calibration')).toHaveText('X 0.500 µm/px · Y 0.250 µm/px · Z 1.50 µm');
 
-  // The Analyze panel appears for microscopy series with retained raw planes.
   await ensurePanelOpen(page, '#microscopy-analysis-panel');
   await expect(page.locator('#analyze-run')).toBeEnabled();
 
-  // Deterministic: a manual threshold of 0 (dark background) selects every pixel, so the
-  // whole image is one connected component → exactly one particle row.
   await page.locator('#analyze-threshold-method').selectOption('manual');
   await page.locator('#analyze-threshold-value').fill('0');
   await page.locator('#analyze-run').click();
@@ -75,7 +70,6 @@ test('first useful workflow exports calibrated microscopy particle evidence', as
   await ensurePanelOpen(page, '#roi-results-panel');
   await expect(page.locator('#roi-results-count')).toHaveText('1');
 
-  // The particle row is a raw-domain polygon (Fiji "Mean gray value" parity).
   const row = await page.locator('#roi-results .roi-result-foot').first().textContent();
   expect(row).toContain('Raw intensity');
 

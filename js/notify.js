@@ -1,8 +1,3 @@
-// Notification toasts — stacking, kinds, deduplication, dismissable.
-//
-// Duplicate ids update in place. Duplicate text shakes the existing toast.
-// Max 4 visible toasts — oldest confirm is evicted first.
-
 import { escapeHtml } from './dom.js';
 import {
   confirmDuration,

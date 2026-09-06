@@ -1,4 +1,3 @@
-/* global Request, Response */
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,7 +13,7 @@ import { LAZY_OPTIONAL_MODULES } from '../scripts/gen_sw_manifest.mjs';
 import { PRECACHE_LOCAL } from '../js/sw-precache-manifest.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-// Manifest precaches itself only via sw.js's own SW load, not as an app module.
+
 const LAZY_JS_MODULES = new Set(
   [...LAZY_OPTIONAL_MODULES].filter((modulePath) => modulePath !== 'js/sw-precache-manifest.js'),
 );

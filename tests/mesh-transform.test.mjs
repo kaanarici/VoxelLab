@@ -18,7 +18,7 @@ test('identity spacing + IPP offset: voxel coords shift by firstIPP', () => {
 });
 
 test('anisotropic spacing pins the col->X / row->Y axis pairing', () => {
-  // colSpacing = pixelSpacing[1] = 2 scales X; rowSpacing = pixelSpacing[0] = 5 scales Y.
+
   const series = {
     pixelSpacing: [5, 2],
     sliceSpacing: 4,
@@ -28,13 +28,13 @@ test('anisotropic spacing pins the col->X / row->Y axis pairing', () => {
     lastIPP: [0, 0, 8],
   };
   const geo = geometryFromSeries(series);
-  // vertex.x=column=3 -> 6mm X; vertex.y=row=2 -> 10mm Y; vertex.z=slice=1 -> 4mm Z.
+
   const out = applyAffineToPositions(new Float32Array([3, 2, 1]), geo.affineLps);
   assert.deepEqual([...out].map((v) => Math.round(v * 1e6) / 1e6), [6, 10, 4]);
 });
 
 test('non-identity IOP rotates correctly (column dir along -Y)', () => {
-  // row = (0,1,0), col = (-1,0,0): a 90-degree in-plane rotation.
+
   const series = {
     pixelSpacing: [1, 1],
     sliceSpacing: 1,
@@ -44,7 +44,7 @@ test('non-identity IOP rotates correctly (column dir along -Y)', () => {
     lastIPP: [0, 0, 1],
   };
   const geo = geometryFromSeries(series);
-  // column=1 along row dir (0,1,0); row=0; slice=0 -> patient (0,1,0).
+
   const out = applyAffineToPositions(new Float32Array([1, 0, 0]), geo.affineLps);
   assert.deepEqual([...out].map((v) => Math.round(v * 1e6) / 1e6), [0, 1, 0]);
 });

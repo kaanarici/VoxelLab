@@ -18,16 +18,32 @@ test('3D hover honors axis and arbitrary-plane clipping', () => {
 
 test('3D hover honors isolated label visibility', () => {
   const labels = new Uint8Array([0, 2, 3]);
-  const lut = new Uint8Array(256 * 4);
-  lut[2 * 4 + 3] = 255;
+  const hidden = new Int32Array(8);
+  hidden[0] = 1 << 3;
   const uniforms = {
     uLabelMode: { value: 1 },
     uIsolate: { value: 1 },
     uLabel: { value: { image: { data: labels } } },
-    uLabelLUT: { value: { image: { data: lut } } },
+    uHiddenLabels: { value: hidden },
   };
 
   assert.equal(volumeHoverPointVisible([0.5, 0.5, 0.5], 0, uniforms), false);
   assert.equal(volumeHoverPointVisible([0.5, 0.5, 0.5], 1, uniforms), true);
   assert.equal(volumeHoverPointVisible([0.5, 0.5, 0.5], 2, uniforms), false);
+});
+
+
+test('packed visibility masks address every label without changing adjacent labels', () => {
+  const hidden = new Int32Array(8);
+  const labels = Uint8Array.from({ length: 256 }, (_, index) => index);
+  const uniforms = {
+    uLabelMode: { value: 2 }, uIsolate: { value: 0 },
+    uLabel: { value: { image: { data: labels } } }, uHiddenLabels: { value: hidden },
+  };
+  for (let label = 0; label < 256; label += 1) {
+    hidden.fill(0);
+    hidden[label >>> 5] |= 1 << (label & 31);
+    assert.equal(volumeHoverPointVisible([0.5, 0.5, 0.5], label, uniforms), false);
+    assert.equal(volumeHoverPointVisible([0.5, 0.5, 0.5], (label + 1) % 256, uniforms), true);
+  }
 });

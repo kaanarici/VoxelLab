@@ -71,7 +71,7 @@ test('registration evidence opens fixed/moving compare with verdict labels', asy
   await expect(page.locator('#canvas-wrap')).toHaveClass(/cmp/);
   await expect(page.locator('.cmp-cell')).toHaveCount(2);
   await expect(page.locator('.cmp-cell').nth(0).locator('.cmp-lbl')).toHaveText('Registration Primary');
-  await expect(page.locator('.cmp-cell').nth(1).locator('.cmp-lbl')).toHaveText('Registration Peer · slightly off · 3.25 mm');
+  await expect(page.locator('.cmp-cell').nth(1).locator('.cmp-lbl')).toHaveText('Registration Peer · slightly off · reported displacement 3.25 mm');
 });
 
 test('Ask registration action opens fixed/moving compare', async ({ page }) => {
@@ -127,5 +127,5 @@ test('Ask registration action opens fixed/moving compare', async ({ page }) => {
   await expect(page.locator('#canvas-wrap')).toHaveClass(/cmp/);
   await expect(page.locator('.cmp-cell')).toHaveCount(2);
   await expect(page.locator('.cmp-cell').nth(0).locator('.cmp-lbl')).toHaveText('Registration Primary');
-  await expect(page.locator('.cmp-cell').nth(1).locator('.cmp-lbl')).toHaveText('Registration Peer · slightly off · 3.25 mm');
+  await expect(page.locator('.cmp-cell').nth(1).locator('.cmp-lbl')).toHaveText('Registration Peer · slightly off · reported displacement 3.25 mm');
 });

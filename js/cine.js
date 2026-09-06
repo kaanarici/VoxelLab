@@ -1,13 +1,9 @@
-// Cine: advances state.sliceIdx at state.cineFps; redraws come from state subscribers.
-
 import { $ } from './dom.js';
 import { state } from './core/state.js';
 import { stepSlice } from './core/state/viewer-commands.js';
 
 let cineTimer = null;
 
-// Update the filled portion of the custom slider track via CSS var.
-// Called anywhere state.sliceIdx changes.
 export function updateScrubFill() {
   const scrub = $('scrub');
   if (!scrub) return;
@@ -34,10 +30,7 @@ export function startCine() {
     const elapsed = timestamp - lastFrameTime;
     if (elapsed >= interval) {
       const total = state.manifest.series[state.seriesIdx].slices;
-      // Advance by however many whole intervals have elapsed so playback holds the
-      // requested rate even when a redraw can't keep up at the display refresh —
-      // N slices play in N/fps seconds (frames are dropped, not slowed). Resync on
-      // a huge gap (e.g. a backgrounded tab) so it doesn't fire a catch-up storm.
+
       let steps = Math.floor(elapsed / interval);
       if (steps >= total) {
         lastFrameTime = timestamp;

@@ -15,7 +15,6 @@ from geometry import (
 
 PROJECTION_IMAGE_MARKERS = {"LOCALIZER", "SCOUT", "PROJECTION"}
 
-
 def dicom_group_key(ds) -> tuple[str, str, int, int]:
     modality = str(getattr(ds, "Modality", "") or "")
     series_uid = str(getattr(ds, "SeriesInstanceUID", "") or "")
@@ -31,7 +30,6 @@ def dicom_group_key(ds) -> tuple[str, str, int, int]:
         int(getattr(ds, "Columns", 0) or 0),
     )
 
-
 def is_projection_like_dicom(ds) -> bool:
     modality = str(getattr(ds, "Modality", "") or "").upper()
     if modality in PROJECTION_MODALITIES:
@@ -41,15 +39,12 @@ def is_projection_like_dicom(ds) -> bool:
         image_type = image_type.split("\\")
     return any(str(value).upper() in PROJECTION_IMAGE_MARKERS for value in image_type)
 
-
 def _positive_pixel_spacing(ds) -> list[float]:
     spacing = float_list(getattr(ds, "PixelSpacing", []), 2)
     return spacing if len(spacing) >= 2 and spacing[0] > 0 and spacing[1] > 0 else []
 
-
 def _same_number(left: float, right: float, tolerance: float = 1e-3) -> bool:
     return abs(float(left) - float(right)) <= max(tolerance, abs(float(right)) * tolerance)
-
 
 def _orthonormal_iop(iop: list[float], tolerance: float = ORTHONORMAL_TOLERANCE) -> tuple[list[float], list[float], str]:
     if len(iop) < 6:
@@ -65,7 +60,6 @@ def _orthonormal_iop(iop: list[float], tolerance: float = ORTHONORMAL_TOLERANCE)
     if not row or not col or abs(dot3(row, col)) > tolerance:
         return [], [], "MPR volume processing requires orthonormal row/column orientation"
     return row, col, ""
-
 
 def _volume_stack_geometry_error(slices: list) -> str:
     base_frame_uid = str(getattr(slices[0], "FrameOfReferenceUID", "") or "").strip()
@@ -90,7 +84,12 @@ def _volume_stack_geometry_error(slices: list) -> str:
         row, col, error = _orthonormal_iop(float_list(getattr(ds, "ImageOrientationPatient", []), 6))
         if error:
             return error
-        if dot3(base_row, row) <= 0.999 or dot3(base_col, col) <= 0.999:
+        row_span = (int(getattr(ds, "Columns", 1) or 1) - 1) * base_spacing[1]
+        col_span = (int(getattr(ds, "Rows", 1) or 1) - 1) * base_spacing[0]
+        row_delta = [(row[i] - base_row[i]) * row_span for i in range(3)]
+        col_delta = [(col[i] - base_col[i]) * col_span for i in range(3)]
+        drift = max(norm3(row_delta), norm3(col_delta), norm3([row_delta[i] + col_delta[i] for i in range(3)]))
+        if dot3(base_row, row) <= 0 or dot3(base_col, col) <= 0 or drift > 0.25:
             return "MPR volume processing requires consistent slice orientation"
 
         spacing = _positive_pixel_spacing(ds)
@@ -124,7 +123,6 @@ def _volume_stack_geometry_error(slices: list) -> str:
     if len(rounded) < 2:
         return "MPR volume processing requires nonzero slice normal and slice span"
     return ""
-
 
 def mpr_geometry_error(slices: list) -> str:
     if len(slices) < 2:
@@ -166,7 +164,6 @@ def mpr_geometry_error(slices: list) -> str:
         return "MPR volume processing requires regular slice spacing"
     return ""
 
-
 def _eligible_dicom_groups(datasets: list, requested_modality: str) -> dict[tuple[str, str, int, int], list]:
     groups: dict[tuple[str, str, int, int], list] = {}
     for ds in datasets:
@@ -178,13 +175,12 @@ def _eligible_dicom_groups(datasets: list, requested_modality: str) -> dict[tupl
         groups.setdefault(key, []).append(ds)
     return groups
 
-
 def _dropped_dicom_series_from_groups(
     groups: dict[tuple[str, str, int, int], list],
     selected_key: tuple[str, str, int, int],
 ) -> list[dict]:
     dropped = []
-    # Shape: {"seriesUID":"1.2.3","modality":"MR","rows":512,"columns":512,"sliceCount":180}.
+
     for key, group in groups.items():
         if key == selected_key:
             continue
@@ -197,7 +193,6 @@ def _dropped_dicom_series_from_groups(
         })
     return dropped
 
-
 def select_primary_dicom_stack_details(
     datasets: list,
     requested_modality: str,
@@ -208,20 +203,16 @@ def select_primary_dicom_stack_details(
     key, selected = max(groups.items(), key=lambda item: len(item[1]))
     return sort_datasets_spatially(selected), key[0], key, _dropped_dicom_series_from_groups(groups, key)
 
-
 def select_primary_dicom_stack(datasets: list, requested_modality: str) -> tuple[list, str, tuple[str, str, int, int]]:
     selected, modality, key, _dropped = select_primary_dicom_stack_details(datasets, requested_modality)
     return selected, modality, key
 
-
 def dropped_dicom_series(datasets: list, requested_modality: str, selected_key: tuple[str, str, int, int]) -> list[dict]:
     return _dropped_dicom_series_from_groups(_eligible_dicom_groups(datasets, requested_modality), selected_key)
-
 
 def stack_pixels_with_rescale(slices: list) -> object:
     import numpy as np
 
-    # Shape: -1024.0 -> float32 voxel after per-slice DICOM rescale is applied.
     return np.stack([
         np.asarray(ds.pixel_array, dtype=np.float32)
         if float(getattr(ds, "RescaleSlope", 1) or 1) == 1.0
@@ -230,7 +221,6 @@ def stack_pixels_with_rescale(slices: list) -> object:
         + float(getattr(ds, "RescaleIntercept", 0) or 0)
         for ds in slices
     ])
-
 
 def expand_primary_stack(datasets: list) -> tuple[list, str]:
     expanded = []
@@ -257,14 +247,13 @@ def expand_primary_stack(datasets: list) -> tuple[list, str]:
             frame.Rows = rows
             frame.Columns = cols
             frame.RescaleSlope = float(getattr(frame, "RescaleSlope", slope) or slope)
-            frame.RescaleIntercept = float(getattr(frame, "RescaleIntercept", intercept) or intercept)
+            frame.RescaleIntercept = float(getattr(frame, "RescaleIntercept", intercept))
             frame.SeriesInstanceUID = series_uid
             frame.StudyInstanceUID = study_uid
             frame.Modality = modality
         expanded.extend(frames)
 
     return sort_datasets_spatially(expanded), ""
-
 
 def ensure_projection_inputs(datasets: list, source_manifest: dict | None) -> tuple[list, str]:
     if not source_manifest:
@@ -294,7 +283,6 @@ def ensure_projection_inputs(datasets: list, source_manifest: dict | None) -> tu
         return [], "; ".join(errors)
     return datasets, ""
 
-
 def ensure_ultrasound_inputs(datasets: list, source_manifest: dict | None, np) -> tuple[list, str]:
     if not source_manifest:
         return [], "ultrasound scan conversion requires voxellab.source.json source manifest"
@@ -308,13 +296,19 @@ def ensure_ultrasound_inputs(datasets: list, source_manifest: dict | None, np) -
         return [], "ultrasound scan conversion requires one coherent ultrasound series per job"
     frame_count = 0
     for ds in datasets:
+        if int(getattr(ds, "SamplesPerPixel", 1) or 1) != 1:
+            return [], "ultrasound reconstruction requires grayscale source frames"
+        declared_frames = int(getattr(ds, "NumberOfFrames", 1) or 1)
+        regions = getattr(ds, "SequenceOfUltrasoundRegions", [])
+        if any(int(getattr(region, "RegionSpatialFormat", 0)) != 1 for region in regions):
+            return [], "ultrasound reconstruction requires spatial 2D regions"
         try:
             shape = getattr(ds.pixel_array, "shape", ())
         except Exception as exc:
             return [], f"ultrasound scan conversion requires decoded pixel data: {exc}"
-        if len(shape) == 2 and all(int(value) > 0 for value in shape):
+        if len(shape) == 2 and declared_frames == 1 and all(int(value) > 0 for value in shape):
             frame_count += 1
-        elif len(shape) == 3 and all(int(value) > 0 for value in shape):
+        elif len(shape) == 3 and int(shape[0]) == declared_frames and all(int(value) > 0 for value in shape):
             frame_count += int(shape[0])
         else:
             return [], "ultrasound scan conversion expects 2D frames or one multi-frame stack"
@@ -322,7 +316,6 @@ def ensure_ultrasound_inputs(datasets: list, source_manifest: dict | None, np) -
     if errors:
         return [], "; ".join(errors)
     return datasets, ""
-
 
 def _registration_stack_for_uid(
     groups: dict[tuple[str, str, int, int], list],
@@ -343,7 +336,6 @@ def _registration_stack_for_uid(
     if geometry_error:
         return [], f"registration {role} stack: {geometry_error}"
     return slices, ""
-
 
 def ensure_registration_inputs(datasets: list, source_manifest: dict | None) -> tuple[list, list, str]:
     if not source_manifest:

@@ -1,11 +1,3 @@
-/* Ask composer — the inline scoped-chat "Ask" feature: canvas overlay (hint,
-   reticle, marquee), the drawer/scope/thread/steps timeline, prompt bar, and the
-   region quick-look lightbox. Kept out of viewer.css to stay maintainable. */
-
-  /* Motion tokens (--dur-*, --ease-*, --resize-*, --avatar-*) are centralized in
-     css/base.css :root. */
-
-  /* Ask (k): spot picker — ring follows cursor; hint explains the gesture */
   .ask-reticle {
     position: fixed;
     width: 40px;
@@ -49,7 +41,6 @@
     pointer-events: none;
   }
 
-  /* ---- Inline scoped Ask composer: a drawer that rises from behind the bar ---- */
   .ask-composer {
     position: absolute;
     left: 50%;
@@ -64,15 +55,12 @@
   }
   .ask-composer[hidden] { display: none; }
 
-  /* Drawer: behind the bar (lower z), tucked under its top edge so the two read
-     as one stacked surface, and grows upward as the conversation fills. */
   .ask-drawer {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 100%;
-    /* Midline of the 48px pill. Extra bottom padding is the height; the tuck
-       spends it downward so the thread is taller and sits behind the bar. */
+
     margin-bottom: -24px;
     z-index: var(--z-base);
     display: flex;
@@ -86,8 +74,7 @@
     border-bottom: none;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
-    /* Auto height follows content; the steps group animates its own grid-rows
-       collapse, and the thread scrolls natively once content exceeds max-height. */
+
   }
   .ask-drawer.ask-drawer-in { animation: ask-drawer-in var(--panel-close-dur) var(--ease-smooth); }
   @keyframes ask-drawer-in {
@@ -96,8 +83,7 @@
   }
 
   .ask-scope { display: flex; align-items: center; gap: var(--space-10); flex-shrink: 0; }
-  /* Attachment deck: cards stacked with a peek; on hover they fan out + tilt so
-     you can see and pick each (transitions.dev avatar-group spring). */
+
   .ask-stack { position: relative; flex-shrink: 0; height: 44px; width: calc(44px + (var(--n, 1) - 1) * 7px); }
   .ask-stack:hover { z-index: 4; }
   .ask-att {
@@ -154,10 +140,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* Pinned to the drawer's top-right with even inset (matches the 12px drawer
-     padding on top and right). Radius follows outer = inner + padding: the 14px
-     glyph leaves 6px of padding inside the 26px box, so a 6px radius reads as a
-     concentric hover chip. */
+
   .ask-scope-close {
     flex-shrink: 0;
     align-self: flex-start;
@@ -172,11 +155,9 @@
     border-radius: var(--radius-lg);
     transition: background var(--dur-quick) var(--ease-swap), color var(--dur-quick) var(--ease-swap);
   }
-  /* Neutral translucent overlay so the hover chip is visible on the drawer in
-     both themes (the panel/elev backgrounds are too close to --hover). */
+
   .ask-scope-close:hover { background: var(--hover-strong); color: var(--text); }
 
-  /* Thread: the scoped Q/A chat (scrolls inside the drawer when tall) */
   .ask-thread {
     flex: 1 1 auto;
     min-height: 0;
@@ -187,8 +168,7 @@
     padding-right: var(--space-2xs);
   }
   .ask-thread[hidden] { display: none; }
-  /* The whole turn grows + fades in (grid-rows 0fr→1fr); the auto-height drawer
-     follows so nothing flashes into place. */
+
   .ask-qa {
     display: grid;
     grid-template-rows: 0fr;
@@ -209,8 +189,7 @@
     border-radius: var(--radius-xl) var(--radius-xl) var(--radius) var(--radius-xl);
   }
   .ask-qa-a { font-size: var(--fs-title); line-height: 1.6; color: var(--text); }
-  /* Reusable shimmer: a sweep muted→text→muted across the text, used by both the
-     "Thinking" answer state and the "Working…" steps trigger while active. */
+
   .ask-shimmer-text {
     color: transparent;
     -webkit-text-fill-color: transparent;
@@ -224,21 +203,19 @@
     from { background-position: 100% 0; }
     to   { background-position: -100% 0; }
   }
-  /* "Thinking" answer state: inline-block (not flex) so it starts at the same left
-     x as the answer that replaces it; opacity transition lets it retire smoothly. */
+
   .ask-qa-a.pending {
     display: inline-block;
     transition: opacity var(--dur-quick) var(--ease-swap);
   }
   .ask-qa-a.err { color: var(--color-abnormal); }
-  /* The answer grows its height in as the words fade (so the drawer eases open). */
+
   .ask-qa-a.ask-a-reveal { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--reveal-dur) var(--ease-smooth); }
   .ask-qa-a.ask-a-reveal.ask-a-in { grid-template-rows: 1fr; }
-  /* Breathing room below every answer, for legibility (more on the latest turn). */
+
   .ask-a-cell { min-height: 0; overflow: hidden; padding-bottom: 22px; }
   .ask-qa:last-child .ask-a-cell { padding-bottom: 26px; }
-  /* Word-by-word blur-fade reveal of the answer (theme-agnostic: animates only
-     opacity/blur, the text keeps var(--text)). */
+
   .ask-qa-a .ask-word {
     display: inline-block;
     opacity: 0;
@@ -318,13 +295,10 @@
     text-overflow: ellipsis;
   }
 
-  /* Tool steps — one connected vertical timeline (prompt-kit Steps), grouped as
-     the calls stream in: a kind-icon node per step joined by a connector line.
-     The group auto-collapses to a summary line when the tools finish. */
   .ask-qa-tools { display: flex; flex-direction: column; }
   .ask-qa-tools[hidden] { display: none; }
   .ask-steps { display: flex; flex-direction: column; }
-  /* Hugs its content (chevron + label) so the hover highlight isn't a full row. */
+
   .ask-steps-trigger {
     align-self: flex-start;
     display: flex;
@@ -344,20 +318,17 @@
   }
   .ask-steps-trigger:hover { color: var(--text); }
   .ask-steps-trigger:hover .ask-steps-chev { color: var(--text); }
-  /* Disclosure chevron on the LEFT: points right when collapsed, down when open. */
+
   .ask-steps-chev { flex-shrink: 0; color: var(--muted); opacity: 0.8; transform: rotate(-90deg); transition: transform var(--chevron-dur) var(--ease-smooth); }
   .ask-steps[data-open="true"] .ask-steps-chev { transform: rotate(0deg); }
-  /* Sized to its text (not flex:1) so the shimmer gradient sweeps tightly over
-     the glyphs instead of spreading invisibly across the full trigger width. */
+
   .ask-steps-label { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* Smooth collapse: grid-rows height + content opacity, 0.28s ease — the exact
-     technique the right sidebar sections use. The auto-height drawer follows. */
+
   .ask-steps-content { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--accordion-dur) var(--ease-smooth); }
   .ask-steps[data-open="true"] .ask-steps-content { grid-template-rows: 1fr; }
   .ask-steps-timeline { overflow: hidden; min-height: 0; padding: 3px 0 var(--space-2xs) var(--space-2sm); opacity: 0; transition: opacity var(--accordion-dur) var(--ease-smooth); }
   .ask-steps[data-open="true"] .ask-steps-timeline { opacity: 1; }
-  /* Each row grows + fades in (grid-rows 0fr→1fr) so the auto-height drawer
-     follows smoothly instead of the row flashing into place. */
+
   .ask-step {
     position: relative;
     display: grid;
@@ -367,8 +338,7 @@
   }
   .ask-step.ask-step-in { grid-template-rows: 1fr; opacity: 1; }
   .ask-step-cell { min-height: 0; overflow: hidden; padding-bottom: var(--space-10); transform-origin: top; }
-  /* A short segment between consecutive icons — centred on the icon column, in
-     the gap; never before the first or after the last step. */
+
   .ask-step:not(:first-child)::before {
     content: '';
     position: absolute;
@@ -382,11 +352,9 @@
     opacity: 1;
     transition: opacity var(--dur-quick) var(--ease-swap);
   }
-  /* When a step's detail is open, the segment below it (the next step's
-     connector) fades away, then returns on collapse. */
+
   .ask-step.open + .ask-step::before { opacity: 0; }
-  /* The clickable item hugs its content (icon + label + chevron), not the row;
-     icon and label are vertically centred. */
+
   .ask-step-head {
     display: inline-flex;
     align-items: center;
@@ -419,7 +387,7 @@
   .ask-step-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-swap); }
   .ask-step-head .ask-tool-chev { flex-shrink: 0; color: var(--muted); opacity: 0.7; transition: transform var(--chevron-dur) var(--ease-smooth); }
   .ask-step.open .ask-tool-chev { transform: rotate(180deg); }
-  /* Smooth detail reveal (grid-rows); the auto-height drawer follows. */
+
   .ask-step-detailwrap { width: 100%; display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--accordion-dur) var(--ease-smooth); }
   .ask-step.open .ask-step-detailwrap { grid-template-rows: 1fr; }
   .ask-step-detail {
@@ -444,7 +412,6 @@
     .ask-step:not(.ask-step-in), .ask-qa:not(.ask-qa-in), .ask-qa-a.ask-a-reveal:not(.ask-a-in) { grid-template-rows: 1fr; }
   }
 
-  /* Prompt bar: the hero surface in front of the drawer */
   .ask-bar {
     position: relative;
     z-index: 2;
@@ -454,17 +421,15 @@
     gap: var(--space-sm);
     background: var(--panel);
     border: var(--border-w) solid var(--border);
-    /* A finite radius = one-line height/2 reads as a full pill but morphs
-       SMOOTHLY to the tall radius (animating from 9999px snaps at the end). */
+
     border-radius: 24px;
     box-shadow: var(--shadow-modal);
     padding: var(--space-sm);
     transition: border-color var(--dur-quick), border-radius var(--resize-dur) var(--resize-ease);
   }
-  /* Multi-line: a pill looks wrong when tall, so ease down to a rounded rect.
-     Eased in sync with the input's height so the morph reads as one motion. */
+
   .ask-bar--tall { border-radius: 18px; }
-  /* …and the textarea lifts onto its own full-width row above the controls. */
+
   .ask-bar--tall .ask-bar-input { flex: 1 1 100%; order: -1; }
   .ask-bar:focus-within { border-color: var(--dim); }
   .ask-bar-input {
@@ -483,16 +448,14 @@
     line-height: 1.5;
     max-height: 160px;
     padding: var(--space-2sm) 0;
-    /* Eased in sync with the bar radius (auto→px on open snaps, px→px wraps ease). */
+
     transition: height var(--resize-dur) var(--resize-ease);
   }
   .ask-bar-input::placeholder { color: var(--muted); opacity: 0.85; }
   @media (prefers-reduced-motion: reduce) {
     .ask-bar, .ask-bar-input { transition: none; }
   }
-  /* Circle, concentric with the pill bar's right end: the 32px button sits 8px
-     from the bar's right/top/bottom edges, so its 16px radius + 8px padding =
-     the bar's 24px (height/2) end radius. */
+
   .ask-bar-send {
     flex-shrink: 0;
     width: 32px;
@@ -516,7 +479,7 @@
     line-height: 0;
   }
   .ask-bar-slot--model { margin-left: auto; }
-  /* "+" at the bar's left end — a ghost circle concentric with the bar (16+8=24). */
+
   .ask-bar-plus {
     flex-shrink: 0;
     width: 32px;
@@ -532,7 +495,7 @@
   }
   .ask-bar-plus:hover,
   .ask-bar-plus[aria-expanded="true"] { background: var(--hover); color: var(--text); }
-  /* Popover above the "+": region pen (and, later, study context). */
+
   .ask-bar-pop {
     position: absolute;
     left: 0;
@@ -574,7 +537,7 @@
   .ask-pop-sep { height: var(--border-w); background: var(--border); margin: var(--space-xs); }
   .ask-pop-head { font-size: var(--fs-caption); color: var(--muted); padding: var(--space-xs) 9px 3px; text-transform: uppercase; letter-spacing: var(--tracking-wide); }
   .ask-pop-studies { display: flex; flex-direction: column; gap: var(--space-2xs); max-height: 200px; overflow-y: auto; }
-  /* Model selector pill — send-button height, fully rounded, left of send. */
+
   .ask-bar-model {
     flex-shrink: 0;
     height: 32px;
@@ -677,7 +640,6 @@
     padding: 0 var(--space-2sm);
   }
 
-  /* Region quick-look: click the attachment to preview the crop large */
   .ask-lightbox {
     position: fixed;
     inset: 0;
@@ -692,8 +654,7 @@
   .ask-lightbox[hidden] { display: none; }
   .ask-lightbox.ask-lightbox-in { animation: ask-lightbox-in var(--modal-open-dur) var(--ease-smooth); }
   @keyframes ask-lightbox-in { from { opacity: 0; } to { opacity: 1; } }
-  /* Scale the crop UP to a comfortable preview (min-width), not just cap it —
-     region crops are small in canvas pixels, so capping alone left them tiny. */
+
   .ask-lightbox img {
     width: auto;
     height: auto;

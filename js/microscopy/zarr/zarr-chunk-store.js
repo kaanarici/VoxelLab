@@ -200,8 +200,7 @@ export function createRemoteZarrStore({
 
   function runWithAbort(promise) {
     const source = Promise.resolve(promise);
-    // When abort wins the race, the underlying fetch/decode settles afterward with
-    // no other consumer; register a no-op handler so it never becomes unhandled.
+
     source.catch(() => {});
     if (aborted || controller.signal.aborted) return Promise.reject(abortError());
     return new Promise((resolve, reject) => {

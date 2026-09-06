@@ -133,7 +133,7 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
   try {
     await notifyProjectsChanged(i);
   } catch {
-    // Folder organization is best-effort; the canonical series load still wins.
+
   }
   if (!isCurrent()) {
     clearSeriesLoadSpinner();
@@ -172,8 +172,6 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
   syncViewerRuntimeSession(series);
   const baseLoaders = base.loaders;
 
-  // Prefetch preferred overlays for this modality when toggles are off so the
-  // first enable renders immediately.
   const preferredOverlays = new Set(getPreferredOverlays(series.modality));
   for (const cache of enableOverlayCaches()) {
     const overlay = overlays[cache.kind];
@@ -208,8 +206,6 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
     ? softFail(cachedFetchJson(statsUrlForSeries(series)), `${series.slug} stats`)
     : Promise.resolve(null);
 
-  // Source-keyed local results take precedence across selection and reload.
-  // Declared legacy slug sidecars remain a static demo compatibility fallback.
   const analysisPromise = loadPersistedSeriesAnalysis(series, manifest);
   if (!isCurrent()) {
     clearSeriesLoadSpinner();
@@ -243,7 +239,7 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
   if (isCurrent() && state.mode === '2d') {
     requestAnimationFrame(() => v.zoomToFit());
   }
-  // Analysis applies via hydrateSeriesSidecars with the other sidecars.
+
   const [regionMeta, askHistory, stats, analysis] = await Promise.all([
     regionMetaPromise,
     askHistoryPromise,
@@ -259,11 +255,7 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
   refreshSidebarData();
   syncViewerRuntimeSession(series);
   syncAskModeAfterViewChange();
-  // Restore-on overlays (e.g. Anatomy carried over from a previous session) must
-  // render their colour on load, not only after the user toggles off/on. Drive
-  // them through the same ensureOverlayStack path the toggle uses — it repaints on
-  // the current slice AND again once the stack finishes, and ensures region meta —
-  // so the colour overlay can't silently miss a one-shot paint race.
+
   for (const cache of enableOverlayCaches()) {
     if (overlays[cache.kind]?.enabled) ensureOverlayStack(cache.type);
   }
@@ -275,7 +267,6 @@ export async function selectSeries(i, v, { preserveSlice = false } = {}) {
     drawCompare();
   }
 
-  // Shape: { variant: "full" } when the whole base stack is warm enough for MPR/3D reuse.
   const triggerRebuildAfterBaseReady = async (variant) => {
     if (!isCurrent()) return;
     const voxelsKeyBefore = state.voxelsKey;

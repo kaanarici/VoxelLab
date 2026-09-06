@@ -1,12 +1,3 @@
-// Annotations tool — numbered pins dropped on 2D slices with a text
-// note. Live notes bags are owned by viewer-commands via annotation-graph;
-// localStorage is boot hydrate plus write-through mirror. Each entry:
-//   { id, x, y, text, createdAt }
-// where id is a monotonic counter per slice, used for the pin label.
-//
-// initAnnotations() stores redraw callbacks for this module's click/edit
-// path. Drawing lists come from annotation-graph, not a plugin host.
-
 import { $, escapeHtml, openModal, closeModal, clientToCanvasPx as _clientToCanvasPx } from '../dom.js';
 import { state } from '../core/state.js';
 import { updateScrubFill as _updateScrubFill } from '../cine.js';
@@ -21,8 +12,6 @@ import {
   setNoteEntriesForSlice,
 } from './annotation-graph.js';
 
-// Hooks into the main viewer — set once by initAnnotations(). Keeping
-// them as module-level vars avoids passing them through every call.
 let _drawSlice = () => {};
 let _drawSparkline = () => {};
 let _updateSliceDisplay = () => {};
@@ -32,31 +21,6 @@ export function initAnnotations({ drawSlice, drawSparkline, updateSliceDisplay }
   if (drawSlice instanceof Function) _drawSlice = drawSlice;
   if (drawSparkline instanceof Function) _drawSparkline = drawSparkline;
   if (updateSliceDisplay instanceof Function) _updateSliceDisplay = updateSliceDisplay;
-}
-
-export function loadAnnotations() {
-  const series = state.manifest.series[state.seriesIdx];
-  const entries = drawingEntriesForSeries(state, series).filter((entry) => entry.kind === 'note');
-  const bySlice = {};
-  for (const entry of entries) {
-    const key = `${series.slug}|${entry.sliceIdx}`;
-    if (!bySlice[key]) bySlice[key] = [];
-    bySlice[key].push(entry.data);
-  }
-  return bySlice;
-}
-
-export function saveAnnotations(obj) {
-  const series = state.manifest.series[state.seriesIdx];
-  const slug = series.slug;
-  for (const entry of drawingEntriesForSeries(state, series).filter((entry) => entry.kind === 'note')) {
-    setNoteEntriesForSlice(state, series, entry.sliceIdx, []);
-  }
-  for (const [key, list] of Object.entries(obj || {})) {
-    if (!key.startsWith(`${slug}|`)) continue;
-    const sliceIdx = Number(key.split('|')[1] || 0);
-    setNoteEntriesForSlice(state, series, sliceIdx, list);
-  }
 }
 
 export function annotKey() {
@@ -83,11 +47,10 @@ export function toggleAnnotate() {
 }
 
 export async function onAnnotateClick(ev) {
-  // First try to edit an existing pin under the cursor.
+
   const hit = pinAtClient(ev.clientX, ev.clientY);
   if (hit) { await editAnnotation(hit.pin); return; }
 
-  // No existing pin → only add a new one if we're actually in annotate mode.
   if (!state.annotateMode) return;
 
   const [px, py] = clientToCanvasPx(ev.clientX, ev.clientY);
@@ -118,9 +81,6 @@ export async function editAnnotation(pin) {
   _drawSparkline();
 }
 
-// Promise-wrapped modal for add/edit/delete of an annotation.
-// Resolves with { action: 'save'|'delete', text: string } on save/delete,
-// or null if cancelled (Esc or Cancel button or click-outside).
 function showAnnotDialog({ mode, text, slice }) {
   return new Promise((resolve) => {
     const modal = $('annot-modal');
@@ -207,10 +167,6 @@ export function drawAnnotationPins(ctx, {
   ctx.restore();
 }
 
-// Hit-test mouse position against annotation pins on the current slice.
-// Returns the pin object and its display index, or null if the cursor
-// isn't over a pin. Used both for hover tooltip display and to change
-// the cursor when not in any tool mode.
 export function pinAtClient(clientX, clientY) {
   const list = getAnnotationsHere();
   if (!list.length) return null;
@@ -234,7 +190,7 @@ export function showAnnotHover(pin, index, clientX, clientY) {
     <div>${escapeHtml(pin.text || '')}</div>
   `;
   host.classList.add('visible');
-  // Measure after showing (display:none hides dimensions)
+
   const hw = host.offsetWidth, hh = host.offsetHeight;
   let x = clientX - wrap.left + 14;
   let y = clientY - wrap.top - hh - 12;
@@ -289,7 +245,6 @@ export function renderAnnotationList() {
   });
 }
 
-// Set of slice indices with annotations — used by the sparkline marker
 export function getAnnotatedSlices() {
   return annotatedSlicesForSeries(state, state.manifest.series[state.seriesIdx]);
 }

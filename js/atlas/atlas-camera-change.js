@@ -1,6 +1,3 @@
-// Orthographic TrackballControls zoom updates camera.zoom / projectionMatrix
-// and leaves matrixWorld unchanged. Atlas callouts must treat both as motion.
-
 export function matricesChanged(current, last, epsilon = 1e-6) {
   let moved = false;
   for (let i = 0; i < current.length; i += 1) {

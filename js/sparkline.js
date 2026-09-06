@@ -1,8 +1,3 @@
-// Sparkline (per-slice symmetry bar chart) + histogram (intensity
-// distribution for the current slice). Both live in the bottom bar
-// under the main canvas. They read from state.overlays.stats and state.imgs
-// and don't write to anything — pure renderers.
-
 import { $ } from './dom.js';
 import { state } from './core/state.js';
 import { readImageByteData } from './overlay/overlay-data.js';
@@ -17,7 +12,6 @@ function panelBackgroundColor() {
   return v || '#111111';
 }
 
-/** W/L band + edges: slightly stronger tint in light mode so it reads on --panel */
 function histogramBandFill(isLight) {
   return isLight ? 'rgba(0, 0, 0, 0.07)' : 'rgba(255, 255, 255, 0.08)';
 }
@@ -25,17 +19,14 @@ function histogramBandStroke(isLight) {
   return isLight ? 'rgba(0, 0, 0, 0.32)' : 'rgba(255, 255, 255, 0.35)';
 }
 
-// Slice indices with annotations for the active series — from
-// annotation.js via viewer's initSparkline(getAnnotatedSlices).
 let getAnnotatedSlices = () => new Set();
 
 export function initSparkline(hook) {
   if (hook instanceof Function) getAnnotatedSlices = hook;
 }
 
-// Shape: persistent offscreen sparkline base, e.g. 640x44 px at DPR=2.
 let _sparkBase = null;
-// Shape: cached static sparkline inputs used to decide rebuild.
+
 const _sparkCache = {
   w: 0,
   h: 22,
@@ -53,14 +44,10 @@ function annotationKey(set) {
   return vals.join(',');
 }
 
-// Tiny bar chart under the scrubber showing per-slice asymmetry from
-// detect.py. Tall bars = slices where the brain differs most left-vs-
-// right. Clicking jumps to that slice (handler wired in viewer.js).
 export function drawSparkline() {
   const c = $('sparkline');
   if (!c) return;
 
-  // Hide entirely when there's no data to show
   const scores = state.overlays.stats?.symmetryScores;
   const hasData = scores && scores.length > 0;
   c.hidden = !hasData;
@@ -68,7 +55,6 @@ export function drawSparkline() {
 
   const n = scores.length;
 
-  // Resize to device pixels for sharp rendering
   const w = c.clientWidth || c.parentElement.clientWidth || 400;
   const h = 22;
   const dpr = window.devicePixelRatio || 1;
@@ -145,7 +131,6 @@ export function drawSparkline() {
     ctx.fillRect(idx * barW + 0.5, h - 1 - bh, Math.max(1, barW - 1), bh);
   }
 
-  // Current slice marker (vertical line)
   ctx.strokeStyle = barColor(0.45);
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -155,11 +140,8 @@ export function drawSparkline() {
   ctx.stroke();
 }
 
-// Per-slice intensity histogram with the current window/level band
-// overlaid. Only renders in 2D mode.
 const _histCache = { image: null, width: 0, height: 0, bins: null, max: 0 };
 
-/** Returns true when the histogram canvas should be drawn; updates empty placeholder otherwise. */
 export function syncHistogramPanel() {
   const c = $('histogram');
   const block = $('histogram-block');
@@ -176,9 +158,6 @@ export function syncHistogramPanel() {
     if (hintEl) hintEl.textContent = hint;
   };
 
-  // Hide the whole block in non-2D modes — the histogram is single-slice only,
-  // and MPR / 3D / compare already show their own spatial context, so a "switch
-  // back to 2D" placeholder inside Metadata reads as noise rather than guidance.
   if (state.mode !== '2d') {
     block.hidden = true;
     return false;
@@ -223,7 +202,7 @@ export function drawHistogram() {
 
     bins = new Uint32Array(256);
     for (const v of data) {
-      if (v < 4) continue;  // skip pure background so it doesn't dominate
+      if (v < 4) continue;
       bins[v]++;
     }
     max = 0;
@@ -250,17 +229,15 @@ export function drawHistogram() {
   ctx.fillStyle = panelBackgroundColor();
   ctx.fillRect(0, 0, w, h);
 
-  // Histogram bars — neutral gray
   const binW = w / 256;
   ctx.fillStyle = barColor(isLight ? 0.52 : 0.6);
   for (let i = 0; i < 256; i++) {
     if (bins[i] === 0) continue;
-    // log scale so tails are visible
+
     const bh = (Math.log(1 + bins[i]) / Math.log(1 + max)) * h;
     ctx.fillRect(i * binW, h - bh, Math.max(1, binW), bh);
   }
 
-  // Window/level band — theme-aware overlay on --panel fill
   const lo = state.level - state.window / 2;
   const hi = state.level + state.window / 2;
   ctx.fillStyle = histogramBandFill(isLight);

@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 
 from host_policy import content_security_policy as host_content_security_policy
 
-
 LOCAL_API_TOKEN = (os.environ.get("VIEWER_LOCAL_API_TOKEN") or "").strip() or secrets.token_urlsafe(24)
 MAX_JSON_BODY_BYTES = 1024 * 1024
 MAX_API_JSON_BODY_BYTES = 64 * 1024
@@ -43,14 +42,11 @@ PRIVATE_LOCAL_API_TOKEN_PATHS = {
 RATE_LIMIT_BUCKETS: dict[str, dict[str, float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
 
-
 class BodyTooLargeError(ValueError):
     pass
 
-
 class InvalidJsonBodyError(ValueError):
     pass
-
 
 def localhost_origin(origin: str) -> str:
     try:
@@ -60,7 +56,6 @@ def localhost_origin(origin: str) -> str:
     if parsed.scheme not in {"http", "https"}:
         return ""
     return origin if parsed.hostname in LOCAL_ORIGIN_HOSTS else ""
-
 
 def loopback_host(value: str) -> bool:
     candidate = str(value or "").strip().strip("[]")
@@ -81,14 +76,12 @@ def loopback_host(value: str) -> bool:
     except ValueError:
         return False
 
-
 def loopback_origin(origin: str) -> bool:
     try:
         parsed = urlparse(origin)
     except Exception:
         return False
     return parsed.scheme in {"http", "https"} and loopback_host(parsed.netloc)
-
 
 def is_same_origin(origin: str, host: str) -> bool:
     try:
@@ -97,14 +90,11 @@ def is_same_origin(origin: str, host: str) -> bool:
         return False
     return bool(host) and parsed.scheme in {"http", "https"} and parsed.netloc == host
 
-
 def content_security_policy() -> str:
     return host_content_security_policy("browser")
 
-
 def local_nostore_static_path(path: str) -> bool:
     return path in {"/", "/index.html", "/sw.js"} or path.endswith((".js", ".mjs", ".css", ".html"))
-
 
 def consume_rate_limit(path: str, client_key: str) -> tuple[bool, int]:
     capacity, window_seconds = RATE_LIMITS[path]
@@ -121,11 +111,9 @@ def consume_rate_limit(path: str, client_key: str) -> tuple[bool, int]:
         RATE_LIMIT_BUCKETS[key] = {"tokens": tokens - 1, "updated": now}
         return True, 0
 
-
 def has_local_api_token(headers: Mapping[str, str], local_api_token: str) -> bool:
     token = str(headers.get("X-VoxelLab-Local-Token") or "")
     return bool(token) and secrets.compare_digest(token, local_api_token)
-
 
 def read_json_body(
     headers: Mapping[str, str],
@@ -145,7 +133,6 @@ def read_json_body(
         return cast(object, json.loads(raw.decode() or "{}"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise InvalidJsonBodyError("invalid JSON body") from exc
-
 
 def private_api_origin_guard(headers: Mapping[str, str], path: str) -> tuple[int, dict[str, str]] | None:
     if path not in PRIVATE_LOCAL_API_PATHS:

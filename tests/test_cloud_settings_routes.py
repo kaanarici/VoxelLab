@@ -9,7 +9,6 @@ import sys
 import cloud_settings
 import serve
 
-
 def make_handler(path: str, headers: dict[str, str] | None = None, body: bytes = b"") -> tuple[serve.Handler, dict]:
     captured: dict = {}
     handler = object.__new__(serve.Handler)
@@ -20,14 +19,12 @@ def make_handler(path: str, headers: dict[str, str] | None = None, body: bytes =
     handler._json = lambda code, body: captured.update({"code": code, "body": body})
     return handler, captured
 
-
 def authed_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
     return {
         "Sec-Fetch-Site": "same-origin",
         "X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN,
         **(extra or {}),
     }
-
 
 def test_get_cloud_settings_returns_masked_local_env(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(serve, "ROOT", tmp_path)
@@ -51,7 +48,6 @@ def test_get_cloud_settings_returns_masked_local_env(monkeypatch, tmp_path: Path
         "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
         "https://pub.example.r2.dev",
     ]
-
 
 def test_post_cloud_settings_writes_private_env(monkeypatch, tmp_path: Path) -> None:
     _ = (tmp_path / ".env").write_text("OTHER_VALUE=keep\nMODAL_AUTH_TOKEN=old-token\n", encoding="utf-8")
@@ -82,7 +78,6 @@ def test_post_cloud_settings_writes_private_env(monkeypatch, tmp_path: Path) -> 
     if sys.platform != "win32":
         assert ((tmp_path / ".env").stat().st_mode & 0o777) == 0o600
 
-
 def test_cloud_settings_failed_replacement_preserves_previous_env(monkeypatch, tmp_path: Path) -> None:
     env_path = tmp_path / ".env"
     previous = "OTHER_VALUE=keep\nMODAL_AUTH_TOKEN=old-token\n"
@@ -110,14 +105,12 @@ def test_cloud_settings_failed_replacement_preserves_previous_env(monkeypatch, t
     if sys.platform != "win32":
         assert (staged.stat().st_mode & 0o777) == 0o600
 
-
 def test_cloud_settings_requires_local_api_token() -> None:
     handler, captured = make_handler("/api/cloud-settings", headers={"Sec-Fetch-Site": "same-origin"})
 
     serve.Handler.do_GET(handler)
 
     assert captured == {"code": 403, "body": {"error": "missing or invalid local api token"}}
-
 
 def test_cloud_proxy_rejects_direct_calls_when_cloud_processing_disabled(monkeypatch) -> None:
     body = b'{"items":[{"upload_id":"u1","filename":"slice.dcm"}]}'

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from modal_validation import MAX_UPLOAD_ITEMS
 
-
 class FakeImage:
     def __init__(self):
         self.packages = []
@@ -38,7 +37,6 @@ class FakeImage:
         self.requirements.append((path, kwargs))
         return self
 
-
 class FakeSecret:
     def __init__(self, name: str):
         self.name = name
@@ -47,11 +45,9 @@ class FakeSecret:
     def from_name(name: str):
         return FakeSecret(name)
 
-
 class FakeRetries:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
-
 
 class FakeApp:
     def __init__(self, _name: str):
@@ -64,13 +60,11 @@ class FakeApp:
 
         return decorator
 
-
 def fake_fastapi_endpoint(**_kwargs):
     def decorator(fn):
         return fn
 
     return decorator
-
 
 def import_modal_app():
     _ = os.environ.setdefault("R2_UPLOAD_BUCKET", "scan-inputs")
@@ -85,7 +79,6 @@ def import_modal_app():
     sys.modules["modal"] = fake_modal
     _ = sys.modules.pop("modal_app", None)
     return importlib.import_module("modal_app")
-
 
 def test_modal_request_validation_accepts_expected_shapes():
     modal_app = import_modal_app()
@@ -103,7 +96,6 @@ def test_modal_request_validation_accepts_expected_shapes():
     assert modal_app.validate_input_kind("dicom_registration_pair", "rigid_registration") == "dicom_registration_pair"
     assert modal_app.validate_upload_filename("slice-0001.dcm") == "slice-0001.dcm"
 
-
 def test_modal_standard_segmentation_attempts_cover_ct_and_mr():
     modal_app = import_modal_app()
 
@@ -114,7 +106,6 @@ def test_modal_standard_segmentation_attempts_cover_ct_and_mr():
         ("tissue_types_mr", True, None),
     ]
     assert modal_app.totalseg_attempts_for_modality("US") == []
-
 
 def test_modal_request_validation_rejects_r2_key_escape_shapes():
     modal_app = import_modal_app()
@@ -133,9 +124,8 @@ def test_modal_request_validation_rejects_r2_key_escape_shapes():
     assert modal_app.validate_upload_filename("../slice.dcm") == ""
     assert modal_app.validate_upload_filename("folder/slice.dcm") == ""
 
-
 def test_modal_config_env_parsing_is_bounded_and_simple(monkeypatch):
-    # Example value: Modal can try GPUs in order and cap transfer workers for R2 fan-out.
+
     monkeypatch.setenv("MRI_VIEWER_MODAL_GPU", "L4,A10G")
     monkeypatch.setenv("MRI_VIEWER_MODAL_CPU", "2.5")
     monkeypatch.setenv("MRI_VIEWER_MODAL_MEMORY_MB", "128")
@@ -156,7 +146,6 @@ def test_modal_config_env_parsing_is_bounded_and_simple(monkeypatch):
     assert modal_app.R2_TRANSFER_WORKERS == 16
     assert "retries" not in modal_app.WEB_FUNCTION_CONFIG
 
-
 def test_modal_images_pin_dependencies_and_include_local_sources():
     modal_app = import_modal_app()
 
@@ -168,7 +157,6 @@ def test_modal_images_pin_dependencies_and_include_local_sources():
     ]
     assert set(modal_app.PIPELINE_SOURCE_MODULES) == set(modal_app.pipeline_image.local_sources)
     assert set(modal_app.PIPELINE_SOURCE_MODULES) == set(modal_app.web_image.local_sources)
-
 
 def test_modal_runtime_verifier_fails_closed_without_cuda(monkeypatch):
     modal_app = import_modal_app()
@@ -186,7 +174,6 @@ def test_modal_runtime_verifier_fails_closed_without_cuda(monkeypatch):
         assert "did not expose CUDA" in str(exc)
     else:
         raise AssertionError("verify_runtime must reject a CPU-only container")
-
 
 def test_modal_runtime_verifier_checks_both_bucket_boundaries(monkeypatch):
     modal_app = import_modal_app()
@@ -220,7 +207,6 @@ def test_modal_runtime_verifier_checks_both_bucket_boundaries(monkeypatch):
     assert result["bucketsReachable"] is True
     assert result["versions"]["zstandard"] == "test"
 
-
 def test_modal_endpoint_auth_rejects_missing_or_wrong_token(monkeypatch):
     monkeypatch.setenv("MODAL_AUTH_TOKEN", "secret-token")
     modal_app = import_modal_app()
@@ -228,7 +214,6 @@ def test_modal_endpoint_auth_rejects_missing_or_wrong_token(monkeypatch):
     assert modal_app.auth_error("") == "unauthorized"
     assert modal_app.auth_error("wrong-token") == "unauthorized"
     assert modal_app.auth_error("secret-token") == ""
-
 
 def test_modal_projection_validation_rejects_missing_calibration():
     modal_app = import_modal_app()
@@ -238,7 +223,6 @@ def test_modal_projection_validation_rejects_missing_calibration():
     )
     assert selected == []
     assert "source manifest" in error
-
 
 class FakeDicom:
     def __init__(
@@ -268,7 +252,6 @@ class FakeDicom:
             self.ImageType = image_type
         self.pixel_array = [[1, 2], [3, 4]]
 
-
 class FakePixelCube:
     def __init__(self, frames):
         self._frames = frames
@@ -279,17 +262,14 @@ class FakePixelCube:
     def __getitem__(self, index):
         return self._frames[index]
 
-
 class FakePixelPlane:
     def __init__(self, rows: int = 2, cols: int = 2):
         self.shape = (rows, cols)
-
 
 class FakeSeqItem:
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
-
 
 def test_modal_stack_selection_picks_largest_coherent_shape():
     modal_app = import_modal_app()
@@ -308,7 +288,6 @@ def test_modal_stack_selection_picks_largest_coherent_shape():
         (792, 512, 2),
     ]
 
-
 def test_modal_stack_selection_respects_requested_modality():
     modal_app = import_modal_app()
     datasets = [
@@ -323,7 +302,6 @@ def test_modal_stack_selection_respects_requested_modality():
     assert modality == "MR"
     assert key[1] == "mr"
 
-
 def test_modal_stack_selection_rejects_projection_and_localizer_inputs():
     modal_app = import_modal_app()
     datasets = [
@@ -336,7 +314,6 @@ def test_modal_stack_selection_rejects_projection_and_localizer_inputs():
     assert selected == []
     assert modality == ""
     assert key == ("", "", 0, 0)
-
 
 def test_modal_projection_validation_accepts_one_calibrated_projection_series():
     modal_app = import_modal_app()
@@ -365,7 +342,6 @@ def test_modal_projection_validation_accepts_one_calibrated_projection_series():
     assert error == ""
     assert len(selected) == 2
 
-
 def test_modal_registration_validation_selects_fixed_and_moving_stacks():
     modal_app = import_modal_app()
     datasets = [
@@ -389,7 +365,6 @@ def test_modal_registration_validation_selects_fixed_and_moving_stacks():
     assert [ds.SeriesInstanceUID for ds in fixed] == ["fixed", "fixed"]
     assert [ds.SeriesInstanceUID for ds in moving] == ["moving", "moving"]
 
-
 def test_modal_registration_validation_rejects_ambiguous_manifest_pair():
     modal_app = import_modal_app()
     datasets = [
@@ -410,7 +385,6 @@ def test_modal_registration_validation_rejects_ambiguous_manifest_pair():
     assert fixed == []
     assert moving == []
     assert "different series" in error
-
 
 def test_modal_projection_validation_rejects_multiframe_projection_dicom():
     modal_app = import_modal_app()
@@ -435,7 +409,6 @@ def test_modal_projection_validation_rejects_multiframe_projection_dicom():
     assert selected == []
     assert "multi-frame DICOM inputs" in error
 
-
 def test_modal_projection_validation_rejects_invalid_frame_count():
     modal_app = import_modal_app()
     ds = FakeDicom(modality="XA", series_uid="proj", instance=1)
@@ -459,7 +432,6 @@ def test_modal_projection_validation_rejects_invalid_frame_count():
     assert selected == []
     assert "numeric NumberOfFrames" in error
 
-
 def test_modal_projection_validation_rejects_non_2d_pixel_frames():
     modal_app = import_modal_app()
     ds = FakeDicom(modality="XA", series_uid="proj", instance=1)
@@ -482,10 +454,10 @@ def test_modal_projection_validation_rejects_non_2d_pixel_frames():
     assert selected == []
     assert "one 2D pixel frame" in error
 
-
 def test_modal_ultrasound_validation_accepts_calibrated_source():
     modal_app = import_modal_app()
     ds = FakeDicom(modality="US", series_uid="us", instance=1)
+    ds.NumberOfFrames = 2
     ds.pixel_array = FakePixelCube([
         [[1, 2], [3, 4]],
         [[5, 6], [7, 8]],
@@ -511,7 +483,6 @@ def test_modal_ultrasound_validation_accepts_calibrated_source():
     assert error == ""
     assert len(selected) == 1
 
-
 def test_modal_ultrasound_validation_rejects_non_array_pixels():
     modal_app = import_modal_app()
     ds = FakeDicom(modality="US", series_uid="us", instance=1)
@@ -535,7 +506,6 @@ def test_modal_ultrasound_validation_rejects_non_array_pixels():
 
     assert selected == []
     assert "expects 2D frames" in error
-
 
 def test_modal_expand_primary_stack_expands_enhanced_multiframe_dataset():
     modal_app = import_modal_app()
@@ -565,7 +535,6 @@ def test_modal_expand_primary_stack_expands_enhanced_multiframe_dataset():
     assert expanded[1].ImagePositionPatient == [0.0, 0.0, 1.0]
     assert expanded[0].pixel_array == [[1, 2], [3, 4]]
 
-
 def test_modal_mpr_geometry_validation_accepts_regular_orthogonal_stack():
     modal_app = import_modal_app()
     slices = [
@@ -575,7 +544,6 @@ def test_modal_mpr_geometry_validation_accepts_regular_orthogonal_stack():
 
     assert modal_app.mpr_geometry_error(slices) == ""
 
-
 def test_modal_mpr_geometry_validation_rejects_misaligned_slice_axis():
     modal_app = import_modal_app()
     slices = [
@@ -584,7 +552,6 @@ def test_modal_mpr_geometry_validation_rejects_misaligned_slice_axis():
     ]
 
     assert "slice positions aligned" in modal_app.mpr_geometry_error(slices)
-
 
 def test_modal_mpr_geometry_validation_rejects_irregular_slice_spacing():
     modal_app = import_modal_app()
@@ -596,7 +563,6 @@ def test_modal_mpr_geometry_validation_rejects_irregular_slice_spacing():
 
     assert "regular slice spacing" in modal_app.mpr_geometry_error(slices)
 
-
 def test_modal_mpr_geometry_validation_rejects_duplicate_slice_positions():
     modal_app = import_modal_app()
     slices = [
@@ -607,7 +573,6 @@ def test_modal_mpr_geometry_validation_rejects_duplicate_slice_positions():
 
     assert "distinct slice positions" in modal_app.mpr_geometry_error(slices)
 
-
 def test_modal_mpr_geometry_validation_rejects_mixed_frames_of_reference():
     modal_app = import_modal_app()
     slices = [
@@ -616,7 +581,6 @@ def test_modal_mpr_geometry_validation_rejects_mixed_frames_of_reference():
     ]
 
     assert "FrameOfReferenceUID" in modal_app.mpr_geometry_error(slices)
-
 
 def test_iter_r2_object_keys_reads_all_pages():
     modal_app = import_modal_app()
@@ -635,7 +599,6 @@ def test_iter_r2_object_keys_reads_all_pages():
         "uploads/job/b.dcm",
     ]
 
-
 def test_normalize_upload_items_accepts_duplicate_filenames_when_ids_differ():
     modal_app = import_modal_app()
 
@@ -652,13 +615,11 @@ def test_normalize_upload_items_accepts_duplicate_filenames_when_ids_differ():
         {"upload_id": "f000002", "filename": "IM0001", "content_type": "application/dicom", "size_bytes": 11},
     ]
 
-
 def test_upload_object_name_preserves_source_manifest_filename():
     modal_app = import_modal_app()
 
     assert modal_app.upload_object_name("f000001", "IM0001") == "f000001__IM0001"
     assert modal_app.upload_object_name("f000002", "voxellab.source.json") == "voxellab.source.json"
-
 
 def test_normalize_upload_items_rejects_legacy_duplicate_filenames():
     modal_app = import_modal_app()
@@ -667,7 +628,6 @@ def test_normalize_upload_items_rejects_legacy_duplicate_filenames():
 
     assert items == []
     assert error == "structured upload items with size_bytes are required"
-
 
 def test_normalize_upload_items_rejects_oversized_structured_batches():
     modal_app = import_modal_app()
@@ -682,7 +642,6 @@ def test_normalize_upload_items_rejects_oversized_structured_batches():
     assert items == []
     assert error == f"too many upload items; maximum is {MAX_UPLOAD_ITEMS}"
 
-
 def test_normalize_upload_items_rejects_oversized_legacy_batches():
     modal_app = import_modal_app()
 
@@ -692,7 +651,6 @@ def test_normalize_upload_items_rejects_oversized_legacy_batches():
 
     assert items == []
     assert error == "structured upload items with size_bytes are required"
-
 
 def test_r2_download_and_upload_helpers_batch_without_changing_keys(tmp_path: Path):
     modal_app = import_modal_app()

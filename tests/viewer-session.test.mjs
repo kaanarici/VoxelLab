@@ -24,7 +24,7 @@ function setSeriesState({
   hasRegions = false,
   hasSym = false,
 } = {}) {
-  // Shape: one active series with current overlay availability flags.
+
   state.manifest = {
     series: [{ slug, width, height, slices, hasRaw, hasSeg, hasRegions, hasSym }],
   };

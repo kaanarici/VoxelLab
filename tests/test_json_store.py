@@ -12,7 +12,6 @@ import ask
 import context
 import json_store
 
-
 def _series() -> dict:
     return {
         "slug": "sample",
@@ -28,7 +27,6 @@ def _series() -> dict:
         "hasRaw": False,
     }
 
-
 def _ask_entry(key: str) -> dict:
     return {
         "key": key,
@@ -40,7 +38,6 @@ def _ask_entry(key: str) -> dict:
         "crop": f"data/sample_asks/{key}.png",
     }
 
-
 def _increment_json(path: str, count: int) -> None:
     for _index in range(count):
         def increment(current: dict) -> dict:
@@ -48,7 +45,6 @@ def _increment_json(path: str, count: int) -> None:
             return current
 
         _ = json_store.update_json(Path(path), increment, default={"count": 0})
-
 
 def _run_analysis_process(data_path: str, started, release, paid_calls) -> None:
     analyze.DATA = Path(data_path)
@@ -68,7 +64,6 @@ def _run_analysis_process(data_path: str, started, release, paid_calls) -> None:
     if not analyze.process("sample", {**_series(), "modality": "MR"}, "test", sample_count=1):
         raise AssertionError("analysis did not complete")
 
-
 def test_concurrent_ask_saves_retain_both_answers(tmp_path: Path, monkeypatch) -> None:
     data = tmp_path / "data"
     data.mkdir()
@@ -82,7 +77,6 @@ def test_concurrent_ask_saves_retain_both_answers(tmp_path: Path, monkeypatch) -
     saved = json.loads((data / "sample_asks.json").read_text(encoding="utf-8"))
     assert {entry["key"] for entry in saved["entries"]} == {"a", "b"}
     assert json.loads((data / "manifest.json").read_text(encoding="utf-8"))["series"][0]["hasAskHistory"] is True
-
 
 def test_concurrent_manifest_updates_retain_independent_flags(tmp_path: Path, monkeypatch) -> None:
     data = tmp_path / "data"
@@ -107,7 +101,6 @@ def test_concurrent_manifest_updates_retain_independent_flags(tmp_path: Path, mo
     assert series["hasAnalysis"] is True
     assert series["hasContext"] is True
 
-
 def test_failed_atomic_replace_preserves_previous_json(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "state.json"
     original = {"status": "complete", "answers": [1, 2]}
@@ -124,13 +117,11 @@ def test_failed_atomic_replace_preserves_previous_json(tmp_path: Path, monkeypat
     assert json.loads(path.read_text(encoding="utf-8")) == original
     assert list(tmp_path.glob(".state.json.*.tmp")) == []
 
-
 def test_update_json_requires_existing_file_without_explicit_default(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         _ = json_store.update_json(tmp_path / "manifest.json", lambda manifest: manifest)
 
     assert not (tmp_path / "manifest.json").exists()
-
 
 def test_json_updates_are_serialized_across_processes(tmp_path: Path) -> None:
     path = tmp_path / "counter.json"
@@ -145,7 +136,6 @@ def test_json_updates_are_serialized_across_processes(tmp_path: Path) -> None:
         assert process.exitcode == 0
 
     assert json.loads(path.read_text(encoding="utf-8")) == {"count": 60}
-
 
 def test_analysis_operation_lock_prevents_duplicate_paid_work_across_processes(tmp_path: Path) -> None:
     data = tmp_path / "data"

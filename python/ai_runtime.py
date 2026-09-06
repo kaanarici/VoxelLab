@@ -1,5 +1,3 @@
-"""Provider-neutral AI runtime for VoxelLab local tooling."""
-
 from __future__ import annotations
 
 import json
@@ -34,20 +32,10 @@ CODEX_NOTIFICATION_OPTOUTS = [
     "turn/diff/updated",
 ]
 
-
 def _claude_agent_bash_enabled(env: dict[str, str] | None = None) -> bool:
-    """Whether the Claude Ask agent may use the `Bash` tool.
 
-    The Claude CLI has no per-invocation network/filesystem sandbox flag, unlike
-    the Codex app-server path (which runs with networkAccess disabled and
-    scratch-only writable roots). Granting `Bash` there means an unsandboxed
-    shell with full network access, driven by an LLM reading untrusted imaging
-    metadata — a prompt-injection-to-command-execution surface. Default to
-    Read-only and require an explicit opt-in to restore shell access.
-    """
     raw = (overlay_env(env).get("VOXELLAB_ASK_CLAUDE_BASH") or "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
-
 
 def configured_provider(provider: str | None = None, env: dict[str, str] | None = None) -> str:
     raw = (provider or overlay_env(env).get("VOXELLAB_AI_PROVIDER") or "claude").strip().lower()
@@ -57,12 +45,10 @@ def configured_provider(provider: str | None = None, env: dict[str, str] | None 
         )
     return raw
 
-
 def resolve_model(model: str | None = None, provider: str | None = None, env: dict[str, str] | None = None) -> str:
     env_map = overlay_env(env)
     chosen_provider = configured_provider(provider, env_map)
     return (model or env_map.get("VOXELLAB_AI_MODEL") or DEFAULT_MODELS[chosen_provider] or "").strip()
-
 
 _CLI_MODELS_TTL_S = 60.0
 _CLI_MODEL_DISCOVERY_TIMEOUT_S = 8.0
@@ -80,12 +66,10 @@ _CLAUDE_ALIAS_GROUP_RE = re.compile(
 )
 _CLAUDE_ALIAS_TOKEN_RE = re.compile(r"'([a-z][a-z0-9._-]{0,31})'")
 
-
 def clear_cli_models_cache() -> None:
     global _cli_models_cache
     with _cli_models_condition:
         _cli_models_cache = None
-
 
 def parse_claude_help_model_aliases(help_text: str) -> list[str]:
     block_match = _CLAUDE_MODEL_OPTION_RE.search(help_text or "")
@@ -99,20 +83,16 @@ def parse_claude_help_model_aliases(help_text: str) -> list[str]:
         aliases.append(token)
     return aliases
 
-
 def parse_codex_model_catalog(payload: Any) -> list[dict[str, Any]]:
     if not isinstance(payload, dict):
         return []
     return _parse_codex_app_model_list(payload)
 
-
 def _claude_alias_label(alias: str) -> str:
     return alias[:1].upper() + alias[1:] if alias else "Claude"
 
-
 def _is_internal_codex_model(model_id: str) -> bool:
     return "auto-review" in model_id.lower()
-
 
 def _codex_supports_image_input(item: dict[str, Any]) -> bool:
     raw = item.get("inputModalities")
@@ -121,7 +101,6 @@ def _codex_supports_image_input(item: dict[str, Any]) -> bool:
     if not isinstance(raw, list):
         return False
     return any(str(value).strip().lower() == "image" for value in raw)
-
 
 def _parse_codex_app_model_list(payload: dict[str, Any]) -> list[dict[str, Any]]:
     listed: list[dict[str, Any]] = []
@@ -138,13 +117,11 @@ def _parse_codex_app_model_list(payload: dict[str, Any]) -> list[dict[str, Any]]
         })
     return listed
 
-
 def _claude_picker_rows(help_text: str) -> list[dict[str, str]]:
     return [
         {"model": alias, "label": _claude_alias_label(alias)}
         for alias in parse_claude_help_model_aliases(help_text)
     ]
-
 
 def _catalog_provider_status(
     status: dict[str, Any],
@@ -167,7 +144,6 @@ def _catalog_provider_status(
         },
     }
 
-
 def _default_cli_model(provider: str) -> dict[str, Any]:
     return {
         "key": f"{provider}:default",
@@ -176,7 +152,6 @@ def _default_cli_model(provider: str) -> dict[str, Any]:
         "label": "Claude" if provider == "claude" else "Codex",
         "group": "Claude Code" if provider == "claude" else "Codex",
     }
-
 
 def _claude_model_rows(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
     return [{
@@ -187,7 +162,6 @@ def _claude_model_rows(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
         "group": "Claude Code",
     } for item in rows]
 
-
 def _codex_model_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{
         "key": f"codex:{item['model']}",
@@ -196,7 +170,6 @@ def _codex_model_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "label": item["label"],
         "group": "Codex",
     } for item in rows]
-
 
 def _discover_claude_models(env: dict[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     deadline = time.monotonic() + _CLI_MODEL_DISCOVERY_TIMEOUT_S
@@ -243,7 +216,6 @@ def _discover_claude_models(env: dict[str, str]) -> tuple[dict[str, Any], list[d
         model_count=len(rows),
     ), rows or [_default_cli_model("claude")]
 
-
 def _codex_model_catalog(app: "_CodexAppServer") -> tuple[list[dict[str, Any]], bool]:
     items: list[Any] = []
     cursor: str | None = None
@@ -264,7 +236,6 @@ def _codex_model_catalog(app: "_CodexAppServer") -> tuple[list[dict[str, Any]], 
         seen_cursors.add(cursor_value)
         cursor = cursor_value
     return _parse_codex_app_model_list({"data": items}), True
-
 
 def _discover_codex_models(env: dict[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if shutil.which("codex", path=env.get("PATH")) is None:
@@ -325,7 +296,6 @@ def _discover_codex_models(env: dict[str, str]) -> tuple[dict[str, Any], list[di
         model_count=len(rows),
     ), rows or [_default_cli_model("codex")]
 
-
 def list_cli_models(env: dict[str, str] | None = None) -> dict[str, Any]:
     global _cli_models_cache, _cli_models_inflight
     with _cli_models_condition:
@@ -370,15 +340,12 @@ def list_cli_models(env: dict[str, str] | None = None) -> dict[str, Any]:
             _cli_models_condition.notify_all()
     return payload
 
-
 def _compact_error_text(text: str, limit: int = 240) -> str:
     one_line = " ".join(text.split())
     return one_line[:limit] + ("..." if len(one_line) > limit else "")
 
-
 def _run_status(cmd: list[str], timeout: float = 30, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=overlay_env(env))
-
 
 def _missing_provider_status(provider: str) -> dict[str, Any]:
     return {
@@ -388,7 +355,6 @@ def _missing_provider_status(provider: str) -> dict[str, Any]:
         "auth_mode": None,
         "status_source": "missing_cli",
     }
-
 
 def claude_status(env: dict[str, str] | None = None, timeout: float = 30) -> dict[str, Any]:
     env_map = overlay_env(env)
@@ -440,7 +406,6 @@ def claude_status(env: dict[str, str] | None = None, timeout: float = 30) -> dic
         "status_source": "status_command",
     }
 
-
 def _codex_status_from_account(account: dict[str, Any]) -> dict[str, Any]:
     active = account.get("account")
     if not active and account.get("requiresOpenaiAuth", True):
@@ -459,7 +424,6 @@ def _codex_status_from_account(account: dict[str, Any]) -> dict[str, Any]:
         "auth_mode": auth_mode if isinstance(auth_mode, str) else None,
         "status_source": "app_server_account",
     }
-
 
 def codex_status(env: dict[str, str] | None = None) -> dict[str, Any]:
     env_map = overlay_env(env)
@@ -484,7 +448,6 @@ def codex_status(env: dict[str, str] | None = None) -> dict[str, Any]:
         }
     return _codex_status_from_account(account)
 
-
 def provider_status(provider: str | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:
     env_map = overlay_env(env)
     try:
@@ -499,7 +462,6 @@ def provider_status(provider: str | None = None, env: dict[str, str] | None = No
             "status_source": "config_error",
         }
     return claude_status(env) if chosen == "claude" else codex_status(env)
-
 
 def public_ai_status(enabled: bool, provider: str | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:
     if not enabled:
@@ -516,14 +478,12 @@ def public_ai_status(enabled: bool, provider: str | None = None, env: dict[str, 
     status = provider_status(provider, env)
     return {"enabled": True, **status}
 
-
 def require_provider_ready(provider: str | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:
     status = provider_status(provider, env)
     if not status["ready"]:
         issues = "; ".join(status.get("issues") or ["provider not ready"])
         raise RuntimeError(f"{status['provider']} provider not ready: {issues}")
     return status
-
 
 def _claude_prompt(prompt: str, images: list[Path]) -> str:
     if not images:
@@ -533,7 +493,6 @@ def _claude_prompt(prompt: str, images: list[Path]) -> str:
     lines.append("")
     lines.append(prompt)
     return "\n".join(lines)
-
 
 def _parse_claude_payload(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     if proc.returncode != 0:
@@ -548,7 +507,6 @@ def _parse_claude_payload(proc: subprocess.CompletedProcess[str]) -> dict[str, A
     if out is None:
         raise RuntimeError(f"no structured_output in response: {json.dumps(payload)[:400]}")
     return out
-
 
 def _run_claude(
     prompt: str,
@@ -596,7 +554,6 @@ def _run_claude(
         with tempfile.TemporaryDirectory(prefix="voxellab-ask-") as scratch:
             return _parse_claude_payload(_invoke(scratch))
     return _parse_claude_payload(_invoke(None))
-
 
 class _CodexAppServer:
     def __init__(self, timeout: int, env: dict[str, str] | None = None) -> None:
@@ -684,17 +641,14 @@ class _CodexAppServer:
                 stderr = ""
         return RuntimeError(f"codex app-server failed: {_compact_error_text(stderr or fallback)}")
 
-
 def _codex_account_read(env: dict[str, str] | None = None, timeout: int = 30) -> dict[str, Any]:
     with _CodexAppServer(timeout, env) as app:
         return app.request("account/read", {"refreshToken": False})
-
 
 def _codex_input(prompt: str, images: list[Path]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     items.extend({"type": "localImage", "path": str(image.resolve()), "detail": "high"} for image in images)
     return items
-
 
 def _parse_codex_structured_message(text: str) -> dict[str, Any]:
     raw = text.strip()
@@ -707,7 +661,6 @@ def _parse_codex_structured_message(text: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RuntimeError(f"codex returned non-object JSON: {raw[:400]}")
     return value
-
 
 def _stream_codex_app_server(
     *,
@@ -814,7 +767,6 @@ def _stream_codex_app_server(
                     return
             raise app.error("turn completed without a result")
 
-
 def _run_codex(prompt: str, system: str, schema: dict[str, Any], model: str, images: list[Path], timeout: int) -> dict[str, Any]:
     for event in _stream_codex_app_server(
         prompt=prompt,
@@ -830,7 +782,6 @@ def _run_codex(prompt: str, system: str, schema: dict[str, Any], model: str, ima
                 return output
     raise RuntimeError("codex app-server produced no structured output")
 
-
 def stream_structured(
     *,
     prompt: str,
@@ -843,7 +794,7 @@ def stream_structured(
     provider: str | None = None,
     allow_agent_tools: bool = False,
 ) -> Iterator[dict[str, Any]]:
-    """Yield provider events, ending with {"type": "result", "output": ...}."""
+
     chosen = configured_provider(provider)
     _ = require_provider_ready(chosen)
     if chosen == "codex":
@@ -915,7 +866,6 @@ def stream_structured(
         if final is None:
             raise RuntimeError(f"claude stream produced no structured_output{(': ' + _compact_error_text(stderr)) if stderr.strip() else ''}")
         yield {"type": "result", "output": final}
-
 
 def run_structured(
     *,

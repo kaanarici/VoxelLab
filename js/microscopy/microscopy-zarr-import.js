@@ -11,8 +11,6 @@ import { decodeZarrChunk, describeZarrCodec } from './zarr/zarr-codecs.js';
 import { parseZarrArrayMeta, zarrArrayMetaForDataset, zarrChunkPath, zarrPixelAt, zarrScalarArrayType } from './zarr/zarr-array-meta.js';
 import { selectPyramidLevel } from './zarr/zarr-level-select.js';
 
-// A bounded read briefly retains streamed parts plus a joined encoded buffer.
-// Two 32 MiB reads keep that transient peak bounded while preserving overlap.
 const OME_ZARR_CHUNK_LOAD_CONCURRENCY = 2;
 
 function isZarrMetadataRecord(value) {
@@ -125,9 +123,7 @@ function makeChunkStore({ filesByPath, rootPath, datasetPath, parsed }) {
         return entry;
       }
       const encoded = await bytesForFile(file);
-      // Zarr v2 stores every chunk at the declared chunk shape. Edge chunks are
-      // clipped only while copying into the logical array; their overhang bytes
-      // remain part of the encoded/decoded chunk contract.
+
       const storedChunkDimensions = parsed.chunks;
       const expectedBytes = storedChunkDimensions.reduce((product, value) => product * value, 1) * parsed.dtype.bytes;
       const bytes = await decodeZarrChunk(encoded, {

@@ -1,5 +1,3 @@
-// Fetch and inject HTML fragments (no bundler).
-
 const cache = new Map();
 
 async function fetchTemplate(url) {

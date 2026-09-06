@@ -20,10 +20,6 @@ function unsupported(reason) {
   throw error;
 }
 
-// The Blosc header flags byte (bits 5-7) stores a 3-bit compressed-FORMAT code,
-// not the c-blosc library compcode: 0=BLOSCLZ, 1=LZ4 (also LZ4HC, which emits the
-// same LZ4 block format), 2=SNAPPY, 3=ZLIB, 4=ZSTD. BLOSCLZ and SNAPPY are not
-// implemented and fail closed.
 async function decompressCodecPayload(codecId, src, destLen) {
   let output = null;
   if (codecId === 1) output = lz4BlockDecompress(src, destLen);

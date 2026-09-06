@@ -1,6 +1,3 @@
-// Series sort options and ordering helpers shared by tree-render (row layout,
-// modality grouping) and context-menus (sort popover). DOM-free.
-
 import { state } from '../core/state.js';
 import { syncSeriesIdxForActiveSlug } from '../core/state/viewer-commands.js';
 
@@ -12,7 +9,6 @@ export const SORT_POPOVER_OPTIONS = [
   { label: 'Slices ↓', key: 'slices-desc' },
 ];
 
-// Persisted sidebar sort selection so the chosen order survives a refresh.
 const SORT_STORAGE_KEY = 'mri-viewer/sidebarSort/v1';
 const VALID_SORT_KEYS = new Set(SORT_POPOVER_OPTIONS.map(o => o.key));
 
@@ -30,13 +26,10 @@ export function saveSidebarSort(key) {
     if (VALID_SORT_KEYS.has(key)) localStorage.setItem(SORT_STORAGE_KEY, key);
     else localStorage.removeItem(SORT_STORAGE_KEY);
   } catch {
-    /* ignore quota / unavailable storage */
+
   }
 }
 
-// DICOM modality code → display label. Self-explanatory codes (CT, MR) pass
-// through. OT is DICOM Other and the NIfTI fallback; MIC is the local
-// microscopy series flag, not a DICOM code.
 const MODALITY_LABEL = {
   PT: 'PET',
   NM: 'Nuclear Medicine',

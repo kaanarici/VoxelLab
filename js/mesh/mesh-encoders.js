@@ -1,7 +1,3 @@
-// Dependency-free 3D mesh encoders (no THREE — vendor-three exposes no STL/OBJ
-// writers and is async/3D-only). Both consume { positions: Float32Array (xyz
-// triples), indices: Uint32Array (triangle triples), name } in patient mm.
-
 function triangleNormal(positions, ia, ib, ic) {
   const ax = positions[ia], ay = positions[ia + 1], az = positions[ia + 2];
   const bx = positions[ib], by = positions[ib + 1], bz = positions[ib + 2];
@@ -16,10 +12,6 @@ function triangleNormal(positions, ia, ib, ic) {
   return [nx, ny, nz];
 }
 
-/**
- * Binary STL: 80-byte header + uint32 triangle count + per-triangle (12-float
- * normal+verts, all LE float32 + uint16 attribute). Returns an ArrayBuffer.
- */
 export function encodeStlBinary({ positions, indices, name = 'mesh' } = {}) {
   const triCount = Math.floor((indices?.length || 0) / 3);
   const buffer = new ArrayBuffer(84 + triCount * 50);
@@ -49,11 +41,6 @@ export function encodeStlBinary({ positions, indices, name = 'mesh' } = {}) {
   return buffer;
 }
 
-/**
- * Wavefront OBJ. Single mesh, or multiple named groups when `parts` is given
- * (each { name, positions, indices }) — groups share one running vertex list
- * with a 1-based index offset, matching the OBJ spec. Returns a string.
- */
 export function encodeObj(input) {
   const parts = Array.isArray(input?.parts)
     ? input.parts
@@ -78,7 +65,6 @@ export function encodeObj(input) {
   return `${lines.join('\n')}\n`;
 }
 
-/** Concatenate meshes into one triangle soup with offset indices (for STL). */
 export function mergeMeshes(meshes = []) {
   let vertCount = 0;
   let idxCount = 0;

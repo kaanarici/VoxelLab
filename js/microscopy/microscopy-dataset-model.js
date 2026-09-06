@@ -1,4 +1,5 @@
 import { isKnownLengthUnit, lengthUnitToMm, normalizeLengthUnit } from '../core/physical-units.js';
+import { finiteDisplayRange } from './microscopy-display-range.js';
 
 function isMicroscopyMetadataRecord(value) {
   return Object.prototype.toString.call(value) === '[object Object]';
@@ -17,13 +18,6 @@ function positiveInteger(value, fallback = 1) {
 function zeroBasedInteger(value, fallback = 0) {
   const n = Math.floor(Number(value));
   return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
-
-function finiteRange(value) {
-  if (!Array.isArray(value) || value.length !== 2) return null;
-  const lo = Number(value[0]);
-  const hi = Number(value[1]);
-  return Number.isFinite(lo) && Number.isFinite(hi) && hi > lo ? [lo, hi] : null;
 }
 
 function axisIndex(axes = [], name) {
@@ -249,7 +243,7 @@ export function buildMicroscopyDataset({
   const stats = pixelStats(pages);
   const channels = Array.from({ length: sizeC }, (_, index) => {
     const channel = metadata.channels?.[index] || {};
-    const metadataDisplayRange = finiteRange(channel.displayRange);
+    const metadataDisplayRange = finiteDisplayRange(channel.displayRange);
     return {
       index,
       name: channel.name || metadata.channelNames?.[index] || `Channel ${index + 1}`,

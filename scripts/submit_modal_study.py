@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Submit a local DICOM folder to the deployed Modal/R2 processing flow."""
 
 from __future__ import annotations
 
@@ -28,38 +27,23 @@ from modal_validation import MAX_UPLOAD_ITEMS
 from pipeline_paths import is_skipped_path
 from modal_contract import modal_endpoint
 from r2_config import upload_origins
+from runtime_env import load_dotenv as read_dotenv
 from series_contract import normalize_series_entry
 
 MAX_MODAL_JSON_BYTES = 1024 * 1024
 
 SKIP_SUFFIXES = {".jpg", ".jpeg", ".png", ".txt", ".json"}
 
-
 def load_config(path: Path) -> dict:
     return json.loads(path.read_text())
 
-
-@lru_cache(maxsize=1)
-def load_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
-    env: dict[str, str] = {}
-    if not path.exists():
-        return env
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        env[key.strip()] = value.strip().strip('"').strip("'")
-    return env
-
+load_dotenv = lru_cache(maxsize=1)(read_dotenv)
 
 def env_value(name: str) -> str:
     return os.environ.get(name) or load_dotenv().get(name, "")
 
-
 def trusted_upload_origins(r2_endpoint: str, configured: list[str] | None = None) -> list[str]:
     return upload_origins(r2_endpoint, configured or [])
-
 
 def validate_upload_url(url: str, allowlist: list[str]) -> str:
     parsed = urllib.parse.urlparse(url)
@@ -69,7 +53,6 @@ def validate_upload_url(url: str, allowlist: list[str]) -> str:
     if allowlist and origin not in allowlist:
         raise RuntimeError(f"upload URL escaped trusted origins: {origin}")
     return url
-
 
 def post_json(url: str, payload: dict, timeout: int = 60, max_bytes: int = MAX_MODAL_JSON_BYTES) -> dict:
     data = json.dumps(payload).encode()
@@ -81,7 +64,6 @@ def post_json(url: str, payload: dict, timeout: int = 60, max_bytes: int = MAX_M
         raise RuntimeError(f"Modal response JSON exceeds {max_bytes} bytes")
     return json.loads(raw.decode())
 
-
 def get_json(url: str, timeout: int = 60, max_bytes: int = MAX_MODAL_JSON_BYTES) -> dict:
     with urllib.request.urlopen(url, timeout=timeout) as resp:
         raw = resp.read(max_bytes + 1)
@@ -89,10 +71,8 @@ def get_json(url: str, timeout: int = 60, max_bytes: int = MAX_MODAL_JSON_BYTES)
         raise RuntimeError(f"Modal response JSON exceeds {max_bytes} bytes")
     return json.loads(raw.decode())
 
-
 def upload_content_type(path: Path) -> str:
     return "application/json" if path.name in SOURCE_MANIFEST_NAMES else "application/dicom"
-
 
 def put_file(url: str, path: Path, timeout: int = 120) -> None:
     with path.open("rb") as data:
@@ -102,7 +82,6 @@ def put_file(url: str, path: Path, timeout: int = 120) -> None:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status >= 400:
                 raise RuntimeError(f"upload failed for {path.name}: HTTP {resp.status}")
-
 
 def candidate_files(folder: Path) -> list[Path]:
     files = []
@@ -116,10 +95,8 @@ def candidate_files(folder: Path) -> list[Path]:
         files.append(path)
     return files
 
-
 def chunks(values: list[Path], size: int) -> list[list[Path]]:
     return [values[index:index + size] for index in range(0, len(values), size)]
-
 
 def upload_items(paths: list[Path], start_index: int = 0) -> list[dict[str, str | Path]]:
     items = []
@@ -130,7 +107,6 @@ def upload_items(paths: list[Path], start_index: int = 0) -> list[dict[str, str 
             "path": path,
         })
     return items
-
 
 def start_processing_payload(
     job_id: str,
@@ -149,7 +125,6 @@ def start_processing_payload(
         payload["input_kind"] = input_kind
     return payload
 
-
 def submit_preflight_errors(source: Path, processing_mode: str, skip_upload: bool) -> list[str]:
     if skip_upload:
         return []
@@ -160,7 +135,6 @@ def submit_preflight_errors(source: Path, processing_mode: str, skip_upload: boo
     if processing_mode == "rigid_registration":
         return validate_registration_source(source)
     return []
-
 
 def submit(args: argparse.Namespace) -> dict:
     processing_mode = validate_processing_mode(getattr(args, "processing_mode", "standard"))
@@ -295,7 +269,6 @@ def submit(args: argparse.Namespace) -> dict:
         time.sleep(poll_seconds)
     raise TimeoutError(f"timed out waiting for {args.job_id}")
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Upload a local DICOM folder to Modal/R2 and poll for output.")
     _ = parser.add_argument("source", type=Path)
@@ -326,7 +299,6 @@ def main() -> int:
     result = submit(args)
     print(json.dumps(result, indent=2), flush=True)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

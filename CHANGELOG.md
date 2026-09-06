@@ -6,6 +6,42 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-09-06
+
+### Fixed
+
+- Native DICOM processing now reads pydicom multi-value geometry correctly,
+  including oblique and enhanced multi-frame stacks. Explicit per-frame zero
+  intercepts are preserved during pixel-value conversion.
+- Registration stops when ANTs fails instead of substituting a voxel-space
+  shift. Transform measurements no longer imply that alignment was validated.
+- Ultrasound reconstruction respects rotated output grids, unequal voxel spacing,
+  zero-valued samples, and repeated contributions to a voxel. Incompatible
+  frame counts, grids, and non-spatial ultrasound formats are rejected.
+- Oblique slab projections include samples that intersect the volume even when
+  the slab center falls outside it.
+- 3D maximum- and minimum-intensity projections respect hidden and isolated
+  labels independently of overlay opacity. Opacity and selection changes reuse
+  the existing label texture.
+- External projection reconstruction checks detector calibration, output shape,
+  finite samples, and agreement with the requested physical grid. RTK output
+  spacing now follows the manifest's X, Y, Z order. The bundled RTK engine
+  requires explicitly declared line-integral input.
+
+### Changed
+
+- Removed the uncalibrated parallel-beam reconstruction fallback. This geometry
+  now requires a configured external reconstruction engine.
+- Removed dormant viewer state, unused adapters, duplicate geometry assembly,
+  and source comments. Type assertions require checked narrowing rather than
+  explanatory comments.
+
+### Validation limits
+
+- VoxelLab remains experimental research software, not for clinical use.
+  Synthetic regression tests do not establish accuracy for every acquisition,
+  codec, reconstruction engine, or clinical workflow.
+
 ## [1.2.3] - 2026-08-22
 
 ### Fixed

@@ -1,4 +1,3 @@
-/* global console, document, process, setTimeout, window */
 import assert from 'node:assert/strict';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';

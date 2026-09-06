@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
 
-/* global document, requestAnimationFrame, setTimeout, window */
-
 async function openBrowserFixture(page, slug) {
   await routeLocalVolumeStudy(page, [
     localVolumeSeries(slug, 'MPR stability fixture', { width: 32, height: 32, slices: 8 }),

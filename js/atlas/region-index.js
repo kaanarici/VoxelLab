@@ -1,14 +1,3 @@
-// Single source of per-slice region geometry for the anatomy-label overlays
-// (2D + 3D). The expensive per-slice scan (centroids + snap + intensity
-// histogram) runs ONCE per slice and is cached for the whole series, with the
-// remaining slices filled in during idle time — so scrubbing is an O(k) lookup
-// instead of a full re-scan every step (the old scrub-lag source).
-//
-// Regions are stored UNFILTERED (hidden labels are NOT removed here) so toggling
-// a label's visibility never invalidates the scan cache; consumers filter at
-// lookup. Empty results are not cached (the slice's region image may not have
-// decoded yet) so they get retried until data is present.
-
 import { state } from '../core/state.js';
 import { activeOverlayStateForSeries } from '../runtime/active-overlay-state.js';
 import { presentRegionsForSlice } from './atlas-anchors.js';
@@ -22,9 +11,6 @@ function indexKey(series, labels) {
   return `${series.slug}|${srcLen}|${hrLen}`;
 }
 
-// Base intensity for slice z from the SAME volume the raycaster renders (HR
-// Float32 in [0,1] quantized to 0..255 when present, else the uint8 base), so the
-// 3D transfer-function cull matches what's on screen. Null when no base volume.
 function baseSlice(series, z) {
   const W = series.width | 0;
   const H = series.height | 0;
@@ -56,8 +42,6 @@ const idle = globalThis.requestIdleCallback instanceof Function
   : (cb) => setTimeout(() => cb({ timeRemaining: () => 8 }), 32);
 const cancelIdle = globalThis.cancelIdleCallback instanceof Function ? globalThis.cancelIdleCallback : clearTimeout;
 
-// Warm the remaining slices when the main thread is idle so the first scrub-
-// through is already cached. Chunked + cooperative; bails if the cache rotated.
 function scheduleBackfill(series, labels, key) {
   let cursor = 0;
   const step = (deadline) => {
@@ -83,7 +67,6 @@ function ensureCache(series, labels) {
   scheduleBackfill(series, labels, key);
 }
 
-/** All regions on slice z (unfiltered by hidden labels), cached. O(1) once warm. */
 export function regionsForSlice(series, z) {
   const labels = activeOverlayStateForSeries(series).labels;
   ensureCache(series, labels);
@@ -91,11 +74,10 @@ export function regionsForSlice(series, z) {
   const cached = _cache.slices[z];
   if (cached) return cached;
   const s = computeSlice(series, labels, z);
-  if (s.length) _cache.slices[z] = s; // don't cache empties — image may still be decoding
+  if (s.length) _cache.slices[z] = s;
   return s;
 }
 
-/** Drop the whole index (region data / base volume / meta changed). */
 export function invalidateRegionIndex() {
   if (_backfill) { cancelIdle(_backfill); _backfill = 0; }
   _cache = { key: '', slices: null, D: 0 };

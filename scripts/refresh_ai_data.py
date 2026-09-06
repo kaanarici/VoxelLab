@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Refresh context sidecars and AI analysis artifacts for bundled data."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ import context
 from ai_runtime import configured_provider, require_provider_ready, resolve_model
 DATA = ROOT / "data"
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Refresh VoxelLab demo AI artifacts.")
     _ = parser.add_argument("slugs", nargs="*", help="Series slugs. Defaults to manifest-backed local stacks.")
@@ -31,16 +29,13 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--skip-consult", action="store_true", help="Do not regenerate consult.json")
     return parser.parse_args()
 
-
 def manifest_series() -> tuple[Path, dict[str, dict]]:
     path = DATA / "manifest.json"
     manifest = json.loads(path.read_text())
     return path, context.series_by_slug(manifest)
 
-
 def selected_slugs(requested: list[str], by_slug: dict[str, dict]) -> list[str]:
     return requested or [slug for slug in by_slug if (DATA / slug).is_dir()]
-
 
 def generate_context(slugs: list[str], by_slug: dict[str, dict], manifest_path: Path) -> bool:
     wrote: set[str] = set()
@@ -62,7 +57,6 @@ def generate_context(slugs: list[str], by_slug: dict[str, dict], manifest_path: 
     if wrote:
         context.set_has_context(manifest_path, wrote)
     return ok
-
 
 def main() -> int:
     args = parse_args()
@@ -117,7 +111,6 @@ def main() -> int:
             ok = False
 
     return 0 if ok else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

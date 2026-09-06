@@ -1,13 +1,3 @@
-"""
-Modal cloud pipeline entrypoint.
-
-This module now stays narrow on purpose:
-  - Modal app + resource config
-  - `process_study()` orchestration
-  - decorated webhook exports
-  - compatibility re-exports for tests / callers
-"""
-
 from __future__ import annotations
 
 import json
@@ -138,7 +128,6 @@ CT_ROI_SUBSET = [
     "rib_left_2", "rib_right_2", "rib_left_3", "rib_right_3",
 ]
 
-
 def totalseg_attempts_for_modality(modality: str) -> list[tuple[str, bool, list[str] | None]]:
     if modality == "CT":
         return [("total", True, CT_ROI_SUBSET)]
@@ -149,7 +138,6 @@ def totalseg_attempts_for_modality(modality: str) -> list[tuple[str, bool, list[
             ("tissue_types_mr", True, None),
         ]
     return []
-
 
 pipeline_image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -207,7 +195,6 @@ WEB_FUNCTION_CONFIG = drop_none(
     scaledown_window=env_int("MRI_VIEWER_MODAL_WEB_SCALEDOWN_WINDOW_SECONDS", 300, min_value=2, max_value=20 * 60),
 )
 
-
 @app.function(**PROCESS_FUNCTION_CONFIG)
 def process_study(
     job_id: str,
@@ -215,7 +202,7 @@ def process_study(
     processing_mode: str = "standard",
     input_kind: str = "dicom_volume_stack",
 ) -> dict:
-    """Thin orchestrator for the Modal study pipeline."""
+
     job_id = validate_job_id(job_id)
     modality = validate_modality(modality)
     processing_mode = validate_processing_mode(processing_mode)
@@ -285,7 +272,7 @@ def process_study(
                 np=np,
             )
             projection_set = reconstructed["projectionSet"]
-            # Shape: {"status":"calibrated","angleCount":120,...}.
+
             projection_calibration = projection_summary(source_manifest)
 
             uploads = [(png, f"data/{slug}/{png.name}", "image/png") for png in sorted(out_dir.glob("*.png"))]
@@ -380,7 +367,6 @@ def process_study(
                 moving_slices,
                 transform=registration_config["transform"],
                 np=np,
-                ndimage=ndimage,
             )
             vol = aligned["volume"]
             slug = f"cloud_reg_{job_id[:8]}"
@@ -605,7 +591,6 @@ def process_study(
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
-
 configure_webhooks(
     upload_bucket=UPLOAD_BUCKET,
     results_bucket=RESULTS_BUCKET,
@@ -625,7 +610,6 @@ VERIFY_FUNCTION_CONFIG = {
     "buffer_containers": 0,
     "scaledown_window": 30,
 }
-
 
 @app.function(**drop_none(**VERIFY_FUNCTION_CONFIG))
 def verify_runtime() -> dict:
@@ -668,7 +652,6 @@ start_processing = app.function(**WEB_FUNCTION_CONFIG)(modal.fastapi_endpoint(me
 check_status = app.function(**WEB_FUNCTION_CONFIG)(modal.fastapi_endpoint(method="POST")(_check_status))
 get_upload_urls = app.function(**WEB_FUNCTION_CONFIG)(modal.fastapi_endpoint(method="POST")(_get_upload_urls))
 
-
 def main() -> bool:
     print(
         "This file defines a Modal app. Typical commands:\n"
@@ -677,7 +660,6 @@ def main() -> bool:
         file=sys.stderr,
     )
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

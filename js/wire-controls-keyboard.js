@@ -1,5 +1,3 @@
-// Global keyboard shortcuts for the viewer (wired from wire-controls.js).
-
 import { $, closeTopModal } from './dom.js';
 import { state } from './core/state.js';
 import { toggleAskMode } from './ask-mode.js';
@@ -47,12 +45,6 @@ async function handleMicroscopyStackShortcut(e, key) {
   return true;
 }
 
-/**
- * @param {object} deps
- * @param {HTMLInputElement} deps.scrub
- * @param {(d: number) => void} deps.step
- * @param {(i: number) => void} deps.selectSeries
- */
 export function wireKeyboardShortcuts(deps) {
   const {
     scrub,

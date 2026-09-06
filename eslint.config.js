@@ -1,5 +1,3 @@
-// ESLint 9 flat config — dev-only; the app itself has no build step.
-// Run: npm run lint
 import js from '@eslint/js';
 import globals from 'globals';
 import unicorn from 'eslint-plugin-unicorn';
@@ -16,6 +14,26 @@ export default [
   },
   js.configs.recommended,
   {
+    plugins: {
+      local: {
+        rules: {
+          'no-comments': {
+            create(context) {
+              return {
+                Program() {
+                  for (const comment of context.sourceCode.getAllComments()) {
+                    if (comment.type !== 'Shebang') context.report({ loc: comment.loc, message: 'Express intent in code, tests, or documentation.' });
+                  }
+                },
+              };
+            },
+          },
+        },
+      },
+    },
+    rules: { 'local/no-comments': 'error' },
+  },
+  {
     files: ['js/**/*.js', 'viewer.js'],
     ignores: ['js/volume/volume-worker.js'],
     plugins: {
@@ -31,11 +49,11 @@ export default [
       },
     },
     rules: {
-      // Keep noise low; tighten incrementally (see contributor notes in README).
+
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      // Intentional silent catches for localStorage
+
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // Filenames must be kebab-case everywhere (enforced repo-wide).
+
       'unicorn/filename-case': ['error', { case: 'kebabCase' }],
     },
   },
@@ -63,10 +81,7 @@ export default [
     },
   },
   {
-    // Architecture invariants for js/core and feature folders.
-    // Ordered imports and acyclic boundaries are enforced as modules migrate
-    // into these folders across later phases; the legacy flat js/ tree still
-    // carries pre-existing cycles tracked separately.
+
     files: [
       'js/core/**/*.js',
       'js/microscopy/**/*.js',
@@ -80,12 +95,11 @@ export default [
       'js/intake/**/*.js',
       'js/shell/**/*.js',
     ],
-    // The worker is a separate module realm linted by its own block below.
+
     ignores: ['js/volume/volume-worker.js'],
     rules: {
       'import/order': ['error', { 'newlines-between': 'ignore' }],
-      // Lazy `await import()` is the codebase's deliberate cycle boundary;
-      // a cycle that routes through one is allowed (broken at runtime).
+
       'import/no-cycle': ['error', { allowUnsafeDynamicCyclicDependency: true }],
     },
   },
@@ -175,7 +189,7 @@ export default [
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // importScripts + UMD eval pattern for fzstd in worker
+
       'no-eval': 'off',
     },
   },

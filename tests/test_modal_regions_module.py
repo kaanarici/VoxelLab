@@ -7,7 +7,6 @@ from PIL import Image
 
 from modal_regions import golden_color, humanize_region_name, region_volume_stats, write_region_outputs, write_region_stats
 
-
 def test_modal_regions_write_sidecar_and_pngs(tmp_path):
     label_vol = np.array([[[0, 1], [2, 2]]], dtype=np.uint8)
     region_dir, sidecar = write_region_outputs(

@@ -12,7 +12,7 @@ const { seriesCompareGroup } = await import('../js/core/geometry.js');
 
 function createCanvasStub() {
   const context = {
-    // Shape: { width: 2, height: 1, data: Uint8ClampedArray(8) }.
+
     createImageData(width, height) {
       return { width, height, data: new Uint8ClampedArray(width * height * 4) };
     },
@@ -153,7 +153,7 @@ test('geometry-backed scalar PT, NM, and OT series remain on the shared volume i
 
 test('classifyDICOMImport keeps CR/DX/XA projection sets out of volume stacks', () => {
   for (const modality of ['CR', 'DX', 'XA']) {
-    // Example value: two projection images from one series, not a reconstructed volume.
+
     const result = classifyDICOMImport([
       { Modality: modality, InstanceNumber: 1 },
       { Modality: modality, InstanceNumber: 2 },
@@ -168,7 +168,7 @@ test('classifyDICOMImport keeps CR/DX/XA projection sets out of volume stacks', 
 });
 
 test('classifyDICOMImport keeps CT localizers out of volume stacks', () => {
-  // Example value: CT scout/localizer images can carry CT modality but are projections.
+
   const result = classifyDICOMImport([0, 2.5].map((z, i) => ({
     Modality: 'CT',
     ImageType: ['ORIGINAL', 'PRIMARY', 'LOCALIZER'],
@@ -183,7 +183,7 @@ test('classifyDICOMImport keeps CT localizers out of volume stacks', () => {
 });
 
 test('classifyDICOMImport treats non-projection multi-image series without geometry as image stacks', () => {
-  // Example value: MR files lacking reliable IPP/IOP geometry from a partial export.
+
   const result = classifyDICOMImport([
     { Modality: 'MR', InstanceNumber: 1 },
     { Modality: 'MR', InstanceNumber: 2 },

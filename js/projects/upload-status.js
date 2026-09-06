@@ -1,7 +1,3 @@
-// Shared upload-modal status helpers: the single status line rendering and the
-// "is anything actionable" check used across the local, DICOMweb, OME-Zarr, and
-// cloud import flows. Kept import-cycle free so each flow module can depend on it.
-
 export function setUploadStatus(statusEl, message, tone = 'muted', { html = false } = {}) {
   statusEl.className = `upload-status${tone === 'muted' ? '' : ` is-${tone}`}`;
   statusEl.removeAttribute('aria-label');

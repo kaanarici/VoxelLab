@@ -33,7 +33,7 @@ export function lz4BlockDecompress(srcBytes, destLen) {
   let dp = 0;
 
   while (sp < src.byteLength) {
-    // LZ4 block sequence: token, literals, optional 16-bit match offset, match bytes.
+
     const token = src[sp];
     sp += 1;
 

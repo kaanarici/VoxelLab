@@ -1,23 +1,3 @@
-"""
-Upload data_compressed/*.raw.zst to a Cloudflare R2 bucket via the
-S3-compatible API. Reads credentials from .env (same directory).
-
-Why boto3: Cloudflare R2 is S3-compatible, and boto3 handles multipart
-uploads, retries, and checksumming for us. We only use the tiny subset
-(head_object, put_object, delete_object, list_objects_v2) so the runtime
-overhead is minimal.
-
-Idempotent: uploads use content-addressed object keys so immutable caching
-stays safe across re-processing, and skips any object that's already present
-with matching bytes. Use --force to re-upload everything regardless.
-
-Usage:
-  python3 upload_to_r2.py                 # upload all compressed volumes
-  python3 upload_to_r2.py flair            # upload just this slug
-  python3 upload_to_r2.py --force         # re-upload everything
-  python3 upload_to_r2.py --dry-run       # show what would happen
-"""
-
 import argparse
 import hashlib
 import json
@@ -34,11 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data_compressed"
 ENV_PATH = ROOT / ".env"
 
-
 def load_env(path: Path) -> dict[str, str]:
-    """Tiny .env parser — we avoid pulling in python-dotenv to keep the
-    script dependency-free beyond boto3.
-    """
+
     env: dict[str, str] = {}
     if not path.exists():
         return env
@@ -53,17 +30,13 @@ def load_env(path: Path) -> dict[str, str]:
         env[k.strip()] = v
     return env
 
-
 def md5_of(path: Path) -> str:
-    """R2 returns ETag = md5 hex for single-part uploads. Use this to
-    detect whether the local file already matches what's in the bucket.
-    """
-    h = hashlib.md5()  # noqa: S324  — ETag is MD5, not a security check
+
+    h = hashlib.md5()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-
 
 def sha256_of(path: Path) -> str:
     digest = hashlib.sha256()
@@ -71,7 +44,6 @@ def sha256_of(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
 
 def compressed_path_for_entry(out_dir: Path, entry: dict) -> Path:
     relative = Path(str(entry.get("compressed", "") or ""))
@@ -82,7 +54,6 @@ def compressed_path_for_entry(out_dir: Path, entry: dict) -> Path:
         raise ValueError("compressed path must stay inside data_compressed")
     return resolved
 
-
 def object_key_for_entry(entry: dict) -> str:
     source = Path(str(entry.get("source", "") or "volume.raw"))
     suffix = "".join(Path(str(entry.get("compressed", "") or source.name)).suffixes) or ".raw.zst"
@@ -90,10 +61,8 @@ def object_key_for_entry(entry: dict) -> str:
     stem = source.stem or source.name
     return f"{stem}-{digest}{suffix}" if digest else (str(entry.get("compressed", "") or source.name))
 
-
 def public_object_url(public_url: str, object_key: str) -> str:
     return f"{public_url.rstrip('/')}/{quote(object_key, safe='/')}"
-
 
 def patch_manifest_urls(
     manifest: dict,
@@ -122,7 +91,6 @@ def patch_manifest_urls(
             patched += 1
     return manifest, patched
 
-
 def main() -> bool:
     ap = argparse.ArgumentParser(description="Upload data_compressed/*.raw.zst to Cloudflare R2.")
     _ = ap.add_argument(
@@ -139,7 +107,7 @@ def main() -> bool:
     wanted = set(args.slugs)
 
     env = load_env(ENV_PATH)
-    # .env wins unless the user has already exported the vars in their shell.
+
     for k in ("R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_RESULTS_BUCKET"):
         if not os.environ.get(k) and env.get(k):
             os.environ[k] = env[k]
@@ -154,7 +122,7 @@ def main() -> bool:
         return False
 
     try:
-        from botocore.exceptions import ClientError  # type: ignore
+        from botocore.exceptions import ClientError
     except ImportError:
         print("ERROR: boto3 not installed. Run: pip install boto3", file=sys.stderr)
         return False
@@ -203,9 +171,6 @@ def main() -> bool:
             ok = False
             continue
 
-        # The object key in the bucket is just the compressed file name at
-        # the top level — no prefix. Keeps URLs short:
-        #   https://<public>/<slug>.raw.zst
         obj_key = object_key_for_entry(entry)
         local_sha256 = sha256_of(local)
         expected_sha256 = str(entry.get("sha256_zst", "") or "").lower()
@@ -264,11 +229,6 @@ def main() -> bool:
 
     print(f"\ndone. uploaded={uploaded} skipped={skipped}")
 
-    # Patch data/manifest.json with rawUrl fields so the hosted viewer
-    # knows where to fetch each series' compressed volume. We only write
-    # URLs for objects that actually exist in the index (i.e. were
-    # compressed and uploaded). Mask volumes (_mask.raw) are published
-    # under a parallel maskUrl key.
     if public_url and not dry_run:
         manifest_path = ROOT / "data" / "manifest.json"
         if manifest_path.exists():
@@ -282,7 +242,6 @@ def main() -> bool:
             _ = update_json(manifest_path, patch_urls)
             print(f"patched {patched} url fields in {manifest_path}")
     return ok
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

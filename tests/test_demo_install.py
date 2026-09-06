@@ -12,14 +12,11 @@ import scripts.install_demo_data as demo_install
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
-
 def png_header(width: int, height: int) -> bytes:
     return PNG_MAGIC + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", width, height) + b"\x08\x00\x00\x00\x00"
 
-
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
 
 def test_resolve_selected_packs_expands_mode_and_extras() -> None:
     catalog = {
@@ -34,7 +31,6 @@ def test_resolve_selected_packs_expands_mode_and_extras() -> None:
     packs = demo_install.resolve_selected_packs(catalog, demo_mode="lite", include_mri=True, include_ct=True)
 
     assert [pack["id"] for pack in packs] == ["lite", "mri-source", "ct-source"]
-
 
 def test_resolve_selected_packs_stably_dedupes_requested_ids() -> None:
     catalog = {
@@ -52,7 +48,6 @@ def test_resolve_selected_packs_stably_dedupes_requested_ids() -> None:
     )
 
     assert [pack["id"] for pack in packs] == ["lite", "mri-source"]
-
 
 def test_catalog_exposes_optional_ome_microscopy_sample_pack() -> None:
     catalog = demo_install.load_catalog()
@@ -122,7 +117,6 @@ def test_catalog_exposes_optional_ome_microscopy_sample_pack() -> None:
         "time-series": ["missing_xy_physical_size"],
     }
 
-
 def test_package_exposes_combined_microscopy_public_sample_verifier() -> None:
     package = json.loads((Path(__file__).parents[1] / "package.json").read_text())
     scripts = package["scripts"]
@@ -133,7 +127,6 @@ def test_package_exposes_combined_microscopy_public_sample_verifier() -> None:
     assert "verify_imagej_microscopy_sample.mjs" in verifier
     assert "verify_ome_zarr_public_sample.mjs" in verifier
     assert "not Fiji, Bio-Formats, or proprietary-format parity" in verifier
-
 
 def test_catalog_exposes_optional_imagej_calibrated_sample_pack() -> None:
     catalog = demo_install.load_catalog()
@@ -176,7 +169,6 @@ def test_catalog_exposes_optional_imagej_calibrated_sample_pack() -> None:
             "size_bytes": 8008849,
         }
     ]
-
 
 def test_catalog_exposes_optional_ome_zarr_public_metadata_pack() -> None:
     catalog = demo_install.load_catalog()
@@ -224,7 +216,6 @@ def test_catalog_exposes_optional_ome_zarr_public_metadata_pack() -> None:
     assert "Bounded coarsest-level local proof only" in boundary
     assert "zero fill_value" in boundary
     assert "full-resolution level-0 eager import remains over budget" in boundary
-
 
 def test_install_artifact_pack_extracts_data_and_merges_manifest(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(demo_install, "ROOT", tmp_path)
@@ -282,7 +273,6 @@ def test_install_artifact_pack_extracts_data_and_merges_manifest(tmp_path: Path,
     assert (data_dir / "sample" / "0000.png").is_file()
     assert [series["slug"] for series in manifest["series"]] == ["existing", "sample"]
 
-
 def test_install_artifact_pack_merges_into_legacy_manifest_without_names(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(demo_install, "ROOT", tmp_path)
     pack_dir = tmp_path / "demo_packs"
@@ -331,7 +321,6 @@ def test_install_artifact_pack_merges_into_legacy_manifest_without_names(tmp_pat
     assert result["installed"] == ["sample"]
     assert [series["slug"] for series in manifest["series"]] == ["legacy", "sample"]
 
-
 def test_write_json_preserves_existing_file_when_replace_fails(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "manifest.json"
     _ = path.write_text("old", encoding="utf-8")
@@ -347,7 +336,6 @@ def test_write_json_preserves_existing_file_when_replace_fails(tmp_path: Path, m
 
     assert path.read_text(encoding="utf-8") == "old"
     assert not (tmp_path / ".manifest.json.tmp").exists()
-
 
 def test_copy_pack_tree_preserves_existing_series_when_copy_fails(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "source"
@@ -369,7 +357,6 @@ def test_copy_pack_tree_preserves_existing_series_when_copy_fails(tmp_path: Path
 
     assert (data_dir / "sample" / "0000.png").read_bytes() == b"old"
     assert not (data_dir / ".sample.install").exists()
-
 
 def test_install_source_pack_copies_local_files_and_writes_notice(tmp_path: Path) -> None:
     source = tmp_path / "source"
@@ -400,7 +387,6 @@ def test_install_source_pack_copies_local_files_and_writes_notice(tmp_path: Path
     assert (target / "sub-ON01802" / "ses-01" / "anat" / "scan.nii.gz").read_bytes() == b"fake"
     assert notice["pack"] == "mri-source"
 
-
 def test_install_artifact_pack_rejects_zip_members_that_escape_target(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(demo_install, "ROOT", tmp_path)
     pack_dir = tmp_path / "demo_packs"
@@ -411,7 +397,6 @@ def test_install_artifact_pack_rejects_zip_members_that_escape_target(tmp_path: 
 
     with __import__("pytest").raises(ValueError, match="escapes extraction root"):
         _ = demo_install.install_artifact_pack({"id": "lite", "archive_path": "demo_packs/fixture.zip"}, tmp_path / "data")
-
 
 def test_install_source_pack_requires_checksums(tmp_path: Path) -> None:
     source = tmp_path / "source"
@@ -435,7 +420,6 @@ def test_install_source_pack_requires_checksums(tmp_path: Path) -> None:
     with __import__("pytest").raises(ValueError, match="expected sha256 checksum"):
         _ = demo_install.install_source_pack(pack, tmp_path)
 
-
 def test_install_source_pack_rejects_target_dirs_that_escape_root(tmp_path: Path) -> None:
     pack = {
         "id": "mri-source",
@@ -456,7 +440,6 @@ def test_install_source_pack_rejects_target_dirs_that_escape_root(tmp_path: Path
         _ = demo_install.install_source_pack(pack, tmp_path)
 
     assert not (tmp_path.parent / "outside").exists()
-
 
 def test_install_source_pack_rejects_file_paths_that_escape_target(tmp_path: Path) -> None:
     pack = {
@@ -479,7 +462,6 @@ def test_install_source_pack_rejects_file_paths_that_escape_target(tmp_path: Pat
 
     assert not (tmp_path / "scan.nii.gz").exists()
 
-
 def test_install_source_pack_rejects_series_zip_paths_that_escape_target(tmp_path: Path) -> None:
     pack = {
         "id": "ct-source",
@@ -499,7 +481,6 @@ def test_install_source_pack_rejects_series_zip_paths_that_escape_target(tmp_pat
         _ = demo_install.install_source_pack(pack, tmp_path)
 
     assert not (tmp_path / "demo_sources" / "PATIENT_001").exists()
-
 
 def test_install_source_pack_replaces_existing_file_with_bad_checksum(tmp_path: Path) -> None:
     source = tmp_path / "source"
@@ -528,7 +509,6 @@ def test_install_source_pack_replaces_existing_file_with_bad_checksum(tmp_path: 
 
     assert result["installed"] == ["sub-ON01802/ses-01/anat/scan.nii.gz"]
     assert (target / "scan.nii.gz").read_bytes() == b"fresh"
-
 
 def test_install_source_pack_keeps_existing_file_when_replacement_download_fails(tmp_path: Path, monkeypatch) -> None:
     target = tmp_path / "demo_sources" / "openneuro_on01802" / "sub-ON01802" / "ses-01" / "anat"
@@ -560,7 +540,6 @@ def test_install_source_pack_keeps_existing_file_when_replacement_download_fails
 
     assert (target / "scan.nii.gz").read_bytes() == b"stale"
 
-
 def test_install_source_pack_removes_new_bad_download(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -588,7 +567,6 @@ def test_install_source_pack_removes_new_bad_download(tmp_path: Path) -> None:
         tmp_path / "demo_sources" / "openneuro_on01802" / "sub-ON01802" / "ses-01" / "anat" / "scan.nii.gz"
     ).exists()
 
-
 def test_install_source_pack_checks_catalog_size_when_present(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -614,7 +592,6 @@ def test_install_source_pack_checks_catalog_size_when_present(tmp_path: Path) ->
     with __import__("pytest").raises(ValueError, match="size"):
         _ = demo_install.install_source_pack(pack, tmp_path)
 
-
 def test_download_to_path_stops_when_catalog_size_is_exceeded(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, payload: bytes):
@@ -637,7 +614,6 @@ def test_download_to_path_stops_when_catalog_size_is_exceeded(tmp_path: Path, mo
 
     assert not target.exists()
     assert not (target.parent / ".sample.ome.tif.download").exists()
-
 
 def test_download_to_path_preserves_existing_target_when_download_fails(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
@@ -664,7 +640,6 @@ def test_download_to_path_preserves_existing_target_when_download_fails(tmp_path
 
     assert target.read_bytes() == b"existing"
     assert not (target.parent / ".sample.ome.tif.download").exists()
-
 
 def test_download_to_path_retries_truncated_remote_body(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
@@ -697,7 +672,6 @@ def test_download_to_path_retries_truncated_remote_body(tmp_path: Path, monkeypa
 
     assert result.read_bytes() == b"complete"
     assert not (target.parent / ".sample.ome.tif.download").exists()
-
 
 def test_download_to_path_resumes_repeated_partial_responses(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
@@ -741,7 +715,6 @@ def test_download_to_path_resumes_repeated_partial_responses(tmp_path: Path, mon
     assert result.read_bytes() == b"abcdefgh"
     assert ranges == [None, "bytes=3-", "bytes=6-"]
 
-
 def test_download_to_path_restarts_when_server_ignores_range(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, payload: bytes):
@@ -777,7 +750,6 @@ def test_download_to_path_restarts_when_server_ignores_range(tmp_path: Path, mon
 
     assert result.read_bytes() == b"abcdefgh"
     assert ranges == [None, "bytes=3-"]
-
 
 def test_download_to_path_bounds_retries_that_make_no_progress(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
@@ -822,7 +794,6 @@ def test_download_to_path_bounds_retries_that_make_no_progress(tmp_path: Path, m
     assert target.read_bytes() == b"existing"
     assert not (target.parent / ".sample.zip.download").exists()
 
-
 def test_download_to_path_rejects_misaligned_partial_response(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, payload: bytes, status: int, content_range: str | None = None):
@@ -855,7 +826,6 @@ def test_download_to_path_rejects_misaligned_partial_response(tmp_path: Path, mo
 
     assert not target.exists()
     assert not (target.parent / ".sample.zip.download").exists()
-
 
 def test_download_to_path_replaces_target_only_after_complete_download(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
@@ -897,7 +867,6 @@ def test_download_to_path_replaces_target_only_after_complete_download(tmp_path:
 
     assert result.read_bytes() == b"complete"
 
-
 def test_install_source_pack_caps_series_zip_download_from_catalog_estimate(tmp_path: Path, monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, payload: bytes):
@@ -934,7 +903,6 @@ def test_install_source_pack_caps_series_zip_download_from_catalog_estimate(tmp_
 
     assert not (tmp_path / "demo_sources" / "ct" / "PATIENT_001").exists()
 
-
 def test_install_source_pack_does_not_leave_partial_series_dir_on_extract_failure(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -968,7 +936,6 @@ def test_install_source_pack_does_not_leave_partial_series_dir_on_extract_failur
 
     assert not (tmp_path / "demo_sources" / "ct" / "PATIENT_001").exists()
 
-
 def test_install_source_pack_reinstalls_hidden_only_series_dir(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -999,7 +966,6 @@ def test_install_source_pack_reinstalls_hidden_only_series_dir(tmp_path: Path) -
     assert result["installed"] == ["PATIENT_001/"]
     assert (stale_dir / "IM0001.dcm").read_bytes() == b"dicom-bytes"
     assert not (stale_dir / ".DS_Store").exists()
-
 
 def test_install_source_pack_reinstalls_series_dir_without_matching_marker(tmp_path: Path) -> None:
     source = tmp_path / "source"
@@ -1034,7 +1000,6 @@ def test_install_source_pack_reinstalls_series_dir_without_matching_marker(tmp_p
     assert (stale_dir / "IM0001.dcm").read_bytes() == b"fresh-dicom"
     assert marker == {"sha256": checksum}
 
-
 def test_install_source_pack_reuses_series_dir_with_matching_marker(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -1067,7 +1032,6 @@ def test_install_source_pack_reuses_series_dir_with_matching_marker(tmp_path: Pa
     assert result["installed"] == ["PATIENT_001/"]
     assert (existing_dir / "IM0001.dcm").read_bytes() == b"already-installed"
 
-
 def test_series_zip_checksum_ignores_zip_wrapper_metadata(tmp_path: Path) -> None:
     first = tmp_path / "first.zip"
     second = tmp_path / "second.zip"
@@ -1083,7 +1047,6 @@ def test_series_zip_checksum_ignores_zip_wrapper_metadata(tmp_path: Path) -> Non
 
     assert demo_install.sha256_file(first) != demo_install.sha256_file(second)
     demo_install.verify_zip_contents_checksum(second, demo_install.sha256_zip_contents(first))
-
 
 def test_openneuro_lite_build_uses_bounded_atomic_downloads(tmp_path: Path, monkeypatch) -> None:
     calls = []
@@ -1138,7 +1101,6 @@ def test_openneuro_lite_build_uses_bounded_atomic_downloads(tmp_path: Path, monk
         ("https://example.test/demo.nii.gz", "demo.nii.gz", openneuro_build.MAX_OPENNEURO_SOURCE_BYTES),
         ("https://example.test/demo.bval", "demo.bval", openneuro_build.MAX_OPENNEURO_SOURCE_BYTES),
     ]
-
 
 def test_update_catalog_checksum_sets_matching_archive_entry(tmp_path: Path) -> None:
     pack_path = tmp_path / "demo_packs" / "fixture.zip"

@@ -8,7 +8,7 @@ function approx(actual, expected, tol = 1e-6) {
 }
 
 test('MPR geometry uses inter-slice IPP distance instead of slice slab thickness', () => {
-  // Example value: 5 mm slice thickness with 6 mm slice-center spacing.
+
   const series = {
     slices: 11,
     width: 100,

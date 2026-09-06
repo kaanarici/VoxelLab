@@ -1,7 +1,3 @@
-// Normalizes one retained microscopy C/T stack for the shared MPR/3D path.
-// The result intentionally matches the 2D canvas normalization: each active
-// C/T stack gets its own raw range and MINISWHITE planes invert after scaling.
-
 import { rawVolumeResourceBudget } from '../volume/volume-raw-normalize.js';
 
 function positiveInteger(value, label) {

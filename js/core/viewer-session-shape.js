@@ -9,8 +9,6 @@ export const RUNTIME_OVERLAY_TYPE_BY_KIND = Object.fromEntries(
   Object.entries(RUNTIME_OVERLAY_KIND_BY_TYPE).map(([type, kind]) => [kind, type]),
 );
 
-// Loader-dir rows. js/runtime/overlay-cache-keys.js copies these onto the live
-// iterator. Dump must stay identical to schemas/overlay-contract.json.
 export const RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE = Object.freeze({
   seg: Object.freeze({
     imgs: 'segImgs',
@@ -163,7 +161,6 @@ export const VIEWER_SESSION_STAGE_ORDER = [
   '3d-ready',
 ];
 
-// Shape: { stage: "idle", firstSlice: false, baseVolume: false, overlayReady: false }.
 function createReadinessState() {
   return {
     stage: 'idle',
@@ -180,7 +177,6 @@ function createReadinessState() {
   };
 }
 
-// Shape: { enabled: true, currentSliceReady: false, volumeReady: true, metaReady: true }.
 function createOverlaySessionKindState() {
   return {
     available: false,
@@ -193,9 +189,6 @@ function createOverlaySessionKindState() {
   };
 }
 
-// Shape: { slug: "brain_ax_t1", seriesIdx: 0, overlaySession: { tissue: ... } }.
-// overlaySession kinds are persist kinds. Loader dirs (seg/regions/sym) live on
-// RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE; overlay-cache-keys.js is the live iterator.
 export function createViewerSessionState({
   slug = '',
   seriesIdx = -1,

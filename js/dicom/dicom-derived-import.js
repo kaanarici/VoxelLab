@@ -152,8 +152,7 @@ export function applyDerivedDataset(manifest, dataset) {
     }
     if (!overlay) return { skipped: true, reason: 'SEG import produced no overlay' };
     try {
-      // The region slot is shared runtime state. Check it before recording a
-      // durable object so a rejected SEG cannot be restored on a later load.
+
       preflightRegionOverlayAttachment(sourceRef.series);
     } catch (error) {
       return {

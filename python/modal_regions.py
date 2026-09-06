@@ -5,10 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 def humanize_region_name(name: str) -> str:
     return name.replace("_", " ").capitalize()
-
 
 def golden_color(i: int) -> list[int]:
     h = (i * 0.6180339887) % 1.0
@@ -16,7 +14,6 @@ def golden_color(i: int) -> list[int]:
     v = 0.62 + 0.16 * ((i * 0.71) % 1.0)
     r, g, b = colorsys.hsv_to_rgb(h, s, v)
     return [int(round(r * 255)), int(round(g * 255)), int(round(b * 255))]
-
 
 def combine_totalseg_outputs(ts_dir: Path, target_shape_dhw: tuple[int, int, int], reference_nii_path: Path, np, nib):
     from nibabel.orientations import apply_orientation, io_orientation, ornt_transform
@@ -53,7 +50,6 @@ def combine_totalseg_outputs(ts_dir: Path, target_shape_dhw: tuple[int, int, int
         next_id += 1
     return label_vol.astype(np.uint8) if next_id < 256 else label_vol, legend
 
-
 def write_region_outputs(slug: str, label_vol, legend: dict[int, str], out_root: Path, pixel_spacing: list[float], slice_thickness: float, Image, np) -> tuple[Path, Path]:
     region_dir = out_root / f"{slug}_regions"
     region_dir.mkdir(parents=True, exist_ok=True)
@@ -80,7 +76,6 @@ def write_region_outputs(slug: str, label_vol, legend: dict[int, str], out_root:
     }, indent=2))
     return region_dir, sidecar_path
 
-
 def region_volume_stats(slug: str, label_vol, legend: dict[int, str], pixel_spacing: list[float], slice_thickness: float) -> dict[str, Any]:
     voxel_ml = (float(pixel_spacing[0]) * float(pixel_spacing[1]) * float(slice_thickness)) / 1000.0
     region_volumes = []
@@ -105,7 +100,6 @@ def region_volume_stats(slug: str, label_vol, legend: dict[int, str], pixel_spac
         "unit": "mL",
         "regionVolumes": region_volumes,
     }
-
 
 def write_region_stats(slug: str, label_vol, legend: dict[int, str], out_root: Path, pixel_spacing: list[float], slice_thickness: float) -> Path:
     stats_path = out_root / f"{slug}_stats.json"

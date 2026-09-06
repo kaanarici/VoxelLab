@@ -29,9 +29,6 @@ function sliceIndexForClipMaxZ(clipZ, slices) {
   return Math.max(0, Math.min(count - 1, Math.ceil(Number(clipZ) * count) - 1));
 }
 
-// 3D Z crop follows the review slice only when the slice changes while 3D is
-// already active. enter3D resets clipMax to the full volume so the first 3D
-// frame is not a thin brick of the current 2D slice.
 function syncThreeClipToSlice(series = getCurrentSeries()) {
   if (!is3dActive() || !series) return;
   const nextZ = clipMaxZForSlice(state.sliceIdx, series.slices);
@@ -210,7 +207,7 @@ export function setFitZoom(scale) {
 
 function ensureCompareViewportState() {
   state.compare ||= {};
-  // Shape: { zoom: 1, tx: 0, ty: 0 }.
+
   state.compare.viewport ||= { zoom: 1, tx: 0, ty: 0 };
   return state.compare.viewport;
 }
@@ -482,7 +479,7 @@ function ensureMprViewportState(pane) {
   const key = mprViewportPane(pane);
   if (!key) return null;
   state.mpr.viewports ||= {};
-  // Shape: { zoom: 1, tx: 0, ty: 0 }. Interaction flags stay off this document.
+
   const current = state.mpr.viewports[key];
   if (current && Number.isFinite(+current.zoom)) return current;
   state.mpr.viewports[key] = { zoom: 1, tx: 0, ty: 0 };
@@ -561,15 +558,11 @@ export function beginSeriesSelection(index, { preserveSlice = false } = {}) {
     state.sliceIdx = nextView.sliceIdx;
     if (nextView.window != null) state.window = nextView.window;
     if (nextView.level != null) state.level = nextView.level;
-    // Unsupported overlays are corrected by initializeSeriesViewState's
-    // capability guards immediately after selection.
+
     if (nextView.restored) {
       if (nextView.overlays) applyOverlayEnableSnapshot(state.overlays, nextView.overlays);
     }
-    // Restore the per-series locked anatomy selection (or clear it for a fresh
-    // series); the transient hover preview never carries across series.
     state.lockedLabels = new Set((nextView.lockedLabels || []).map(Number).filter(Number.isFinite));
-    state.previewLabel = null;
     state.loaded = false;
     state.overlays.analysis = null;
     state.overlays.regionMeta = null;

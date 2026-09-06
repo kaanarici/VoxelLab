@@ -28,8 +28,7 @@ export function rememberSeriesViewState(series = getCurrentSeries()) {
     window: state.window,
     level: state.level,
     overlays: overlayEnableSnapshot(state.overlays),
-    // Locked anatomy structures (numeric ids). Sets don't survive JSON, so store
-    // a sorted array; rehydrated to a Set on restore.
+
     lockedLabels: state.lockedLabels instanceof Set
       ? [...state.lockedLabels].sort((a, b) => a - b)
       : [],
