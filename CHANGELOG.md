@@ -14,7 +14,8 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   including oblique and enhanced multi-frame stacks. Explicit per-frame zero
   intercepts are preserved during pixel-value conversion.
 - Registration stops when ANTs fails instead of substituting a voxel-space
-  shift. Transform measurements no longer imply that alignment was validated.
+  shift. Transform measurements no longer imply that alignment was validated,
+  and missing metrics stay unknown instead of appearing as measured zeros.
 - Ultrasound reconstruction respects rotated output grids, unequal voxel spacing,
   zero-valued samples, and repeated contributions to a voxel. Incompatible
   frame counts, grids, and non-spatial ultrasound formats are rejected.
