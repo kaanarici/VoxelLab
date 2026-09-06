@@ -1156,3 +1156,22 @@ test('drawCompare paints every table overlay kind', async () => {
     globalThis.WebGL2RenderingContext = previousWebGL2;
   }
 });
+
+
+test('unavailable registration metrics stay unknown instead of becoming zero', () => {
+  for (const value of [null, '', ' ', false, []]) {
+    const quality = registrationQualityFromData({ pairs: { moving: {
+      translation_magnitude_mm: value, dice: value, rotation_deg: value,
+    } } }, 'moving');
+    assert.equal(quality.mm, null);
+    assert.equal(quality.dice, null);
+    assert.equal(quality.rotationDeg, null);
+    assert.equal(quality.grade, 'unknown');
+  }
+  const quality = registrationQualityFromData({ pairs: { moving: {
+    translation_magnitude_mm: 0, dice: 0, rotation_deg: 0,
+  } } }, 'moving');
+  assert.equal(quality.mm, 0);
+  assert.equal(quality.dice, 0);
+  assert.equal(quality.rotationDeg, 0);
+});

@@ -10,6 +10,7 @@ import { regionMetaUrlForSeries } from './series/series-image-stack.js';
 let _regData = null;
 
 function finiteNumber(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
