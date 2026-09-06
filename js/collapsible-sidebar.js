@@ -1,7 +1,5 @@
-// Right sidebar sections: toggle `.collapsed` on title click; persist in localStorage.
 const COLLAPSE_KEY = 'mri-viewer/collapsed/v1';
 
-// Set<panelName> — panels that were open on last visit and should animate open once content is ready.
 const _pendingExpand = new Set();
 const ASYNC_READY_PANELS = new Set([
   'metadata',
@@ -33,15 +31,10 @@ function saveCollapsed(obj) {
   try {
     localStorage.setItem(COLLAPSE_KEY, JSON.stringify(obj));
   } catch {
-    /* ignore quota / private mode */
+
   }
 }
 
-/**
- * Call when a panel's content is fully rendered. If the user had that panel
- * open on their last visit, it will animate open from the collapsed start state.
- * Double-rAF lets the browser paint one collapsed frame so the CSS transition fires.
- */
 export function signalPanelReady(name) {
   if (!_pendingExpand.has(name)) return;
   _pendingExpand.delete(name);
@@ -67,11 +60,7 @@ export function wireCollapsiblePanels() {
     const alwaysCollapsed = section.dataset.alwaysCollapsed === 'true';
     const defaultOpen = section.dataset.defaultOpen === 'true';
     const userState = saved[name];
-    // Always start collapsed to prevent flash of empty content on reload.
-    // data-always-collapsed="true" ignores saved state entirely.
-    // Otherwise queue an animated re-expand (fired by signalPanelReady) when the
-    // user left the panel open, or — for data-default-open panels with no saved
-    // choice yet — on first visit. A saved collapsed choice always wins.
+
     section.classList.add('collapsed');
     const wantOpen = userState === false || (defaultOpen && userState === undefined);
     if (!alwaysCollapsed && wantOpen && name) {
@@ -80,7 +69,7 @@ export function wireCollapsiblePanels() {
 
     const title = section.querySelector('.sec-title');
     if (!title) return;
-    // Template should include the icon (instant paint). Fallback for dynamic panels.
+
     if (!title.querySelector('.rp-collapse-ico')) {
       const wrap = document.createElement('span');
       wrap.className = 'rp-collapse-ico';

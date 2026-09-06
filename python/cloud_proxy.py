@@ -5,21 +5,16 @@ from urllib import request as urlrequest
 
 from modal_contract import modal_endpoint
 
-
 MAX_MODAL_JSON_BODY_BYTES = 1024 * 1024
-
 
 def modal_cloud_base(overlay_env) -> str:
     return (overlay_env().get("MODAL_WEBHOOK_BASE") or "").strip()
 
-
 def modal_auth_token(overlay_env) -> str:
     return (overlay_env().get("MODAL_AUTH_TOKEN") or "").strip()
 
-
 def modal_proxy_available(modal_cloud_base, modal_auth_token) -> bool:
     return bool(modal_cloud_base() and modal_auth_token())
-
 
 def proxy_modal_json(
     function_name: str,
@@ -59,7 +54,6 @@ def proxy_modal_json(
     except Exception as exc:
         return 502, {"error": str(exc)}
 
-
 def valid_cloud_upload_items(items) -> bool:
     if not isinstance(items, list) or not items:
         return False
@@ -71,7 +65,6 @@ def valid_cloud_upload_items(items) -> bool:
         if not upload_id or not filename:
             return False
     return True
-
 
 def validate_cloud_proxy_payload(path: str, payload) -> tuple[int, dict] | None:
     if not isinstance(payload, dict):
@@ -95,7 +88,6 @@ def validate_cloud_proxy_payload(path: str, payload) -> tuple[int, dict] | None:
             except (TypeError, ValueError):
                 return 400, {"error": "total_upload_bytes must be a non-negative integer"}
     return None
-
 
 def handle_cloud_post(handler, path: str, read_json_payload_or_error, validate_cloud_proxy_payload, proxy_modal_json) -> None:
     payload = read_json_payload_or_error()

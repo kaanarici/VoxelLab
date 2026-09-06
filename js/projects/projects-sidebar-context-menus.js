@@ -1,6 +1,3 @@
-// Sidebar popovers and context menus: folder menu, sort popover, and the
-// series / folder / empty-sidebar right-click menus.
-
 import { $, escapeHtml, showDialog } from '../dom.js';
 import { notify } from '../notify.js';
 import { removeSeriesFromViewer } from '../series/remove-series.js';

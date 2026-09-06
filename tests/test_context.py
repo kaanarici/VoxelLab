@@ -8,7 +8,6 @@ import pytest
 import context
 from spatial_context import validate_context_payload
 
-
 def test_generate_series_context_uses_geometry_and_labels(tmp_path: Path) -> None:
     Image = pytest.importorskip("PIL.Image")
 
@@ -54,7 +53,6 @@ def test_generate_series_context_uses_geometry_and_labels(tmp_path: Path) -> Non
     assert payload["slices"][0]["regions"][0]["areaMm2"] == 24.0
     assert payload["slices"][1]["regions"] == []
 
-
 def test_set_has_context_updates_only_generated_slugs(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     _ = manifest_path.write_text(json.dumps({
@@ -69,7 +67,6 @@ def test_set_has_context_updates_only_generated_slugs(tmp_path: Path) -> None:
     manifest = json.loads(manifest_path.read_text())
     assert manifest["series"][0]["hasContext"] is True
     assert manifest["series"][1]["hasContext"] is False
-
 
 def test_validate_context_payload_rejects_unknown_intensity_units() -> None:
     errors = validate_context_payload(

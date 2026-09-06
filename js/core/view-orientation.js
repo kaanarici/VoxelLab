@@ -1,14 +1,5 @@
-// Anatomical labels for the 3D view-preset buttons, derived from the series'
-// patient orientation rather than hardcoded to axial. The 3D mesh maps voxel
-// axes to world axes with no flips (worldX = column = patient `row`, worldY =
-// row = patient `col`, worldZ = slice = `sliceDir`), so the anatomy a camera
-// preset reveals is majorAxis(cameraDir · [row, col, sliceDir]). The old
-// hardcoded axial-LPS labels show the WRONG side for native sagittal/coronal/
-// feet-first acquisitions — a confident wrong-side claim, the worst kind.
-
 import { geometryFromSeries } from './geometry.js';
 
-// Camera direction (world axes) for each anatomical preset button.
 const PRESET_DIR = {
   axial:    [0, 0, 1],
   bottom:   [0, 0, -1],
@@ -18,7 +9,6 @@ const PRESET_DIR = {
   right:    [-1, 0, 0],
 };
 
-// LPS axis sign → short button label + tooltip.
 const ANAT = {
   L: { short: 'L', tip: 'Left lateral' },
   R: { short: 'R', tip: 'Right lateral' },
@@ -30,12 +20,11 @@ const ANAT = {
 
 function majorAxisLabel(x, y, z) {
   const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z);
-  if (ax >= ay && ax >= az) return x > 0 ? 'L' : 'R'; // +X LPS = Left
-  if (ay >= ax && ay >= az) return y > 0 ? 'P' : 'A'; // +Y LPS = Posterior
-  return z > 0 ? 'S' : 'I';                            // +Z LPS = Superior
+  if (ax >= ay && ax >= az) return x > 0 ? 'L' : 'R';
+  if (ay >= ax && ay >= az) return y > 0 ? 'P' : 'A';
+  return z > 0 ? 'S' : 'I';
 }
 
-/** True when the series has a real patient frame, so anatomical labels are meaningful. */
 export function hasPatientFrame(series) {
   if (!series || series.imageDomain === 'microscopy') return false;
   if (series.patientFrameTrusted === true || series.patientFrameTrusted === false) return series.patientFrameTrusted;
@@ -68,11 +57,6 @@ export function mprPaneLabels(series) {
   };
 }
 
-/**
- * Anatomical {short, tip} for each 3D view preset, computed from the series
- * basis. Returns null when the series has no real patient frame — callers should
- * then show neutral labels (NEUTRAL_VIEW_LABELS) rather than assert a side.
- */
 export function viewPresetAnatomy(series) {
   if (!hasPatientFrame(series)) return null;
   const { row, col, sliceDir } = geometryFromSeries(series);
@@ -87,11 +71,6 @@ export function viewPresetAnatomy(series) {
   return out;
 }
 
-/**
- * Acquisition plane (Axial / Coronal / Sagittal / Oblique) from the slice normal,
- * or null when there is no real patient frame — never assert a plane we can't
- * derive. Oblique when the normal isn't within ~30° of a patient axis.
- */
 export function acquisitionPlane(series) {
   if (!hasPatientFrame(series)) return null;
   const { sliceDir } = geometryFromSeries(series);
@@ -99,8 +78,6 @@ export function acquisitionPlane(series) {
   return anatomicalPlaneForNormal(sliceDir);
 }
 
-// Neutral labels when there is no patient frame — view-axis directions only, no
-// anatomical claim (the volume's orientation to the patient is unknown).
 export const NEUTRAL_VIEW_LABELS = {
   axial:    { short: 'Z+', tip: 'View along +Z (no patient orientation)' },
   bottom:   { short: 'Z−', tip: 'View along −Z (no patient orientation)' },

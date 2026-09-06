@@ -34,7 +34,6 @@ function predictedStrip(raw, width, rows, bits, littleEndian) {
   return output;
 }
 
-/** Synthetic classic stripped TIFF bytes, independently compressed with Node zlib. */
 export function createDeflateTiff({
   width,
   height = 1,

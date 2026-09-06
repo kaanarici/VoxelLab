@@ -1,4 +1,3 @@
-/* global Float32Array, Uint8Array, document */
 import { expect, test } from '@playwright/test';
 import { obliqueBasis } from '../../js/mpr/mpr-oblique-geometry.js';
 import { planeForOblique } from '../../js/mpr/mpr-projection.js';

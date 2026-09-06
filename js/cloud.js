@@ -1,18 +1,3 @@
-// Cloud processing module. Handles the browser side of the
-// "upload DICOMs → process on Modal GPU → load results" flow.
-//
-// Flow:
-//   1. User drops DICOM files on the upload zone
-//   2. We generate a unique job_id
-//   3. Call Modal's get_upload_urls webhook to get presigned R2 PUT URLs
-//   4. Upload files directly from browser → R2 (no proxy)
-//   5. Call Modal's start_processing webhook
-//   6. Poll check_status until a terminal result is importable or failed
-//   7. Fetch the series.json result and add it to the manifest
-//
-// The Modal webhook URLs are configured at init time. If not configured,
-// the cloud features are silently disabled (local-only mode).
-
 import { cloudActionForId, cloudActionForProcessing } from './cloud-actions.js';
 import { localApiHeaders } from './config.js';
 import { cachedFetchResponse } from './cached-fetch.js';
@@ -38,9 +23,7 @@ const MODAL_FUNCTIONS = {
 const UPLOAD_URL_BATCH_SIZE = 450;
 const UPLOAD_CONCURRENCY = 6;
 const MAX_PRESIGNED_UPLOAD_SECONDS = 15 * 60;
-// Tolerate transient status-poll failures (proxy blip, momentary network drop)
-// but give up with the real error once they are sustained, rather than silently
-// waiting out the full timeout. The counter resets on any successful poll.
+
 const MAX_CONSECUTIVE_STATUS_FAILURES = 12;
 const DEFAULT_CLOUD_STOP_MESSAGE = 'Stopped waiting for cloud job. If processing already started, Modal may still finish and write results.';
 const SOURCE_MANIFEST_NAMES = new Set(['voxellab.source.json', 'voxellab-source.json']);
@@ -401,9 +384,9 @@ export async function uploadAndProcess(files, onProgress = () => {}, processing 
 
 async function fetchProcessedSeries(jobId) {
   if (!_r2PublicBase) return null;
-  // Invalidate cached series.json for this job before fetch.
+
   const url = `${_r2PublicBase}/results/${encodeURIComponent(jobId)}/series.json`;
-  try { await cachedFetchResponse.invalidate(url); } catch { /* best-effort */ }
+  try { await cachedFetchResponse.invalidate(url); } catch {                   }
   const r = await cachedFetchResponse(url, { kind: 'json' });
   if (!r.ok) return null;
   return ingestCloudSeriesEntry(await r.json(), { publicBase: _r2PublicBase });

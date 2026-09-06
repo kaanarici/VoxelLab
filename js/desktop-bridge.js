@@ -1,6 +1,3 @@
-// Electron desktop intake bridge: receives native open-file/folder payloads,
-// triages openable images vs. convertible vendor formats vs. sidecar-only
-// selections, and routes them into the shared study-upload import path.
 import { state } from './core/state.js';
 import { $, closeModal, escapeHtml, showDialog } from './dom.js';
 import { notify } from './notify.js';

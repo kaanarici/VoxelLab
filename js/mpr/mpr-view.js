@@ -1,6 +1,3 @@
-// Orthogonal MPR cells (ax / coronal / sagittal), oblique reslice, hover, crosshair clicks.
-// Depends on `ensureHRVoxels` / `state.voxels` from the shared volume path (volume-voxels-ensure, volume-hr-voxels).
-
 import { $ } from '../dom.js';
 import { state } from '../core/state.js';
 import { SEG_PALETTE } from '../core/constants.js';
@@ -82,8 +79,6 @@ export function initMprView(deps) {
   }
 }
 
-// Shape: true when the active series already has a full base volume in either
-// `state.hrVoxels` (Float32 cloud/local raw) or `state.voxels` (Uint8 PNG stack).
 export function hasMprBaseVolume(series = state.manifest?.series?.[state.seriesIdx]) {
   if (!series) return false;
   const voxelCount = series.width * series.height * series.slices;
@@ -129,7 +124,7 @@ export function showMprHover(canvas, ev, axis) {
 const _cellSampleCache = new Map();
 let _mprQualityTimer = 0;
 const OBLIQUE_SETTLE_MS = 140;
-// Shape: ~24 MiB of cached sampled planes across recent coronal/sagittal views.
+
 const CELL_CACHE_BUDGET_BYTES = 24 * 1024 * 1024;
 let _cellSampleCacheBytes = 0;
 
@@ -251,7 +246,6 @@ function drawMprNotePins(ctx, axis, outW, outH, series) {
   ctx.restore();
 }
 
-// Shape: Uint8Array(width * height) reused for one axial plane on a canvas.
 function axialBaseBytes(canvas, width, height, zBase, vox, voxScale) {
   const planeSize = width * height;
   const source = voxScale === 1 ? vox.subarray(zBase, zBase + planeSize) : null;
@@ -395,7 +389,6 @@ function syncMprSlabLimit(series) {
   return spacing;
 }
 
-// Shape: { interactive: true } for wheel-driven x/y scrub.
 function drawMprFrame({ interactive = false } = {}) {
   if (!interactive) {
     clearTimeout(_mprQualityTimer);
@@ -452,8 +445,7 @@ export function drawMPRZScrub() {
   drawMPRCell($('mpr-ax'), 'ax', axW, axH);
   updateMprCrosshairs(series, false);
   updateMprLabels(series);
-  // Oblique is expensive and physically larger than the axial fast path; keep it
-  // stable while scrubbing and let beginMprInteraction's settle redraw refresh it.
+
   if (hasPendingPerfTrace('enter-mpr')) {
     endPerfTrace('enter-mpr', { slug: series.slug, mprZ: state.mpr.z, partial: true });
   }
@@ -523,7 +515,6 @@ export function drawObliqueCell() {
   ensureActiveOverlayVolumes();
   const overlays = activeOverlayStateForSeries(series);
 
-  // Parent cell rect = available canvas area (toolbar is outside the grid cells).
   const rect = canvas.parentElement?.getBoundingClientRect?.() || canvas.getBoundingClientRect();
   const geo = geometryFromSeries(series);
   const spacing = { row: geo.rowSpacing, col: geo.colSpacing, slice: geo.sliceSpacing };
@@ -696,11 +687,6 @@ function drawMPRCell(canvas, axis, outW, outH) {
     ? (x, y, z) => sampleGray(vox, x, y, z)
     : (x, y, z) => projectVolumeSample(vox, x, y, z, dims, sampleGray, projection);
 
-  // Native-plane fast path: only valid when canvas pixel dims match the source
-  // WxH. When rowSpacing != colSpacing, mprPlaneSizes stretches axH for aspect
-  // correction, so outH != H — fall through to the generic resampling path
-  // below to avoid writing a WxH plane into an outWxoutH buffer.
-  // Shape: outW=W=512, outH=665 when rowSpacing/colSpacing=1.3 (anisotropic).
   if (axis === 'ax' && projection.sampleCount <= 1 && outW === W && outH === H) {
     const zBase = state.mpr.z * WH;
     if (!hasOverlays) {
@@ -744,7 +730,7 @@ function drawMPRCell(canvas, axis, outW, outH) {
         overlayVolumes[cache.bytes] ? new Uint8Array(outW * outH) : null
       )),
     };
-    // Shape: current orthogonal crosshair reused across every pixel sample in this draw.
+
     const crosshair = { x: state.mpr.x, y: state.mpr.y, z: state.mpr.z };
     let sampleIndex = 0;
     for (let oy = 0; oy < outH; oy++) {
@@ -793,7 +779,6 @@ export function releaseMprGpuVolumes() {
   _mprGpuApi.releaseGpuMprVolumeTextures?.();
 }
 
-// Shape: { entries: 6, bytes: 7340032 } for devtools/tests.
 export function getMprCellCacheStats() {
   return {
     entries: _cellSampleCache.size,
@@ -801,7 +786,6 @@ export function getMprCellCacheStats() {
   };
 }
 
-// Shape: { baseReady: true, overlaysReady: { tissue: false, labels: true, heatmap: false, fusion: false } }.
 export function getMprVolumeReadiness(series = state.manifest?.series?.[state.seriesIdx]) {
   const overlays = activeOverlayStateForSeries(series);
   const overlaysReady = {};

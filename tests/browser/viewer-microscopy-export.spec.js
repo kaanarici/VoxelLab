@@ -1,4 +1,3 @@
-/* global HTMLAnchorElement, Image, TextDecoder, atob, document, window */
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedChannelTimeOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';

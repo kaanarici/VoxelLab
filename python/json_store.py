@@ -10,16 +10,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, TypeVar, cast, overload
 
-
 T = TypeVar("T")
-
 
 class _Missing:
     pass
 
-
 _MISSING = _Missing()
-
 
 def _lock_file(handle: BinaryIO, *, timeout: float | None, lock_name: str) -> None:
     deadline = None if timeout is None else time.monotonic() + timeout
@@ -40,7 +36,6 @@ def _lock_file(handle: BinaryIO, *, timeout: float | None, lock_name: str) -> No
                 raise TimeoutError(f"timed out waiting for JSON lock: {lock_name}")
             time.sleep(0.01)
 
-
 def _unlock_file(handle: BinaryIO) -> None:
     if os.name == "nt":
         import msvcrt
@@ -51,7 +46,6 @@ def _unlock_file(handle: BinaryIO) -> None:
         import fcntl
 
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
 
 @contextmanager
 def file_lock(lock_path: Path, *, timeout: float | None = 30.0) -> Generator[None, None, None]:
@@ -67,13 +61,11 @@ def file_lock(lock_path: Path, *, timeout: float | None = 30.0) -> Generator[Non
         finally:
             _unlock_file(handle)
 
-
 @contextmanager
 def json_lock(path: Path, *, timeout: float = 30.0) -> Generator[None, None, None]:
     path = Path(path)
     with file_lock(path.with_name(f".{path.name}.lock"), timeout=timeout):
         yield
-
 
 def _atomic_write_json_unlocked(
     path: Path,
@@ -108,7 +100,6 @@ def _atomic_write_json_unlocked(
             pass
         raise
 
-
 def atomic_write_json(
     path: Path,
     value: object,
@@ -120,7 +111,6 @@ def atomic_write_json(
     with json_lock(path):
         _atomic_write_json_unlocked(path, value, indent=indent, sort_keys=sort_keys)
 
-
 @overload
 def update_json(
     path: Path,
@@ -129,7 +119,6 @@ def update_json(
     indent: int | None = 2,
     sort_keys: bool = False,
 ) -> T: ...
-
 
 @overload
 def update_json(
@@ -140,7 +129,6 @@ def update_json(
     indent: int | None = 2,
     sort_keys: bool = False,
 ) -> T: ...
-
 
 def update_json(
     path: Path,
@@ -161,7 +149,6 @@ def update_json(
         next_value = update(current)
         _atomic_write_json_unlocked(path, next_value, indent=indent, sort_keys=sort_keys)
         return next_value
-
 
 def update_manifest_series(
     path: Path,

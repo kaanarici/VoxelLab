@@ -50,7 +50,6 @@ function startRuntimePerf(session) {
   for (const name of PERF_NAMES) beginPerfTrace(name, detail);
 }
 
-// Shape: { stage: "overlay-ready", baseSource: "hr", overlaySession: { labels: ... } }.
 export function syncViewerRuntimeSession(series = state.manifest?.series?.[state.seriesIdx]) {
   const session = state.viewerSession;
   if (!series || session.slug !== series.slug) return session;
@@ -68,7 +67,6 @@ export function syncViewerRuntimeSession(series = state.manifest?.series?.[state
   return session;
 }
 
-// Shape: { slug: "brain_ax_t1", requestId: 7, readiness: { stage: "idle" } }.
 export function beginViewerRuntimeSession(series, { seriesIdx = state.seriesIdx, requestId = state.selectRequestId } = {}) {
   const next = createViewerSessionState({
     slug: String(series?.slug || ''),

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Sanity-check the claim coverage ledger markdown."""
 
 from __future__ import annotations
 
@@ -8,10 +7,8 @@ from pathlib import Path
 import re
 import sys
 
-
 ALLOWED_STATUS = {"supported", "partial", "blocked"}
 REQUIRED_COLUMNS = ("claim_id", "status", "validation")
-
 
 def normalize_header(value: str) -> str:
     text = re.sub(r"[^a-z0-9]+", " ", value.strip().lower()).strip()
@@ -22,7 +19,6 @@ def normalize_header(value: str) -> str:
     if text.startswith("validation"):
         return "validation"
     return text.replace(" ", "_")
-
 
 def parse_tables(lines: list[str]) -> list[tuple[list[str], list[dict[str, str]]]]:
     tables: list[tuple[list[str], list[dict[str, str]]]] = []
@@ -48,7 +44,6 @@ def parse_tables(lines: list[str]) -> list[tuple[list[str], list[dict[str, str]]
             index += 1
         tables.append((headers, rows))
     return tables
-
 
 def validate_matrix(path: Path) -> list[str]:
     errors: list[str] = []
@@ -80,7 +75,6 @@ def validate_matrix(path: Path) -> list[str]:
             errors.append(f"row {row_index}: missing validation commands/tests")
     return errors
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check the validation matrix coverage ledger markdown.")
     _ = parser.add_argument(
@@ -97,7 +91,6 @@ def main() -> int:
         return 1
     print("validation matrix ok")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

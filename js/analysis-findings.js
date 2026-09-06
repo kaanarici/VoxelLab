@@ -1,5 +1,3 @@
-// Findings sidebar + /api/analyze + scrubber severity ticks. Static builds
-// keep cached findings; generation requires the local backend helper APIs.
 import { state } from './core/state.js';
 import { HAS_LOCAL_BACKEND } from './core/local-backend.js';
 import { $, escapeHtml } from './dom.js';
@@ -56,10 +54,6 @@ export function analysisMatchesSeries(payload, series, manifest) {
   return payload.analysisKey === analysisKey && payload.slug === series.slug;
 }
 
-// Keyed local-helper results survive series changes and browser reloads without
-// setting the slug-wide static-sidecar flag. A present but invalid keyed result
-// fails closed; only an unavailable keyed URL may fall back to a declared
-// precomputed demo sidecar.
 export async function loadPersistedSeriesAnalysis(series, manifest) {
   const analysisKey = seriesPersistenceKey(series, manifest);
   if ((HAS_LOCAL_BACKEND || viewerAiFlags().localAiActionsEnabled) && analysisKey) {
@@ -79,8 +73,7 @@ export async function loadPersistedSeriesAnalysis(series, manifest) {
         return null;
       }
     } catch {
-      // The local result is unavailable, so the explicit static sidecar below
-      // remains an eligible compatibility source.
+
     }
   }
   if (!series?.hasAnalysis) return null;
@@ -157,8 +150,6 @@ function setAnalysisStatus(message, kind = '') {
   status?.classList.toggle('is-error', kind === 'error');
 }
 
-// Series selection and a replacement request both cancel browser polling. This
-// only stops local waiting; a launched helper process may still finish its sidecar.
 export function cancelActiveAnalysis() {
   const request = activeAnalysisRequest;
   if (!request) return false;
@@ -169,7 +160,6 @@ export function cancelActiveAnalysis() {
   return true;
 }
 
-/** Wired once from viewer after controls exist. */
 export function initAnalysisFindings(h) {
   if (h.renderScrubTicks instanceof Function) _renderScrubTicks = h.renderScrubTicks;
 }
@@ -377,9 +367,9 @@ export async function startAnalysis(slug, force = false, slices = null) {
       showAnalysisError(`Analysis ended with unknown status: ${terminalStatus || 'missing'}`, request);
       return;
     }
-    // Drop stale cache entry before re-reading analysis JSON.
+
     const url = request.resultUrl;
-    try { await cachedFetchResponse.invalidate(url); } catch { /* best-effort */ }
+    try { await cachedFetchResponse.invalidate(url); } catch {                   }
     if (!isCurrentAnalysisRequest(request)) return;
     const fresh = await cachedFetchJson(url);
     if (!isCurrentAnalysisRequest(request)) return;

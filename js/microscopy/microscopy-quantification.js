@@ -1,6 +1,3 @@
-// Pure raw-plane quantification helpers. Canvas coordinates are pixel-edge coordinates;
-// scalar samples live at pixel centers (x + 0.5, y + 0.5).
-
 function validPlane(plane) {
   const width = Number(plane?.width);
   const height = Number(plane?.height);
@@ -79,8 +76,6 @@ export function sampleLineProfile(plane, line, {
   };
 }
 
-// Pearson is evaluated over all included pixels. Manders uses strict signal-above-threshold
-// denominators/numerators so thresholds remain explicit, reproducible provenance.
 export function pixelwiseColocalization(planeA, planeB, {
   thresholdA, thresholdB, mask = null,
 } = {}) {

@@ -1,9 +1,3 @@
-// Shape: { name: "select-series-2d", detail: { slug: "brain_ax_t1" }, duration: 42.6 }.
-//
-// Small devtools/test-only perf ledger. The viewer records a few key
-// first-paint spans here so Playwright can assert that we still hit the same
-// runtime milestones after performance work lands.
-
 const MAX_EVENTS = 128;
 const _pending = new Map();
 const _history = [];
@@ -23,7 +17,7 @@ function measure(name, start, end) {
 }
 
 function writeGlobal() {
-  // Shape: window.__voxellabPerf = { history: [...], pending: [{ name, count }] }.
+
   globalThis.__voxellabPerf = {
     history: _history.slice(),
     pending: [..._pending.entries()].map(([name, queue]) => ({ name, count: queue.length })),

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Dry-run readiness checks for long medical-image pipeline jobs."""
 
 from __future__ import annotations
 
@@ -21,7 +20,6 @@ from engine_preflight import (
 from pipeline_paths import ENV_DICOM_ROOT, slug_source_map, series_by_modality
 from synthseg_integration import find_mri_synthseg, synthseg_repo_errors
 
-
 def resolve_source(raw: str | None) -> Path | None:
     value = raw or os.environ.get(ENV_DICOM_ROOT)
     if not value:
@@ -29,11 +27,9 @@ def resolve_source(raw: str | None) -> Path | None:
     path = Path(value).expanduser().resolve()
     return path if path.is_dir() else None
 
-
 def validate_modules(names: list[str]) -> list[str]:
     import importlib.util
     return [f"missing Python module: {name}" for name in names if importlib.util.find_spec(name) is None]
-
 
 def validate_ct_pipeline(source: Path | None, slugs: list[str]) -> list[str]:
     errors = validate_modules(["nibabel", "numpy", "pydicom", "PIL", "scipy"])
@@ -60,7 +56,6 @@ def validate_ct_pipeline(source: Path | None, slugs: list[str]) -> list[str]:
                 errors.append(f"{slug}: invalid DICOM input: {exc}")
     return errors
 
-
 def manifest_series(manifest_path: Path) -> set[str]:
     if not manifest_path.exists():
         return set()
@@ -69,7 +64,6 @@ def manifest_series(manifest_path: Path) -> set[str]:
     except Exception:
         return set()
     return {str(series.get("slug")) for series in data.get("series", [])}
-
 
 def validate_synthseg_pipeline(root: Path, data: Path, slugs: list[str], venv: Path) -> list[str]:
     errors = validate_modules(["nibabel", "numpy", "PIL", "scipy"])
@@ -87,7 +81,6 @@ def validate_synthseg_pipeline(root: Path, data: Path, slugs: list[str], venv: P
             errors.append(f"{slug}: no brain PNG stack in {brain_dir}")
     return errors
 
-
 def parse_slugs(raw: list[str], allowed: dict[str, str] | list[str], default: list[str]) -> list[str]:
     allowed_set = set(allowed)
     slugs = raw or default
@@ -95,7 +88,6 @@ def parse_slugs(raw: list[str], allowed: dict[str, str] | list[str], default: li
     if bad:
         raise ValueError(f"unknown slug(s): {', '.join(bad)}")
     return slugs
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Dry-run preflight for CT/SynthSeg pipeline runs.")
@@ -141,7 +133,6 @@ def main() -> int:
         return 1
     print("pipeline preflight ok")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

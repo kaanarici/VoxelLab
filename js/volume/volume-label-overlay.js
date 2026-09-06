@@ -1,4 +1,3 @@
-
 import { TISSUE_OPACITY } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { allLabelsFromMeta, effectiveHiddenLabels, isSelectionActive } from '../atlas/label-selection.js';
@@ -7,9 +6,6 @@ import { activeThreeLabelOverlay } from '../runtime/active-overlay-state.js';
 import * as THREE from './vendor-three.js';
 import { MAX_3D_TEXTURE_BYTES, volumeTextureSizeSupport } from './volume-texture-capabilities.js';
 
-// Swap the label texture + color LUT based on the currently-active overlay
-// toggles. Called whenever the user flips Tissue or Anatomy while 3D mode
-// is live, and from buildVolume() after the main texture is uploaded.
 export function updateLabelTexture() {
   if (!state.threeRuntime.mesh) return;
   const u = state.threeRuntime.mesh.material.uniforms;
@@ -19,8 +15,7 @@ export function updateLabelTexture() {
   let opacities = null;
   const overlayAlpha = Number.isFinite(Number(state.overlays.overlayOpacity)) ? Number(state.overlays.overlayOpacity) : 0.5;
   u.uLabelAlpha.value = Number.isFinite(Number(selected.opacity)) ? Number(selected.opacity) : overlayAlpha;
-  // Anatomy regions: drive per-label LUT alpha from the overlay-opacity slider
-  // (previously a flat constant, so the slider did nothing in 3D).
+
   if (mode === 2) { opacities = {}; for (let i = 1; i < 256; i += 1) opacities[i] = overlayAlpha; }
   if (mode === 1) opacities = TISSUE_OPACITY;
   if (selected.opacities) opacities = selected.opacities;
@@ -52,15 +47,19 @@ export function updateLabelTexture() {
     return;
   }
 
-  if (u.uLabel.value) u.uLabel.value.dispose();
-  const lt = new THREE.Data3DTexture(source, W, H, D);
-  lt.format = THREE.RedFormat;
-  lt.type = THREE.UnsignedByteType;
-  lt.minFilter = THREE.NearestFilter;
-  lt.magFilter = THREE.NearestFilter;
-  lt.unpackAlignment = 1;
-  lt.needsUpdate = true;
-  u.uLabel.value = lt;
+  const previous = u.uLabel.value;
+  if (previous?.image.data !== source || previous.image.width !== W
+    || previous.image.height !== H || previous.image.depth !== D) {
+    previous?.dispose();
+    const texture = new THREE.Data3DTexture(source, W, H, D);
+    texture.format = THREE.RedFormat;
+    texture.type = THREE.UnsignedByteType;
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.unpackAlignment = 1;
+    texture.needsUpdate = true;
+    u.uLabel.value = texture;
+  }
   u.uLabelMode.value = mode;
 
   if (colors) {
@@ -83,21 +82,16 @@ export function updateLabelTexture() {
       lut[idx * 4 + 3] = Math.round(opacities[k] * 255);
     }
   }
-  // Isolate to the locked/previewed selection when active; otherwise this is the
-  // raw user-hidden set (no behavior change for users who never touch a pill).
   const effHidden = effectiveHiddenLabels({
     hidden: state.hiddenLabels,
     locked: state.lockedLabels,
-    preview: state.previewLabel,
     allLabels: allLabelsFromMeta(state.overlays.regionMeta),
   });
   for (const idx of effHidden) {
     if (idx >= 0 && idx < 256) lut[idx * 4 + 3] = 0;
   }
-  // When a selection is active, the raycast renders ONLY the visible labels'
-  // voxels (skips the unlabelled body + hidden labels) so the model truly
-  // isolates to the structure(s), not just the colour. Regions mode only.
-  if (u.uIsolate) u.uIsolate.value = (mode === 2 && isSelectionActive({ locked: state.lockedLabels, preview: state.previewLabel })) ? 1 : 0;
+
+  if (u.uIsolate) u.uIsolate.value = (mode === 2 && isSelectionActive({ locked: state.lockedLabels })) ? 1 : 0;
   u.uLabelLUT.value.needsUpdate = true;
   getThreeRuntime().requestRender?.('label-texture', 160);
 }

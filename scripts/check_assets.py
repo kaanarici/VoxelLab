@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Validate local viewer assets without network, GPU, Modal, or R2 access."""
 
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ from typing import Any
 try:
     from series_contract import load_json, validate_manifest_data
     from spatial_context import KNOWN_INTENSITY_UNITS, validate_context_payload
-except ImportError:  # pragma: no cover - used when run as scripts/check_assets.py
+except ImportError:
     repo_root = Path(__file__).resolve().parent.parent
     python_root = repo_root / "python"
     if str(python_root) not in sys.path:
@@ -47,13 +46,11 @@ REMOTE_SIDECAR_URL_FIELDS = {
     "hasRegions": "regionMetaUrl",
 }
 
-
 def is_remote_url(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     parsed = urllib.parse.urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
 
 def png_size(path: Path) -> tuple[int, int]:
     header = path.read_bytes()[:24]
@@ -61,16 +58,13 @@ def png_size(path: Path) -> tuple[int, int]:
         raise ValueError("not a PNG with an IHDR header")
     return struct.unpack(">II", header[16:24])
 
-
 def expected_png_names(count: int) -> set[str]:
     return {f"{index:04d}.png" for index in range(count)}
-
 
 def sample_indexes(count: int, exhaustive: bool) -> list[int]:
     if exhaustive:
         return list(range(count))
     return sorted({0, count // 2, count - 1})
-
 
 def validate_stack(
     data_dir: Path,
@@ -111,7 +105,6 @@ def validate_stack(
             )
     return errors
 
-
 def validate_sidecars(data_dir: Path, series: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     slug = series["slug"]
@@ -121,7 +114,6 @@ def validate_sidecars(data_dir: Path, series: dict[str, Any]) -> list[str]:
         if series.get(flag) and not (data_dir / f"{slug}{suffix}").is_file():
             errors.append(f"{slug}: missing sidecar {slug}{suffix}")
     return errors
-
 
 def validate_context_sidecar(data_dir: Path, series: dict[str, Any]) -> list[str]:
     if not series.get("hasContext"):
@@ -147,10 +139,8 @@ def validate_context_sidecar(data_dir: Path, series: dict[str, Any]) -> list[str
         errors.append(f"{slug}_context.json: known intensity units {known_units}")
     return errors
 
-
 def stack_is_remote(series: dict[str, Any], suffix: str) -> bool:
     return is_remote_url(series.get(REMOTE_STACK_URL_FIELDS.get(suffix, "")))
-
 
 def validate_assets(
     manifest: dict[str, Any],
@@ -186,7 +176,6 @@ def validate_assets(
 
     return errors
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate local data/ PNG stacks and sidecars.")
     _ = parser.add_argument("--root", type=Path, default=Path.cwd(), help="Repo root. Default: current directory.")
@@ -196,7 +185,6 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--exhaustive", action="store_true", help="Check dimensions for every PNG instead of first/mid/last.")
     _ = parser.add_argument("--slug", action="append", dest="slugs", help="Limit validation to a series slug. Repeatable.")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -217,7 +205,6 @@ def main() -> int:
     mode = "exhaustive" if exhaustive else "fast"
     print(f"OK: {data_dir} assets ({mode})")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -1,8 +1,3 @@
-// DICOMweb (QIDO/WADO-RS) discovery and import for the upload modal: find studies,
-// find series, then import a chosen series. Derived modalities (SEG/RTSTRUCT/SR)
-// bind to an already loaded source series. The dicomweb parser modules load lazily
-// only when one of these actions runs. The in-memory session is reused across calls
-// via the shared dicomwebState the modal owns.
 import { state } from '../core/state.js';
 import { $, escapeHtml, closeModal } from '../dom.js';
 import { isDerivedObjectModality } from '../dicom/dicom-import-routing.js';
@@ -18,10 +13,6 @@ function isAbortError(error) {
   return error?.name === 'AbortError';
 }
 
-// DICOMweb work can outlive a modal render: QIDO/WADO requests and pixel
-// decoding are asynchronous. Give each button action one owner so closing the
-// modal, or starting another action, cancels its work rather than allowing a
-// previous session to update the next modal instance.
 function beginDicomwebOperation(dicomwebState, isModalActive) {
   const controller = new AbortController();
   const operation = {};

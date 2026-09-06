@@ -1,5 +1,3 @@
-"""Shared preflight checks for calibrated cloud source manifests."""
-
 from __future__ import annotations
 
 import importlib.util
@@ -16,10 +14,8 @@ from engine_sources import (
 from pipeline_paths import is_skipped_path
 from projection_rtk import configured_rtk_command
 
-
 def module_exists(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
-
 
 def source_dicom_files(folder: Path) -> list[Path]:
     if not folder.is_dir():
@@ -36,7 +32,6 @@ def source_dicom_files(folder: Path) -> list[Path]:
             files.append(path)
     return files
 
-
 def dicom_frame_count(paths: list[Path]) -> int:
     import pydicom
 
@@ -52,13 +47,11 @@ def dicom_frame_count(paths: list[Path]) -> int:
         total += frames if frames > 0 else 1
     return total
 
-
 def _load_manifest_for_preflight(folder: Path, label: str) -> tuple[dict | None, list[str]]:
     try:
         return load_source_manifest(folder), []
     except (OSError, json.JSONDecodeError) as exc:
         return None, [f"{label} source: invalid calibration manifest: {exc}"]
-
 
 def validate_projection_source(folder: Path) -> list[str]:
     errors = [f"missing Python module: pydicom"] if not module_exists("pydicom") else []
@@ -85,7 +78,6 @@ def validate_projection_source(folder: Path) -> list[str]:
         errors.append("projection source: missing RTK runtime; run `npm run setup -- --pipeline --rtk` or set MRI_VIEWER_RTK_COMMAND")
     return errors
 
-
 def validate_ultrasound_source(folder: Path) -> list[str]:
     errors = [f"missing Python module: pydicom"] if not module_exists("pydicom") else []
     files = source_dicom_files(folder)
@@ -103,7 +95,6 @@ def validate_ultrasound_source(folder: Path) -> list[str]:
             return errors + [f"ultrasound source: invalid DICOM input: {exc}"]
         errors.extend(ultrasound_manifest_errors(manifest, frame_count))
     return errors
-
 
 def registration_series_uids(paths: list[Path]) -> tuple[set[str], list[str]]:
     import pydicom
@@ -123,7 +114,6 @@ def registration_series_uids(paths: list[Path]) -> tuple[set[str], list[str]]:
         if series_uid:
             series_uids.add(series_uid)
     return series_uids, errors
-
 
 def validate_registration_source(folder: Path) -> list[str]:
     errors = [f"missing Python module: pydicom"] if not module_exists("pydicom") else []

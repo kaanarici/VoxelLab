@@ -1,4 +1,3 @@
-/* global Response, URL */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { overlayKindsForSeries } from '../js/runtime/overlay-kinds.js';
@@ -19,13 +18,13 @@ const VALID_SERIES_ENTRY = {
 };
 
 async function freshCloudModule() {
-  // Example: file:///.../js/cloud.js?t=abc imports a fresh module state.
+
   const url = new URL(`../js/cloud.js?t=${Date.now()}-${Math.random()}`, import.meta.url);
   return import(url.href);
 }
 
 async function sharedConfigModule() {
-  // Example: file:///.../js/config.js singleton reused by cloud.js.
+
   return import(new URL('../js/config.js', import.meta.url).href);
 }
 
@@ -909,7 +908,6 @@ test('local cloud proxy requests include the same-origin runtime token header', 
     globalThis.setTimeout = previousSetTimeout;
   });
 
-  // Shape: local config.json payload served by serve.py for browser runtime.
   globalThis.fetch = async (url) => {
     if (String(url).endsWith('/config.local.json') || String(url).endsWith('./config.local.json')) {
       return new Response('', { status: 404 });
@@ -991,6 +989,6 @@ test('cloud upload fails fast on sustained status-check transport failures', asy
     cloud.uploadAndProcess([{ name: 'slice-1.dcm' }]),
     (error) => /kept failing/.test(error.message) && /502/.test(error.message),
   );
-  // Bounded: it gives up at the failure threshold, not after thousands of polls.
+
   assert.equal(statusChecks, 12);
 });

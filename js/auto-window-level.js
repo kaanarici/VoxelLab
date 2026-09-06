@@ -1,4 +1,3 @@
-// Auto window/level from robust current-slice percentiles in display space.
 import { state } from './core/state.js';
 import { setWindowLevel } from './core/state/viewer-commands.js';
 import { readImageByteData } from './overlay/overlay-data.js';

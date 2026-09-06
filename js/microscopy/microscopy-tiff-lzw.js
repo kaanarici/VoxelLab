@@ -110,7 +110,7 @@ export function decodeTiffLzwStrip(value, expectedBytes, stripIndex = 0) {
     if (previous && nextCode < MAX_DICTIONARY_CODES) {
       dictionary[nextCode] = appendByte(previous, entry[0]);
       nextCode += 1;
-      // TIFF uses the early-change LZW convention from TIFF 6.0.
+
       if (decoder.codeWidth < 12 && nextCode === (1 << decoder.codeWidth) - 1) {
         decoder.codeWidth += 1;
       }

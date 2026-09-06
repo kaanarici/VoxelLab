@@ -1,4 +1,3 @@
-  /* controls bar */
   .controls {
     padding: var(--space-10) var(--space-md);
     border-top: var(--border-w) solid var(--border);
@@ -6,30 +5,25 @@
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    /* Single row: overflow scrolls inside the tool rail (below) instead of
-       wrapping items to a second row or shrinking them. */
+
     flex-wrap: nowrap;
     overflow: visible;
     position: relative;
   }
   @media (max-width: 880px) {
-    /* Tighter toolbar edge padding only — items keep their full size and the
-       tool rail scrolls horizontally rather than shrinking labels/controls. */
+
     .controls { padding: var(--space-10) var(--space-14) var(--space-md); gap: var(--space-sm); }
   }
 
-  /* Scrub block: play + slider + count + fps — uniform gap; scrubber grows */
   .scrub-block {
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    /* Wide scrubber: hold a generous floor and grow into spare space. It does not
-       shrink (flex-shrink 0), so the tool rail to its right scrolls instead of
-       squeezing the slider. Phones override this to shrinkable (responsive.css). */
+
     flex: 1 0 560px;
     justify-content: flex-start;
   }
-  /* The slider — filled track via CSS variable --fill */
+
   .scrubber {
     position: relative;
     flex: 1 1 0;
@@ -38,7 +32,7 @@
     display: flex;
     align-items: center;
   }
-  /* Track lives here (below the ticks) so ticks sit behind the thumb, not over it. */
+
   .scrubber::before {
     content: ''; position: absolute; left: 0; right: 0; top: 50%;
     transform: translateY(-50%); height: 5px; border-radius: var(--radius-sm);
@@ -82,13 +76,11 @@
     cursor: grab;
     transition: transform var(--dur-quick) var(--ease-smooth), box-shadow var(--dur-quick);
   }
-  /* Parked on a finding: the knob glows that finding's severity color */
 
   .scrubber input[type=range]:disabled {
     opacity: 1; cursor: default; pointer-events: none;
   }
 
-  /* Shared text style for scrub-block readouts (match toolbar labeled buttons at 12px) */
   .ctr-count, .cine-fps {
     font-size: var(--fs-body-lg);
     font-weight: var(--fw-medium);
@@ -99,8 +91,7 @@
     white-space: nowrap;
     flex: 0 0 auto;
   }
-  /* Slice count — 7ch ≈ NNN/NNN in tabular figures; add ch only if 4+ digit totals clip */
-  /* Keep the same flex box in busy + ready so toggling aria-busy doesn’t reflow the scrub row */
+
   .ctr-count {
     width: 7ch;
     min-width: 7ch;
@@ -119,15 +110,14 @@
     vertical-align: middle;
     box-sizing: border-box;
   }
-  /* Busy state: skeleton bars while #slice-tot is empty */
-  /* Placeholder bars while aria-busy (set when #slice-tot is empty — works without :has() support) */
+
   .ctr-count[aria-busy="true"] .ctr-sep {
     opacity: 0.35;
   }
   .ctr-count[aria-busy="true"] .ctr-part {
     position: relative;
     min-width: 2.25ch;
-    /* Same vertical extent as live readout (line-height: 30px on .ctr-count) */
+
     height: 30px;
     height: 1lh;
     min-height: 1em;
@@ -141,7 +131,7 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    /* Invisible but still one line tall so flex box keeps digit line metrics */
+
     min-height: 1em;
     display: inline-block;
   }
@@ -153,14 +143,14 @@
     right: 0;
     top: 50%;
     transform: translateY(-50%);
-    /* Full em height reads as digit-sized vs the old 8px bar */
+
     height: 1em;
     min-height: 9px;
     border-radius: 0.2em;
     background: var(--dim);
     opacity: 0.55;
   }
-  /* FPS readout — fixed digit box (5–30) so the range thumb doesn’t shift 9→10 */
+
   .cine-fps {
     flex: 0 0 auto;
     display: inline-flex;
@@ -176,7 +166,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Cine speed — compact thumb (--compact-range-thumb); track matches slice bar height */
   .cine-speed {
     display: flex;
     align-items: center;
@@ -212,7 +201,6 @@
     cursor: pointer;
   }
 
-  /* Icon buttons */
   .icon-btn {
     display: flex;
     align-items: center; justify-content: center;
@@ -242,12 +230,12 @@
   .tool-group.hidden { display: none; }
   .custom-dropdown.hidden { display: none; }
   .toolbar-sep.hidden { display: none; }
-  /* Center toolbar groups when scrub-block is hidden (single-slice) */
+
   .controls:has(> .scrub-block.hidden) { justify-content: center; }
   .icon-btn .ico { width: var(--icon-lg); height: var(--icon-lg); display: block; }
-  /* W/L preset icons group: three icon-btns sitting as a tight cluster */
+
   .mr-presets { display: flex; gap: var(--space-2xs); flex-shrink: 0; }
-  /* CT HU window presets (lung/soft/bone/full) — text pills in the W/L group */
+
   .ct-presets { display: flex; gap: var(--space-2xs); flex-shrink: 0; }
   .ct-preset-btn {
     background: none;
@@ -263,7 +251,7 @@
   }
   .ct-preset-btn:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.3); }
   .ct-preset-btn.active { color: var(--text); border-color: var(--text); background: var(--accent-bg); }
-  /* MR/CT presets + overlay opacity: hidden until a series is fully interactive */
+
   .controls:not(.controls--ready) #mr-presets,
   .controls:not(.controls--ready) #ct-presets,
   .controls:not(.controls--ready) #overlay-opacity-wrap {
@@ -272,12 +260,11 @@
   @media (prefers-reduced-motion: reduce) {
     .ct-preset-btn { transition: none; }
   }
-  /* Whole W/L group (elevated chrome) — hide while loading so an empty strip does not sit between colormap and tools */
+
   .controls:not(.controls--ready) .tool-group--wl {
     display: none !important;
   }
 
-  /* Labeled variant — icon + text, for meaning-carrying toggles */
   .icon-btn.labeled {
     width: auto; padding: 0 11px 0 var(--space-sm);
     gap: var(--space-2sm); height: var(--btn-toolbar);
@@ -285,7 +272,6 @@
   }
   .icon-btn.labeled .ico { width: 14px; height: 14px; }
 
-  /* Cine play button — same size and style as other icon buttons */
   .icon-btn.cine {
     width: var(--btn-toolbar); height: var(--btn-toolbar);
   }
@@ -296,7 +282,6 @@
   }
   .icon-btn.cine .ico { width: 14px; height: 14px; }
 
-  /* Group layout */
   .tool-group {
     display: flex; align-items: center; gap: var(--space-2xs);
     flex-shrink: 0;
@@ -305,11 +290,10 @@
     padding: var(--space-2xs);
     overflow: visible;
   }
-  /* MR W/L presets + overlay opacity share group chrome with the other tool groups */
+
   .tool-group--wl {
     gap: var(--space-2sm);
-    /* Horizontal inner padding so the W/L label and the last pill aren't flush
-       against the rounded container edge — without over-padding the cluster. */
+
     padding: var(--space-2xs) var(--space-2sm);
   }
   .plugin-tool-glyph {
@@ -388,14 +372,11 @@
     }
   }
 
-  /* Toolbox: collapsed group with floating panel */
   .toolbox {
     position: relative;
     flex-shrink: 0;
   }
-  /* The trigger IS the button — sized to the tool-group OUTER height so it lines
-     up with the groups (30px button + 2px×2 group padding), filled edge-to-edge
-     so the icon doesn't float in a padded box. */
+
   .toolbox-trigger {
     display: inline-flex;
     align-items: center; justify-content: center;
@@ -410,7 +391,7 @@
     position: relative;
   }
   .toolbox-trigger .ico { width: var(--icon-lg); height: var(--icon-lg); display: block; }
-  /* Labeled trigger — icon + short text, matching .icon-btn.labeled in the view group */
+
   .toolbox-trigger--labeled {
     width: auto;
     gap: var(--space-2sm);
@@ -423,7 +404,7 @@
   .toolbox.open .toolbox-trigger {
     background: var(--accent-bg); color: var(--text);
   }
-  /* Dot badge — shown when any tool inside is active but panel is closed */
+
   .toolbox-trigger .tb-dot {
     position: absolute; top: 3px; right: 3px;
     width: 5px; height: 5px; border-radius: 50%;
@@ -432,16 +413,13 @@
   }
   .toolbox-trigger.has-active .tb-dot { display: block; }
   .toolbox.open .toolbox-trigger .tb-dot { display: none; }
-  /* Labeled triggers are wide buttons (and icon-only when collapsed), so the
-     absolute corner badge floats off in empty space. Drop the stray dot and
-     signal "something active inside" by brightening the trigger itself. */
+
   .toolbox-trigger--labeled .tb-dot { display: none !important; }
   .toolbox-trigger--labeled.has-active { color: var(--text); }
 
   .toolbox-panel {
     display: none;
-    /* Fixed so it escapes the scrolling tool rail's overflow clip; exact left/top
-       are set by placePopup() in wire-controls.js on open. */
+
     position: fixed;
     left: 0; top: 0;
     background: var(--panel);
@@ -456,7 +434,7 @@
     white-space: nowrap;
   }
   .toolbox.open .toolbox-panel { display: flex; }
-  /* Arrow pointing down toward the trigger */
+
   .toolbox-panel::after {
     content: '';
     position: absolute;
@@ -466,10 +444,6 @@
   }
   .toolbox.hidden { display: none; }
 
-  /* ── Tailored flyout menus ──────────────────────────────────────────
-     Toolbox flyouts read as real menus: a vertical, sectioned column with
-     per-menu affordances — shortcut keycaps for the action menu (Tools),
-     on/off switches for the overlay toggles. */
   .toolbox-panel.menu-flyout {
     flex-direction: column;
     align-items: stretch;
@@ -504,7 +478,6 @@
   .menu-flyout .menu-row.active .ico { color: var(--text); }
   .menu-flyout .menu-row span { flex: 1 1 auto; text-align: left; }
 
-  /* Action menu (Tools): trailing shortcut keycap pulled from data-key */
   .menu-actions .menu-row[data-key]::after {
     content: attr(data-key);
     margin-left: auto;
@@ -519,9 +492,6 @@
   .menu-actions .menu-row--danger:hover { background: var(--danger-bg); }
   .menu-actions .menu-row--danger:hover .ico { color: currentColor; }
 
-  /* Toggle menu (Overlays): trailing on/off switch, state-driven by .active.
-     The knob is a radial-gradient inside the track so it animates with one
-     pseudo-element — no extra DOM. */
   .menu-toggles .menu-row::after {
     content: '';
     margin-left: auto;
@@ -538,11 +508,9 @@
     background-color: var(--accent);
     background-image: radial-gradient(circle 6px at 18px center, var(--bg) 98%, transparent);
   }
-  /* Toggle rows flip state in place, so the momentary press-scale of an action
-     button is wrong here — the knob slide + row highlight is the feedback. */
+
   .menu-toggles .menu-row:active:not(:disabled) { transform: none; }
 
-  /* Colormap menu: gradient swatch + name per row */
   #cmap-menu {
     min-width: 180px;
     padding: var(--space-xs);
@@ -562,9 +530,6 @@
   }
   #cmap-menu .cmap-name { font-size: var(--fs-body-lg); }
 
-  /* Tooltips are rendered by js/tooltips.js as a singleton .tip-bubble
-     node. Per-button placement overrides use data-tip-pos="right|left"
-     on the anchor (auto-flip handles top/bottom viewport clamping). */
   .tip-bubble {
     position: fixed;
     z-index: var(--z-tooltip);
@@ -587,11 +552,6 @@
     transform: translateY(0);
   }
 
-  /* Text button — used only in the 3D presets row. Everything else in the
-     toolbar is an icon-btn. */
-  /* Bordered text-button skeleton — shared by .btn and the feature buttons that
-     reskin it (.gen-btn panels.css, .annot-btn modals.css). Per-instance blocks
-     keep only color / padding / font-size / transition / layout deltas. */
   .btn, .gen-btn, .annot-btn {
     background: transparent;
     border: var(--border-w) solid var(--border);
@@ -614,18 +574,13 @@
   .btn.active { background: var(--accent-bg); color: var(--text); }
   .btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
 
-  /* AI / stats markers: custom reactive pins riding on top of the track.
-     z-index 2 keeps them above the track; the JS fades the one under the thumb
-     (.under-thumb) so the knob visually absorbs it instead of drawing over it. */
   #scrub-ticks {
     position: absolute; inset: 0;
     pointer-events: none;
     z-index: 2;
   }
   .scrub-tick {
-    /* Monochrome milestone — short + flat so it sits in the bar and aligns with the
-       handle (no towering). Quiet (--muted) while ahead of the handle; once reached or
-       passed it becomes a --bg notch cut into the filled bar. No halo/glow/severity colour. */
+
     position: absolute;
     top: 50%;
     left: 0;
@@ -643,17 +598,14 @@
   .scrub-tick.passed,
   .scrub-tick.under-thumb { background: var(--bg); }
 
-  /* Grows into a clear pill when the thumb is near (.active) or the cursor hovers
-     it (.hover) — color logic unchanged so it still reads on both track halves. */
   .scrub-tick.active,
   .scrub-tick.hover {
     width: 4px;
     height: 14px;
   }
-  /* Thumb is sitting on this marker — let the knob take over */
+
   .scrub-tick.under-thumb {
-    /* Tick is taller than the thumb, so it shows above/below the knob — you never
-       lose the divider you're parked on. */
+
     opacity: 1;
     transform: translate(-50%, -50%);
   }
@@ -666,7 +618,6 @@
     .scrub-tick.under-thumb { transform: translate(-50%, -50%); }
   }
 
-  /* Custom dropdown (replaces native <select>) */
   .custom-dropdown {
     position: relative; display: inline-block; height: var(--btn-sidebar);
   }
@@ -679,7 +630,7 @@
     white-space: nowrap; user-select: none;
     transition: border-color var(--dur-quick) var(--ease-swap), background var(--dur-quick) var(--ease-swap);
   }
-  /* Inside elevated tool groups, drop the extra box border — group chrome is enough */
+
   .tool-group .custom-dropdown:has(> .dd-trigger) {
     height: var(--btn-toolbar);
   }
@@ -718,8 +669,7 @@
     pointer-events: none;
   }
   .custom-dropdown .dd-menu {
-    /* Fixed so it escapes the scrolling tool rail's overflow clip; placePopup()
-       sets left/top on open. */
+
     display: none; position: fixed; left: 0; top: 0;
     background: var(--panel);
     border: 0;
@@ -737,7 +687,6 @@
   .custom-dropdown .dd-item:hover { background: var(--hover); }
   .custom-dropdown .dd-item.active { color: var(--text); background: var(--accent-bg); }
 
-  /* Compare series picker */
   #cmp-dropdown { height: auto; }
   #cmp-dropdown .dd-menu {
     --cmp-menu-gutter: 5px;
@@ -839,14 +788,13 @@
     display: none;
   }
 
-  /* Native select with custom styling (sidebar pickers) */
   .select-like {
     background: var(--elev); color: var(--text);
     border: var(--border-w) solid var(--border); border-radius: var(--radius);
     padding: var(--space-2sm) 28px var(--space-2sm) var(--space-10); font-size: var(--fs-body);
     cursor: pointer; width: 100%;
     appearance: none; -webkit-appearance: none;
-    /* Inline Lucide chevron-down as background image */
+
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right var(--space-sm) center;
     background-size: 14px 14px;
@@ -961,10 +909,6 @@
     overflow: visible;
   }
 
-  /* Overlay opacity — same slider style as .cine-speed */
-  /* Balanced spacing: the label gets the group gap on its left, the slider gets
-     matching breathing room on its right (the group's 2px padding alone crams the
-     thumb against the rounded border). Independent of the group-padding cascade. */
   .overlay-opacity-wrap {
     display: flex; align-items: center; gap: var(--space-2sm);
     flex-shrink: 0;
@@ -1000,7 +944,6 @@
   }
   .oo-label { white-space: nowrap; font-size: var(--fs-body-lg); font-weight: var(--fw-medium); color: var(--muted); }
 
-  /* Window/Level: two compact sliders mirroring the overlay-opacity slider. */
   .wl-control {
     display: flex; align-items: center; gap: var(--space-2sm);
     flex-shrink: 0;
@@ -1036,7 +979,6 @@
     cursor: pointer;
   }
 
-  /* When inside the controls bar, pill-group needs toolbar-compatible sizing */
   .controls .pill-group {
     margin-bottom: 0;
     margin-left: var(--space-2sm);
@@ -1053,7 +995,6 @@
     font-size: var(--fs-body);
   }
 
-  /* Render-mode pills (Volume / MIP / MinIP) inside the 3D panel */
   .pill-group {
     display: flex; gap: 0;
     border: var(--border-w) solid var(--border);
@@ -1078,5 +1019,3 @@
   .pill:hover { color: var(--text); background: var(--hover); }
   .pill:active { opacity: 0.7; }
   .pill.active { background: var(--accent-bg); color: var(--text); }
-
-  /* Findings panel generate buttons: see panels.css (.gen-btn) */

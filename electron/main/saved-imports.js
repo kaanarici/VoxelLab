@@ -44,25 +44,13 @@ export async function readSavedImports(appLike, opts = {}) {
   try {
     const parsed = JSON.parse(await fs.readFile(storePath, 'utf8'));
     if (!Array.isArray(parsed)) return [];
-    const records = parsed
-      .map(record => normalizeSavedImport(record, opts))
-      .filter(Boolean)
-      .slice(0, opts.maxItems || MAX_SAVED_IMPORTS);
-    const bounded = [];
-    let totalPaths = 0;
-    for (const record of records) {
-      if (totalPaths + record.paths.length > (opts.maxTotalPaths || MAX_TOTAL_SAVED_IMPORT_PATHS)) continue;
-      bounded.push(record);
-      totalPaths += record.paths.length;
-    }
-    return bounded;
+    return normalizeSavedImports(parsed, opts);
   } catch {
     return [];
   }
 }
 
-export async function writeSavedImports(appLike, records, opts = {}) {
-  const storePath = opts.storePath || savedImportsStorePath(appLike);
+function normalizeSavedImports(records, opts) {
   const candidates = records
     .map(record => normalizeSavedImport(record, opts))
     .filter(Boolean)
@@ -74,6 +62,12 @@ export async function writeSavedImports(appLike, records, opts = {}) {
     normalized.push(record);
     totalPaths += record.paths.length;
   }
+  return normalized;
+}
+
+export async function writeSavedImports(appLike, records, opts = {}) {
+  const storePath = opts.storePath || savedImportsStorePath(appLike);
+  const normalized = normalizeSavedImports(records, opts);
   await fs.mkdir(path.dirname(storePath), { recursive: true });
   const tmpPath = `${storePath}.${process.pid}.tmp`;
   await fs.writeFile(tmpPath, `${JSON.stringify(normalized, null, 2)}\n`, { mode: 0o600 });

@@ -1,4 +1,3 @@
-/* global MouseEvent, document, fetch, getComputedStyle, localStorage, window */
 import { expect, test } from '@playwright/test';
 import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
 

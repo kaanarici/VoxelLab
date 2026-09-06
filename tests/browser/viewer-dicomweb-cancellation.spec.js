@@ -1,4 +1,3 @@
-/* global document, window */
 import { expect, test } from '@playwright/test';
 
 async function routeConfig(page) {
@@ -58,14 +57,10 @@ test('replacing or dismissing the upload modal aborts DICOMweb discovery and can
   await page.locator('#dicomweb-find-studies-btn').click();
   await expect.poll(() => page.evaluate(() => window.__dicomwebAbortRecords.length)).toBe(1);
 
-  // Buttons are disabled while a request owns the modal, but an external
-  // re-entry (for example, a desktop command) must still replace that owner.
   await page.locator('#dicomweb-find-studies-btn').evaluate((button) => { void button.onclick(); });
   await expect.poll(() => page.evaluate(() => window.__dicomwebAbortRecords.length)).toBe(2);
   await expect.poll(() => page.evaluate(() => window.__dicomwebAbortRecords[0].aborted)).toBe(true);
 
-  // A new upload command re-renders the modal without necessarily toggling the
-  // old element's visibility. The old request must still be cancelled.
   await page.locator('#btn-upload').evaluate(button => button.click());
   await expect.poll(() => page.evaluate(() => window.__dicomwebAbortRecords[1].aborted)).toBe(true);
   await expect(page.locator('#upload-modal')).toBeVisible();

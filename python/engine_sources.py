@@ -1,5 +1,3 @@
-"""Source-manifest contracts for calibrated projection and ultrasound engines."""
-
 from __future__ import annotations
 
 import json
@@ -15,7 +13,7 @@ from contracts import (
     parallel_beam_coverage_deg,
     source_record_version,
 )
-from geometry import float_list
+from geometry import cross3, dot3, float_list, is_orthonormal_image_plane
 
 SOURCE_MANIFEST_NAMES = (
     "voxellab.source.json",
@@ -24,11 +22,9 @@ SOURCE_MANIFEST_NAMES = (
 MAX_OUTPUT_SHAPE_DIM = 4096
 MAX_OUTPUT_VOXELS = 256 * 1024 * 1024
 
-
 def _number_list(value: Any, length: int) -> list[float]:
     values = float_list(value, length)
     return values if len(values) >= length else []
-
 
 def _matrix4_list(value: Any) -> list[list[float]]:
     if not isinstance(value, list) or len(value) != 4:
@@ -39,8 +35,14 @@ def _matrix4_list(value: Any) -> list[list[float]]:
         if len(parsed) != 4:
             return []
         rows.append(parsed)
+    if any(abs(rows[3][i] - [0, 0, 0, 1][i]) > 1e-6 for i in range(4)):
+        return []
+    axes = [[rows[i][j] for i in range(3)] for j in range(3)]
+    if not is_orthonormal_image_plane(axes[0] + axes[1]) or dot3(cross3(axes[0], axes[1]), axes[2]) < 0.9999:
+        return []
+    if abs(dot3(axes[2], axes[2]) - 1) > 1e-4:
+        return []
     return rows
-
 
 def _output_shape_ok(value: Any) -> bool:
     if not isinstance(value, list) or len(value) != 3:
@@ -50,7 +52,6 @@ def _output_shape_ok(value: Any) -> bool:
     if any(item > MAX_OUTPUT_SHAPE_DIM for item in value):
         return False
     return (value[0] * value[1] * value[2]) <= MAX_OUTPUT_VOXELS
-
 
 def load_source_manifest(directory: Path) -> dict[str, Any] | None:
     for name in SOURCE_MANIFEST_NAMES:
@@ -62,10 +63,8 @@ def load_source_manifest(directory: Path) -> dict[str, Any] | None:
             return payload
     return None
 
-
 def _copy_payload(payload: Any) -> dict[str, Any] | None:
     return dict(payload) if isinstance(payload, dict) else None
-
 
 def normalize_source_manifest(payload: Any) -> dict[str, Any] | None:
     normalized = _copy_payload(payload)
@@ -94,7 +93,6 @@ def normalize_source_manifest(payload: Any) -> dict[str, Any] | None:
         registration["transform"] = transform
         normalized["registration"] = registration
     return normalized
-
 
 def projection_manifest_errors(payload: Any, projection_count: int, series_uid: str = "") -> list[str]:
     errors: list[str] = []
@@ -136,14 +134,13 @@ def projection_manifest_errors(payload: Any, projection_count: int, series_uid: 
         errors.append("source manifest.projection.firstIPP: expected [x, y, z]")
 
     orientation = _number_list(projection.get("orientation", []), 6)
-    if len(orientation) != 6:
-        errors.append("source manifest.projection.orientation: expected six direction-cosine values")
+    if len(orientation) != 6 or not is_orthonormal_image_plane(orientation):
+        errors.append("source manifest.projection.orientation: expected six orthonormal direction-cosine values")
 
     if not str(projection.get("frameOfReferenceUID", "") or ""):
         errors.append("source manifest.projection.frameOfReferenceUID: expected non-empty string")
 
     return errors
-
 
 def ultrasound_manifest_errors(payload: Any, frame_count: int, series_uid: str = "") -> list[str]:
     errors: list[str] = []
@@ -172,8 +169,8 @@ def ultrasound_manifest_errors(payload: Any, frame_count: int, series_uid: str =
         )
 
     theta_range = _number_list(ultrasound.get("thetaRangeDeg", []), 2)
-    if len(theta_range) != 2 or theta_range[0] == theta_range[1]:
-        errors.append("source manifest.ultrasound.thetaRangeDeg: expected [min, max] with nonzero span")
+    if len(theta_range) != 2 or not (-180 <= theta_range[0] < theta_range[1] <= 180):
+        errors.append("source manifest.ultrasound.thetaRangeDeg: expected increasing angles within [-180, 180]")
 
     radius_range = _number_list(ultrasound.get("radiusRangeMm", []), 2)
     if len(radius_range) != 2 or not (radius_range[1] > radius_range[0] >= 0):
@@ -192,8 +189,8 @@ def ultrasound_manifest_errors(payload: Any, frame_count: int, series_uid: str =
         errors.append("source manifest.ultrasound.firstIPP: expected [x, y, z]")
 
     orientation = _number_list(ultrasound.get("orientation", []), 6)
-    if len(orientation) != 6:
-        errors.append("source manifest.ultrasound.orientation: expected six direction-cosine values")
+    if len(orientation) != 6 or not is_orthonormal_image_plane(orientation):
+        errors.append("source manifest.ultrasound.orientation: expected six orthonormal direction-cosine values")
 
     frame_uid = str(ultrasound.get("frameOfReferenceUID", "") or "")
     if mode == "tracked-freehand-sector" and not frame_uid:
@@ -206,11 +203,10 @@ def ultrasound_manifest_errors(payload: Any, frame_count: int, series_uid: str =
         else:
             for index, matrix in enumerate(transforms):
                 if not _matrix4_list(matrix):
-                    errors.append(f"source manifest.ultrasound.frameTransformsLps[{index}]: expected 4x4 matrix")
+                    errors.append(f"source manifest.ultrasound.frameTransformsLps[{index}]: expected rigid 4x4 LPS transform")
                     break
 
     return errors
-
 
 def registration_manifest_errors(payload: Any, series_uids: set[str] | list[str] | tuple[str, ...]) -> list[str]:
     errors: list[str] = []
@@ -245,7 +241,6 @@ def registration_manifest_errors(payload: Any, series_uids: set[str] | list[str]
         errors.append(f"source manifest.registration.transform: expected one of {sorted(REGISTRATION_TRANSFORMS)}")
     return errors
 
-
 def projection_summary(payload: dict[str, Any]) -> dict[str, Any]:
     payload = normalize_source_manifest(payload) or {}
     projection = payload.get("projection", {})
@@ -256,7 +251,6 @@ def projection_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "source": "external-json",
         "sourceRecordVersion": int(payload.get("sourceRecordVersion", 1) or 1),
     }
-
 
 def ultrasound_summary(payload: dict[str, Any]) -> dict[str, Any]:
     payload = normalize_source_manifest(payload) or {}
@@ -269,7 +263,6 @@ def ultrasound_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "profileId": str(ultrasound.get("profileId", "") or ""),
         "sourceRecordVersion": int(payload.get("sourceRecordVersion", 1) or 1),
     }
-
 
 def registration_summary(payload: dict[str, Any]) -> dict[str, Any]:
     payload = normalize_source_manifest(payload) or {}

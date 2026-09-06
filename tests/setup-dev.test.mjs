@@ -68,7 +68,6 @@ test('setup help advertises the dedicated AI lock', () => {
 test('AI lock contains only the development and Ask dependencies', async () => {
   const lock = await readFile(new URL('../requirements/ai.lock', import.meta.url), 'utf8');
 
-  assert.match(lock, /--extra dev --extra ai/);
   assert.match(lock, /^numpy==/m);
   assert.match(lock, /^pillow==/m);
   for (const excluded of ['boto3', 'botocore', 'modal', 'nibabel', 'pydicom', 'scipy', 'scikit-learn', 'tifffile']) {

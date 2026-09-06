@@ -1,10 +1,3 @@
-// Compare mode — renders every series in the same DICOM registration
-// group side-by-side at the shared slice index.
-//
-// Compare cells still render peer-specific overlays, but primary-series
-// changes now flow through the canonical selectSeries() path so cache
-// resets and redraw state stay consistent.
-
 import { $, escapeHtml } from '../dom.js';
 import { deletePassthroughRootEntry, setPassthroughRootEntry, state } from '../core/state.js';
 import { drawAnnotationPins } from '../overlay/annotation.js';
@@ -38,7 +31,6 @@ let _comparePendingToken = 0;
 let _comparePendingKey = '';
 let _comparePendingPromise = null;
 
-// Shape: { "series_slug": { seg: Image[], sym: Image[], regions: Image[], regionMeta: object|null } }.
 const peerOverlays = {};
 
 function compareViewport() {
@@ -144,8 +136,7 @@ function wireCompareInteractions() {
     lastX = e.clientX;
     lastY = e.clientY;
     const view = compareViewport();
-    // Pan only when zoomed in — at 1x the image fits, so a drag (or accidental
-    // cmd-drag) would just shove it off-centre and "lose" it. At 1x, drag = W/L.
+
     const wantsPan = (view.zoom || 1) > 1.01;
     if (wantsPan) {
       panning = true;
@@ -232,8 +223,7 @@ export function initCompare({ selectSeries, step = () => {}, hideHover = () => {
 
 function compareSpinner(pending, token = _comparePendingToken) {
   if (token !== _comparePendingToken) return;
-  // Keep the scrubber live while peers stream in — locking it is a big part of
-  // "the scrubber doesn't help you". The pending spinner is feedback enough.
+
   setSpinnerPending('compare', !!pending);
 }
 
@@ -242,14 +232,6 @@ function resolvedGroupKey(series) {
   return g == null ? null : g;
 }
 
-// One matching mode for the WHOLE compare session, decided by geometry — never a
-// per-pane mix (which would show some panes anatomically aligned and others not).
-//   ALIGNED (patient space): the set is homogeneously co-registered with the primary,
-//     so slice N is the same anatomy in every pane; a pane that does not cover that
-//     location stays honestly blank ("no aligned slice"), never the wrong anatomy.
-//   INDEX-SYNCED: any pane is not co-registered, so there is no shared anatomy — scroll
-//     every stack together by proportional index (the Fiji "synchronize windows" model).
-//     Never "out of range": scrubbing always shows a slice.
 export function compareUsesIndexSync(peers, primary) {
   const pg = resolvedGroupKey(primary);
   if (pg == null) return true;
@@ -270,7 +252,6 @@ function matchPeerSlice(peer, primary, z, indexSync) {
   return closestSliceIndexForPatientPoint(peer, patientPointAtSlice(primary, z));
 }
 
-// Shape: { "peer_slug": { index: 17, outOfRange: false, distanceMm: 0.2, toleranceMm: 0.5 } }.
 function compareSliceMatches(peers, primarySeries, z) {
   const indexSync = compareUsesIndexSync(peers, primarySeries);
   return Object.fromEntries(peers.map((peer) => [peer.slug, matchPeerSlice(peer, primarySeries, z, indexSync)]));
@@ -427,7 +408,7 @@ function resolvedCompareGroup(series) {
 
 export function getGroupPeers() {
   const series = state.manifest.series;
-  // Manual selection overrides auto-grouping
+
   const manual = state.cmpManualSlugs;
   if (manual && manual.length >= 2) {
     const set = new Set(manual);
@@ -439,12 +420,11 @@ export function getGroupPeers() {
   return series.filter((item) => resolvedCompareGroup(item) === group);
 }
 
-/** Build checkbox menu items inside the compare dropdown. */
 export function buildCompareMenu(menuEl, { onSelectionChanged = null, onStop = null } = {}) {
   menuEl.innerHTML = '';
   const series = state.manifest.series;
   if (series.length < 2) return;
-  // Which slugs are currently selected (manual or auto-group)
+
   const peers = getGroupPeers();
   const activeSlugs = new Set(peers.map((p) => p.slug));
 
@@ -519,16 +499,12 @@ export function buildCompareMenu(menuEl, { onSelectionChanged = null, onStop = n
   }
 }
 
-/** Read checked state from the menu and update cmpManualSlugs. */
 function applyMenuSelection(menuEl) {
   const checked = [...menuEl.querySelectorAll('input:checked')].map((cb) => cb.value);
   setComparePeers(checked);
-  // Only refresh the live grid while the user still has a valid (>=2) manual set.
-  // Dropping below 2 is handled by the caller (it exits compare) — never silently
-  // fall back to the auto-group while the user is editing the selection.
+
   if (state.mode === 'cmp' && checked.length >= 2) {
-    // Invariant: the primary (the scrubber's anchor) is always a visible pane. If the
-    // user unchecked the current primary, promote the first remaining selection.
+
     const primarySlug = state.manifest.series[state.seriesIdx]?.slug;
     if (!checked.includes(primarySlug)) {
       const idx = state.manifest.series.findIndex((s) => s.slug === checked[0]);

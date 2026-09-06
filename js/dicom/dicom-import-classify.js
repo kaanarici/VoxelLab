@@ -14,9 +14,8 @@ function hasProjectionImageType(metas) {
   );
 }
 
-/** Classify an import batch as volumetric, projection, ultrasound, or 2D-only before conversion. */
 export function classifyDICOMImport(items = [], sourceManifest = null) {
-  // Example input: [{ meta: { Modality: "CT", ImagePositionPatient: [...] } }, ...].
+
   const metas = items.map(item => item.meta || item).filter(Boolean);
   const first = metas[0] || {};
   const modality = normalizeModality(getStr(first, 'Modality', 'OT'));
@@ -74,9 +73,7 @@ export function classifyDICOMImport(items = [], sourceManifest = null) {
           : 'enhanced multi-frame geometry exists but spacing is irregular, so import stays 2D-only',
       };
     }
-    // Do not promote enhanced multi-frame to a volumetric-safe import until
-    // the browser path can both extract per-frame geometry and decode/frame
-    // pixel data correctly end-to-end.
+
     return {
       kind: 'multiframe-image',
       modality,

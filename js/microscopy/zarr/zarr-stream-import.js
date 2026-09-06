@@ -1,8 +1,3 @@
-// Compose the remote chunk store + codecs + level selection into the SAME microscopy
-// series `results` the local OME-Zarr path produces, so a multi-GB public dataset can be
-// opened by URL and streamed in the browser with no install. Calibration reflects the
-// CHOSEN pyramid level's scale (downsample-aware), and provenance labels the streamed
-// level so a downsampled view is never implied to be full resolution.
 import { isMetricLengthUnit, isKnownLengthUnit, normalizeLengthUnit } from '../../core/physical-units.js';
 import { normalizeOmeZarrMetadata, omeZarrMetadataIssueLabels } from '../microscopy-zarr-metadata.js';
 import { buildMicroscopySeriesResults } from '../microscopy-import.js';
@@ -53,8 +48,6 @@ function levelDownsample(level, levelZero, axes) {
   return ratios.length ? Math.max(...ratios) : 1;
 }
 
-// Per-axis scale for the chosen level straight from its coordinate transform. Streaming
-// calibration MUST use the loaded level's scale, not level 0's — see contracts §honesty.
 function levelAxisScale(level, axes, name) {
   const index = axisIndex(axes, name);
   if (index < 0) return 0;
@@ -81,8 +74,6 @@ function preferredSpatialUnit(units) {
   return '';
 }
 
-// Reuse the local path's chunk-tiling math, but source decoded tiles from the remote store's
-// readChunk({shape, strides, view}) instead of an in-memory file map.
 async function planePixelsFromStore(store, levelPath, arrayMeta, dimensions, chunks, axes, dtype, { c, z, t }) {
   const xIndex = axisIndex(axes, 'x');
   const yIndex = axisIndex(axes, 'y');
@@ -151,8 +142,6 @@ function rootName(baseUrl) {
   }
 }
 
-// "OME-Zarr streamed · level N/M · ×k downsample" — the loaded series must clearly show it is
-// a downsampled pyramid level (contracts §honesty), surfaced as its own metadata provenance row.
 export function streamProvenanceText(selection, levelCount, codecLabel, zarrVersion = 2) {
   const levelNumber = Number(selection?.level ?? 0) + 1;
   const downsample = Number(selection?.downsample || 1);
@@ -201,8 +190,7 @@ export async function streamOmeZarrFromUrl(baseUrl, {
   if (!cleanBase) throw new ZarrUnsupportedCodecError('baseUrl (streaming requires an OME-Zarr URL)');
 
   const store = createRemoteZarrStore({ baseUrl: cleanBase, fetchImpl, decode });
-  // External cancellation (e.g. the upload modal closing) aborts in-flight chunk
-  // fetches; the store then rejects pending/new reads, unwinding the loop below.
+
   const onAbort = () => store.abort();
   if (signal) {
     if (signal.aborted) store.abort();
@@ -227,7 +215,7 @@ export async function streamOmeZarrFromUrl(baseUrl, {
     const levelInputs = datasetLevels.map((level) => {
       const arrayMeta = arrayMetadataByPath[level.path];
       let parsedLevel = null;
-      try { parsedLevel = parseZarrArrayMeta(arrayMeta, { context: 'OME-Zarr streaming' }); } catch { /* chosen level reports the named validation failure below */ }
+      try { parsedLevel = parseZarrArrayMeta(arrayMeta, { context: 'OME-Zarr streaming' }); } catch {                                                               }
       const dimensions = parsedLevel?.['shape'] || [];
       return {
         level: Number(level.level ?? 0),
@@ -314,7 +302,7 @@ export async function streamOmeZarrFromUrl(baseUrl, {
       sizeC,
       sizeT,
       dimensionOrder: 'XYZCT',
-      // Chosen level's scale — downsample-aware so calibration is honest for a coarse view.
+
       physicalSizeX: levelAxisScale(chosenLevel, axes, 'x'),
       physicalSizeY: levelAxisScale(chosenLevel, axes, 'y'),
       physicalSizeZ: levelAxisScale(chosenLevel, axes, 'z'),

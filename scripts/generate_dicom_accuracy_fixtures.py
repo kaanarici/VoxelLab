@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Generate synthetic DICOM fixtures and pydicom/DICOM PS3.3 geometry goldens."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from pydicom.sequence import Sequence
 from pydicom.uid import CTImageStorage, EnhancedCTImageStorage, ExplicitVRLittleEndian, generate_uid
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "accuracy" / "dicom"
 DICOM_REFERENCE = {
@@ -23,15 +21,12 @@ DICOM_REFERENCE = {
     "url": "https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html",
 }
 
-
 def uid(*parts: str) -> str:
     return generate_uid(entropy_srcs=["voxellab-accuracy", *parts])
-
 
 def normalize3(vector: list[float]) -> list[float]:
     length = math.sqrt(sum(value * value for value in vector))
     return [value / length for value in vector] if length > 1e-12 else []
-
 
 def cross3(a: list[float], b: list[float]) -> list[float]:
     return [
@@ -40,29 +35,23 @@ def cross3(a: list[float], b: list[float]) -> list[float]:
         a[0] * b[1] - a[1] * b[0],
     ]
 
-
 def dot3(a: list[float], b: list[float]) -> float:
     return sum(a[index] * b[index] for index in range(3))
-
 
 def vector_add(a: list[float], b: list[float]) -> list[float]:
     return [a[index] + b[index] for index in range(3)]
 
-
 def vector_scale(vector: list[float], scale: float) -> list[float]:
     return [value * scale for value in vector]
 
-
 def matrix_json(matrix: list[list[float]]) -> list[list[float]]:
     return [[float(value) for value in row] for row in matrix]
-
 
 def ds_float_list(value: Any, length: int) -> list[float]:
     values = [float(item) for item in value]
     if len(values) < length:
         raise ValueError(f"expected {length} values, got {values}")
     return values[:length]
-
 
 def base_dataset(case: dict[str, Any], *, instance: int, sop_uid: str, frame_uid: str) -> FileDataset:
     file_meta = FileMetaDataset()
@@ -99,7 +88,6 @@ def base_dataset(case: dict[str, Any], *, instance: int, sop_uid: str, frame_uid
     ds.WindowWidth = 64
     return ds
 
-
 def write_classic_case(case: dict[str, Any]) -> list[Path]:
     case_dir = FIXTURE_DIR / case["id"]
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -123,7 +111,6 @@ def write_classic_case(case: dict[str, Any]) -> list[Path]:
         ds.save_as(path, write_like_original=False)
         paths.append(path)
     return paths
-
 
 def write_enhanced_case(case: dict[str, Any]) -> list[Path]:
     case_dir = FIXTURE_DIR / case["id"]
@@ -172,7 +159,6 @@ def write_enhanced_case(case: dict[str, Any]) -> list[Path]:
     ds.save_as(path, write_like_original=False)
     return [path]
 
-
 def frame_records(path: Path) -> list[dict[str, Any]]:
     ds = pydicom.dcmread(path)
     if int(getattr(ds, "NumberOfFrames", 1) or 1) > 1:
@@ -213,7 +199,6 @@ def frame_records(path: Path) -> list[dict[str, Any]]:
         "instanceNumber": int(ds.InstanceNumber),
     }]
 
-
 def spacing_stats(positions: list[list[float]], normal: list[float]) -> dict[str, Any]:
     if len(positions) < 2:
         return {"mean": 0.0, "min": 0.0, "max": 0.0, "regular": False}
@@ -225,7 +210,6 @@ def spacing_stats(positions: list[list[float]], normal: list[float]) -> dict[str
     maximum = max(diffs)
     tolerance = max(0.1, mean * 0.02)
     return {"mean": mean, "min": minimum, "max": maximum, "regular": minimum > 0 and (maximum - minimum) <= tolerance}
-
 
 def expected_from_paths(case: dict[str, Any], paths: list[Path]) -> dict[str, Any]:
     records = [record for path in paths for record in frame_records(path)]
@@ -306,7 +290,6 @@ def expected_from_paths(case: dict[str, Any], paths: list[Path]) -> dict[str, An
         ]
     return expected
 
-
 def apply_affine(affine: list[list[float]], voxel: list[int]) -> list[float]:
     i, j, k = voxel
     return [
@@ -314,7 +297,6 @@ def apply_affine(affine: list[list[float]], voxel: list[int]) -> list[float]:
         affine[1][0] * i + affine[1][1] * j + affine[1][2] * k + affine[1][3],
         affine[2][0] * i + affine[2][1] * j + affine[2][2] * k + affine[2][3],
     ]
-
 
 def case_data() -> list[dict[str, Any]]:
     sqrt2 = math.sqrt(2)
@@ -398,7 +380,6 @@ def case_data() -> list[dict[str, Any]]:
         },
     ]
 
-
 def write_case(case: dict[str, Any]) -> None:
     paths = write_enhanced_case(case) if case.get("enhanced") else write_classic_case(case)
     expected = expected_from_paths(case, paths)
@@ -419,12 +400,10 @@ def write_case(case: dict[str, Any]) -> None:
         encoding="utf-8",
     )
 
-
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     for case in case_data():
         write_case(case)
-
 
 if __name__ == "__main__":
     main()

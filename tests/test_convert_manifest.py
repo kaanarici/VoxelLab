@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from convert import upsert_series
 
-
 def test_upsert_series_preserves_existing_non_mr_entries() -> None:
     manifest = {
         "patient": "anonymous",

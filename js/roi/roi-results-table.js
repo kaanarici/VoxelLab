@@ -1,7 +1,3 @@
-// ROI results panel UI: renders the result-row list and wires the export /
-// import controls. Data shaping lives in roi-results-model.js and
-// serialization in roi-results-export.js; this module is the only DOM surface.
-
 import { $ } from '../dom.js';
 import { state } from '../core/state.js';
 import { seriesPersistenceKey } from '../core/series-identity.js';

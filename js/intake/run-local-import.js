@@ -1,4 +1,3 @@
-// Staged local import pipeline. The upload modal is Collect UI only.
 import { state } from '../core/state.js';
 import { HAS_LOCAL_BACKEND } from '../core/local-backend.js';
 import { escapeHtml, closeModal } from '../dom.js';
@@ -151,8 +150,7 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
       return;
     }
     const imageJRoiSidecarsForImport = imageJRoiSidecars.concat(imageJRoiSidecarErrors.map(sidecar => ({ name: sidecar.name || 'imagej.roi', reason: sidecar.reason || 'unsupported or malformed ImageJ ROI sidecar', skipped: true })));
-    // Vendor formats convert server-side into OME-TIFF, then take the shared
-    // microscopy path. Requires the local backend plus optional readers or a converter.
+
     const vendorFiles = fileList.filter(isVendorMicroscopyFile);
     let parseConvertedMicroscopyIndividually = false;
     const importOutcome = [];
@@ -216,9 +214,7 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
     const isNifti = niftiFiles.length === 1;
     const isMicroscopy = microscopyFiles.length > 0 || omeZarrFiles.length > 0;
 
-    if (results) {
-      // OME-Zarr already populated results above.
-    } else if (isNifti) {
+    if (!results && isNifti) {
       updateStatus('Parsing NIfTI...', 'active');
       const { parseNIfTISeries } = await import('../dicom/dicom-import.js');
       if (!isActive()) return;
@@ -227,7 +223,7 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
       });
       if (!isActive()) return;
       results = parsed?.length ? parsed : null;
-    } else if (isMicroscopy) {
+    } else if (!results && isMicroscopy) {
       updateStatus('Parsing microscopy TIFF...', 'active');
       const { parseMicroscopyFiles } = await import('../microscopy/microscopy-import.js');
       if (!isActive()) return;
@@ -247,7 +243,7 @@ export async function handleLocalImport(files, statusEl, modal, selectSeries, se
         });
       }
       if (!isActive()) return;
-    } else {
+    } else if (!results) {
       updateStatus('Parsing DICOM...', 'active');
       const { injectLocalSeries, iterateDICOMFileGroups } = await import('../dicom/dicom-import.js');
       if (!isActive()) return;

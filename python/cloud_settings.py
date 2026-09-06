@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 
 from r2_config import normalize_public_r2_url, upload_origins
 
-
 CLOUD_KEYS = (
     "MODAL_WEBHOOK_BASE",
     "MODAL_AUTH_TOKEN",
@@ -17,10 +16,8 @@ CLOUD_KEYS = (
 )
 _CLOUD_SETTINGS_WRITE_LOCK = threading.Lock()
 
-
 def _clean(value, limit: int = 2048) -> str:
     return str(value or "").strip()[:limit]
-
 
 def _valid_modal_base(value: str) -> bool:
     raw = _clean(value).rstrip("/")
@@ -32,14 +29,12 @@ def _valid_modal_base(value: str) -> bool:
         return False
     return bool(parsed.hostname)
 
-
 def _env_value(value: str) -> str:
     if not value:
         return ""
     if any(ch.isspace() or ch in {'"', "'", "#"} for ch in value):
         return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return value
-
 
 def cloud_settings_payload(root: Path, env: dict[str, str]) -> dict:
     modal_base = _clean(env.get("MODAL_WEBHOOK_BASE"))
@@ -59,7 +54,6 @@ def cloud_settings_payload(root: Path, env: dict[str, str]) -> dict:
         "configured": bool(_valid_modal_base(modal_base) and auth_token and (r2_public or origins)),
     }
 
-
 def normalize_cloud_settings(body: dict, previous_env: dict[str, str]) -> dict[str, str]:
     trusted_origins = upload_origins(None, body.get("trustedUploadOrigins"))
     token = _clean(body.get("modalAuthToken"), 8192)
@@ -72,7 +66,6 @@ def normalize_cloud_settings(body: dict, previous_env: dict[str, str]) -> dict[s
         "TRUSTED_UPLOAD_ORIGINS": ",".join(trusted_origins),
         "VIEWER_CLOUD_PROCESSING": "1" if body.get("cloudProcessing", True) is not False else "0",
     }
-
 
 def _write_cloud_settings_unlocked(root: Path, body: dict, previous_env: dict[str, str]) -> dict:
     env_path = root / ".env"
@@ -95,8 +88,6 @@ def _write_cloud_settings_unlocked(root: Path, body: dict, previous_env: dict[st
         out.append(f"{key}={_env_value(values.get(key, ''))}")
     content = "\n".join(out).rstrip() + "\n"
 
-    # Keep the replacement on the same filesystem so an interruption can leave
-    # either the old complete .env or the new complete .env, never a partial one.
     descriptor = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         os.fchmod(handle.fileno(), 0o600)
@@ -111,11 +102,9 @@ def _write_cloud_settings_unlocked(root: Path, body: dict, previous_env: dict[st
         finally:
             os.close(directory_descriptor)
     except OSError:
-        # Some platforms do not support fsync on a directory. The replacement
-        # remains atomic even when that extra durability barrier is unavailable.
+
         pass
     return cloud_settings_payload(root, {**previous_env, **values})
-
 
 def write_cloud_settings(root: Path, body: dict, previous_env: dict[str, str]) -> dict:
     with _CLOUD_SETTINGS_WRITE_LOCK:

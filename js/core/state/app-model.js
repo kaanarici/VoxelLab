@@ -9,7 +9,6 @@ export function createInitialAppModel() {
     invertDisplay: false,
     mode: '2d',
 
-    // Shape: { x: 0, y: 0, z: 0, projectionMode: "thin", slabThicknessMm: 0, viewports: { ax: { zoom: 1, tx: 0, ty: 0 } } }.
     mpr: {
       x: 0,
       y: 0,
@@ -54,7 +53,6 @@ export function createInitialAppModel() {
       overlayOpacity: 0.55,
     },
 
-    // Shape: { viewport: { zoom: 1, tx: 0, ty: 0 } } for linked Compare panes.
     compare: {
       viewport: { zoom: 1, tx: 0, ty: 0 },
     },
@@ -79,14 +77,10 @@ export function createInitialAppModel() {
     rois: {},
     notes: {},
     hiddenLabels: new Set(),
-    // Anatomy-label isolate/lock selection. lockedLabels persists per-series;
-    // previewLabel is transient but remains visible to overlay snapshots.
     lockedLabels: new Set(),
-    previewLabel: null,
 
     colormap: 'grayscale',
 
-    // null = auto-group by geometry; string[] = user-picked series slugs
     cmpManualSlugs: null,
   };
 }

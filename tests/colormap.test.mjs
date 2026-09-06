@@ -108,7 +108,6 @@ test('applyWindowLevelWithColormap transforms grayscale pixels in place', () => 
   state.colormap = 'grayscale';
   state.invertDisplay = false;
 
-  // Shape: RGBA grayscale pixels for source intensities [0, 50, 100, 150].
   const data = new Uint8ClampedArray([
     0, 0, 0, 255,
     50, 50, 50, 255,

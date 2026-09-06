@@ -1,5 +1,3 @@
-/* global process */
-
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -27,8 +25,6 @@ function hasFixtureWithExtension(dir, extension) {
   return false;
 }
 
-// The synthetic .nii fixtures are stripped from the sanitized public export
-// (the patient-data *.nii rule), so this parity check runs only where they exist.
 function hasNiftiFixtures() {
   return hasFixtureWithExtension(join(FIXTURE_ROOT, 'nifti'), '.nii');
 }

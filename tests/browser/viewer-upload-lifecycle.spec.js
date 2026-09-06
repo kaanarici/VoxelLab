@@ -1,4 +1,3 @@
-/* global DataTransfer, File, URL, document, window */
 import { expect, test } from '@playwright/test';
 
 async function routeConfig(page, override = {}) {

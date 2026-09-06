@@ -1,8 +1,3 @@
-// Computed metadata derived from DICOM tags and pipeline outputs.
-// Everything here is general-purpose — no hardcoded body parts,
-// modality assumptions, or series-specific logic. All values are
-// derived from what exists in the manifest and data files.
-
 import { $, colorSwatchSvg, escapeHtml } from './dom.js';
 import { state } from './core/state.js';
 import { inPlanePixelSpacing } from './core/geometry.js';
@@ -12,7 +7,6 @@ import { OVERLAY_CACHE_BY_KIND } from './runtime/overlay-cache-keys.js';
 import { setOverlayEnabled, setSliceIndex } from './core/state/viewer-commands.js';
 import { regionMetaUrlForSeries } from './series/series-image-stack.js';
 
-// registration.json: alignment metrics → compare-mode quality dots.
 let _regData = null;
 
 function finiteNumber(value) {
@@ -60,13 +54,12 @@ function registrationTransformType(method = '') {
   return '';
 }
 
-function gradeFromRegistration(verdict, mm) {
+function gradeFromRegistration(verdict) {
   const text = String(verdict || '').trim().toLowerCase();
   if (text === 'aligned') return 'good';
   if (text === 'slightly off') return 'fair';
   if (text === 'misregistered') return 'poor';
-  if (mm == null) return 'unknown';
-  return mm < 1 ? 'good' : mm < 3 ? 'fair' : 'poor';
+  return 'unknown';
 }
 
 export function registrationQualityFromData(data, slug) {
@@ -78,7 +71,7 @@ export function registrationQualityFromData(data, slug) {
   const verdict = String(entry.verdict || '').trim();
   return {
     mm: mm == null ? null : +mm.toFixed(2),
-    grade: gradeFromRegistration(verdict, mm),
+    grade: gradeFromRegistration(verdict),
     dice: dice == null ? null : dice,
     rotationDeg: rotationDeg == null ? null : +rotationDeg.toFixed(2),
     verdict: verdict || '',
@@ -136,14 +129,14 @@ function registrationRecordFromSeries(series = {}) {
   const quality = Object.prototype.toString.call(entry.quality) === '[object Object]'
     ? {
         mm: firstFinite(entry.quality.mm),
-        grade: String(entry.quality.grade || '').trim() || gradeFromRegistration(verdict, transform.translationMagnitudeMm),
+        grade: String(entry.quality.grade || '').trim() || gradeFromRegistration(verdict),
         dice: firstFinite(entry.quality.dice, metricsInput.dice, entry.dice),
         rotationDeg: firstFinite(entry.quality.rotationDeg, transform.rotationDeg),
         verdict,
       }
     : {
         mm: transform.translationMagnitudeMm == null ? null : +transform.translationMagnitudeMm.toFixed(2),
-        grade: gradeFromRegistration(verdict, transform.translationMagnitudeMm),
+        grade: gradeFromRegistration(verdict),
         dice: firstFinite(metricsInput.dice, entry.dice),
         rotationDeg: transform.rotationDeg == null ? null : +transform.rotationDeg.toFixed(2),
         verdict,
@@ -522,8 +515,6 @@ function exportRegionalVolumeCsv(series, entries, total, calibrated) {
   return true;
 }
 
-// Persists across re-renders (reactive-sync fires renderVolumeTable on voxel/overlay changes).
-// Shape: false (collapsed, default) | true (expanded, user clicked "show all").
 let volumeTableExpanded = false;
 const VOLUME_TABLE_INITIAL = 20;
 
@@ -539,10 +530,7 @@ export function renderVolumeTable() {
   }
   const regions = state.overlays.regionMeta.regions;
   const colors = state.overlays.regionMeta.colors || {};
-  // When the series has no trusted voxel spacing, the sidecar's mL was computed
-  // against assumed 1 mm spacing — reporting it as authoritative millilitres is
-  // fabricated precision. Degrade to honest voxel counts instead (same policy as
-  // label-inspect.js), and tell the user why in the info line.
+
   const calibrated = inPlanePixelSpacing(series || {}).known;
   const sizeOf = (e) => (calibrated ? e.mL : e.voxels) || 0;
   const entries = Object.entries(regions)
@@ -581,7 +569,7 @@ export function renderVolumeTable() {
       </span>
     </div>`;
   }).join('');
-  // Toggle chip lives inline at the end of the list so users can collapse from either end.
+
   const toggleHtml = hasOverflow
     ? `<button type="button" class="vol-row vol-more" data-vol-toggle>${showAll
       ? 'Show less'

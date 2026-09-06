@@ -128,7 +128,7 @@ async function inflateRawBytes(bytes, maxOutputBytes = MAX_IMAGEJ_ROI_ZIP_ENTRY_
       return await readBoundedInflatedStream(stream, maxOutputBytes);
     } catch (error) {
       if (error?.imageJRoiZipResourceLimit) throw error;
-      // Fall through to pako when a browser exposes DecompressionStream but not deflate-raw.
+
     }
   }
   const pk = await ensurePako();

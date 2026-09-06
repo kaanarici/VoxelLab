@@ -1,4 +1,3 @@
-/* global Buffer, URL, window */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';

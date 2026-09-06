@@ -1,6 +1,3 @@
-// Point-in-shape tests for ROI tool (ellipse + polygon).
-
-/** Inclusion predicate for an ellipse inscribed in the bounding box of two corner points. */
 export function ellipseInclusion(pts) {
   const [[x1, y1], [x2, y2]] = pts;
   const cx = (x1 + x2) / 2;
@@ -14,7 +11,6 @@ export function ellipseInclusion(pts) {
   };
 }
 
-/** Even-odd ray cast for polygon inclusion. */
 export function polygonInclusion(verts) {
   return (x, y) => {
     let inside = false;

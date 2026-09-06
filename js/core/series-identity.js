@@ -51,10 +51,6 @@ function microscopyPersistenceGrid(series) {
   ];
 }
 
-// Durable user-authored data needs more than the display slug: slugs repeat
-// across imported studies. Keep this descriptor deliberately limited to fields
-// that describe the selected source and its pixel grid so it is stable across
-// viewer sessions while separating otherwise similarly named series.
 function seriesPersistenceFingerprint(series, manifest = {}) {
   if (!series?.slug) return '';
   const source = series.microscopyDataset?.source || {};
@@ -93,8 +89,6 @@ function compactIdentityDigest(value) {
 
 export function seriesPersistenceKey(series, manifest = {}) {
   const fingerprint = seriesPersistenceFingerprint(series, manifest);
-  // Keep patient names, source URLs, and long microscopy file lists out of
-  // localStorage keys and exported bundle identity fields. This digest is an
-  // opaque deterministic identity, not an authentication or integrity token.
+
   return fingerprint ? `v2:${compactIdentityDigest(fingerprint)}` : '';
 }

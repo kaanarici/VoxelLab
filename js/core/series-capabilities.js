@@ -1,5 +1,3 @@
-// UI labels for imaging capabilities; geometry rules live in geometry.js.
-
 import {
   GEOMETRY_KIND_CAPABILITY,
   PROJECTION_MODALITIES,
@@ -59,7 +57,6 @@ export function canUseMpr3D(series) {
 
   if (geoKind !== 'cartesian_volume') return false;
 
-  // Minimum viable geometry fields for MPR/3D rendering.
   const spacing = series?.pixelSpacing || [];
   return sliceAxisAlignmentFromSeries(series) >= SLICE_AXIS_ALIGNMENT_MIN
     && Number(series?.width || 0) > 0

@@ -1,3 +1,4 @@
+import { cross3, dot3, isOrthonormalImagePlane } from '../core/geometry.js';
 import { DCMJS_IMPORT_URL } from '../core/dependencies.js';
 import { cloudActionCatalog, cloudActionText } from '../cloud-actions.js';
 import {
@@ -123,9 +124,12 @@ function outputDimensionsValid(value) {
 }
 
 function matrix4Ok(value) {
-  return Array.isArray(value)
-    && value.length === 4
-    && value.every(row => numberList(row, 4).length === 4);
+  if (!Array.isArray(value) || value.length !== 4 || !value.every(row => numberList(row, 4).length === 4)) return false;
+  if (value[3].some((number, index) => Math.abs(number - [0, 0, 0, 1][index]) > 1e-6)) return false;
+  const axes = [0, 1, 2].map(column => value.slice(0, 3).map(row => Number(row[column])));
+  return isOrthonormalImagePlane([...axes[0], ...axes[1]])
+    && dot3(cross3(axes[0], axes[1]), axes[2]) >= 0.9999
+    && Math.abs(dot3(axes[2], axes[2]) - 1) <= 1e-4;
 }
 
 function isProjectionLikeMeta(meta = {}) {
@@ -187,7 +191,7 @@ function projectionManifestPreflightError(sourceManifest = {}, projectionCount =
   const spacing = numberList(projection.outputSpacingMm, 3);
   if (spacing.length !== 3 || spacing.some(value => value <= 0)) return 'voxellab.source.json projection outputSpacingMm must contain three positive numbers.';
   if (numberList(projection.firstIPP, 3).length !== 3) return 'voxellab.source.json projection firstIPP must be [x, y, z].';
-  if (numberList(projection.orientation, 6).length !== 6) return 'voxellab.source.json projection orientation must contain six direction cosines.';
+  if (!isOrthonormalImagePlane(numberList(projection.orientation, 6))) return 'voxellab.source.json projection orientation must contain six orthonormal direction cosines.';
   if (!String(projection.frameOfReferenceUID || '').trim()) return 'voxellab.source.json projection frameOfReferenceUID is required.';
   return '';
 }
@@ -204,14 +208,14 @@ function ultrasoundManifestPreflightError(sourceManifest = {}, frameCount = 0, s
   if (!ULTRASOUND_MODES.has(mode)) return 'voxellab.source.json ultrasound mode is not supported.';
   if (!ULTRASOUND_PROBE_GEOMETRIES.has(String(ultrasound.probeGeometry || '').trim())) return 'voxellab.source.json ultrasound probeGeometry is not supported.';
   const theta = numberList(ultrasound.thetaRangeDeg, 2);
-  if (theta.length !== 2 || theta[0] === theta[1]) return 'voxellab.source.json ultrasound thetaRangeDeg must be [min, max] with nonzero span.';
+  if (theta.length !== 2 || !(theta[0] >= -180 && theta[0] < theta[1] && theta[1] <= 180)) return 'voxellab.source.json ultrasound thetaRangeDeg must contain increasing angles within [-180, 180].';
   const radius = numberList(ultrasound.radiusRangeMm, 2);
   if (radius.length !== 2 || !(radius[1] > radius[0] && radius[0] >= 0)) return 'voxellab.source.json ultrasound radiusRangeMm must be [min, max] in mm.';
   if (!outputDimensionsValid(ultrasound["outputShape"])) return 'voxellab.source.json ultrasound outputShape must be [width, height, depth] positive integers.';
   const spacing = numberList(ultrasound.outputSpacingMm, 3);
   if (spacing.length !== 3 || spacing.some(value => value <= 0)) return 'voxellab.source.json ultrasound outputSpacingMm must contain three positive numbers.';
   if (numberList(ultrasound.firstIPP, 3).length !== 3) return 'voxellab.source.json ultrasound firstIPP must be [x, y, z].';
-  if (numberList(ultrasound.orientation, 6).length !== 6) return 'voxellab.source.json ultrasound orientation must contain six direction cosines.';
+  if (!isOrthonormalImagePlane(numberList(ultrasound.orientation, 6))) return 'voxellab.source.json ultrasound orientation must contain six orthonormal direction cosines.';
   if (mode === 'tracked-freehand-sector' && !String(ultrasound.frameOfReferenceUID || '').trim()) return 'voxellab.source.json ultrasound frameOfReferenceUID is required for tracked freehand scan conversion.';
   const transforms = ultrasound.frameTransformsLps;
   if (mode === 'tracked-freehand-sector' && (!Array.isArray(transforms) || transforms.length !== frameCount || !transforms.every(matrix4Ok))) {
@@ -263,6 +267,9 @@ function ultrasoundPreflightError(metas = [], sourceManifest = {}) {
   if (imageError) return imageError;
   const nonUltrasound = metas.find(item => dicomString(item.meta, 'Modality').toUpperCase() !== 'US');
   if (nonUltrasound) return `Cloud ultrasound scan conversion requires ultrasound DICOM, not ${dicomString(nonUltrasound.meta, 'Modality') || nonUltrasound.file.name || 'the selected image'}.`;
+  const unsupportedRegion = metas.some(({ meta }) => (meta.SequenceOfUltrasoundRegions || [])
+    .some(region => Number(region.RegionSpatialFormat) !== 1));
+  if (unsupportedRegion) return 'Ultrasound reconstruction requires spatial 2D regions. M-mode, spectral Doppler, waveforms, and graphics are not supported.';
   const seriesUID = dicomString(metas[0]?.meta, 'SeriesInstanceUID');
   const manifestSeriesUID = String(sourceManifest.seriesUID || '').trim();
   if (seriesUID && manifestSeriesUID && seriesUID !== manifestSeriesUID) {

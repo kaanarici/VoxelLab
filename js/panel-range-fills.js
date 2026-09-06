@@ -1,6 +1,3 @@
-// Right panel range inputs: --fill for WebKit filled tracks (matches scrubber).
-// Firefox uses ::-moz-range-progress and does not need this.
-
 import { $ } from './dom.js';
 
 function pctForRange(el) {
@@ -15,7 +12,6 @@ function applyFill(el) {
   el.style.setProperty('--fill', pctForRange(el) + '%');
 }
 
-/** Call after programmatic value changes (presets, sync from state). */
 export function syncPanelRangeFills() {
   const root = $('right-panels-root');
   if (!root) return;

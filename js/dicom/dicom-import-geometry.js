@@ -56,8 +56,7 @@ export function hasVolumeStackGeometry(metas = []) {
     const ipp = numberArray(meta, 'ImagePositionPatient')?.slice(0, 3).map(Number);
     const spacing = positiveSpacing(meta);
     if (!orientation || !isOrthonormalImagePlane(iop) || !ipp?.every(Number.isFinite) || !spacing) return false;
-    // DICOM Image Plane orientation values are row/column direction cosines.
-    // https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html
+
     if (dot3(baseOrientation.row, orientation.row) <= 0 || dot3(baseOrientation.col, orientation.col) <= 0) return false;
     if (orientationCornerDriftMm(baseOrientation, orientation, meta, baseSpacing) > 0.25) return false;
     if (!sameSpacing(baseSpacing, spacing)) return false;

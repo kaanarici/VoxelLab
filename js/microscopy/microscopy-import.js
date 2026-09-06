@@ -42,8 +42,6 @@ const TIFF_TAG = {
   SampleFormat: 339,
 };
 
-// Compressed TIFF strips are untrusted input. Limit both stored and expanded
-// payloads before making a pixel buffer; each supported strip has an exact size.
 const MAX_TIFF_PLANE_PIXELS = 4096 * 4096;
 const MAX_TIFF_EAGER_PAGE_BYTES = 192 * 1024 * 1024;
 const MAX_TIFF_DOCUMENT_RETAINED_BYTES = 512 * 1024 * 1024;
@@ -52,8 +50,6 @@ const SOURCE_FINGERPRINT_WINDOWS = 16;
 const IN_NODE = Boolean(globalThis.process?.versions?.node) && !('window' in globalThis);
 let pako = null;
 
-// Sample evenly across the input so persistence identity does not require a
-// second full-file pass or scale its working set with a large TIFF.
 function boundedSourceFingerprint(buffer) {
   const bytes = new Uint8Array(buffer);
   const windowBytes = Math.min(SOURCE_FINGERPRINT_WINDOW_BYTES, bytes.byteLength);
@@ -500,8 +496,7 @@ function tiffDataMappings(text, meta, pageCount) {
       }
       assertOmePosition(cursor, meta);
       const key = omePositionKey(cursor);
-      // OME permits only the attribute-free default TiffData element to leave
-      // extra decoded IFDs unassigned after the declared pixel cube ends.
+
       if (itemPositions.has(key)) {
         if (isAttributeFreeDefault) break;
         throw new Error('OME-TIFF TiffData mapping exceeds the declared Z/C/T pixel cube.');
@@ -567,8 +562,7 @@ export function parseImageJDescriptionMetadata(description = '', pageCount = 1, 
   const imageCount = Number(lines.images || pageCount) || pageCount;
   const zDenominator = Math.max(1, sizeC * sizeT);
   const inferredSizeZ = Math.max(1, imageCount % zDenominator === 0 ? imageCount / zDenominator : imageCount);
-  // ImageJ's TIFF decoder maps X/YResolution to reciprocal pixel size.
-  // Reference: https://wsr.imagej.net/source/html/ij/io/TiffDecoder.java.html
+
   const xResolution = positiveTagNumber(page?.tags, TIFF_TAG.XResolution);
   const yResolution = positiveTagNumber(page?.tags, TIFF_TAG.YResolution);
   const imageJUnit = String(lines.unit || '').trim();
@@ -577,7 +571,7 @@ export function parseImageJDescriptionMetadata(description = '', pageCount = 1, 
   const hasResolutionFallback = xResolution > 0 || yResolution > 0;
   const explicitPixelWidth = Number(lines.pixel_width || 0) || 0;
   const explicitPixelHeight = Number(lines.pixel_height || lines.pixel_width || 0) || 0;
-  // ImageJ often writes inch+DPI for display; only metric resolution tags are microscope scale.
+
   const xSize = explicitPixelWidth || (canUseResolutionFallback && xResolution > 0 ? 1 / xResolution : 0);
   const ySize = explicitPixelHeight || (canUseResolutionFallback && yResolution > 0 ? 1 / yResolution : xSize);
   const warnings = hasImageJUnit ? [] : ['missing_z_physical_size'];
@@ -636,7 +630,6 @@ function metadataForPages(pages) {
     || parseImageJDescriptionMetadata(description, pages.length, descriptionPage)
     || defaultMetadata(pages);
 }
-
 
 export async function parseMicroscopyFiles(files, onProgress = () => {}) {
   const tiffs = Array.from(files).filter(file => /\.(ome\.)?tiff?$/i.test(file?.name || ''));

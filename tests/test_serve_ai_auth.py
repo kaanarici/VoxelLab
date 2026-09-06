@@ -14,10 +14,8 @@ import pytest
 import serve
 from microscopy_convert import SUPPORTED_EXTENSIONS
 
-
 def test_convert_endpoint_uses_converter_supported_extensions() -> None:
     assert serve.SUPPORTED_CONVERT_EXTENSIONS == SUPPORTED_EXTENSIONS
-
 
 def test_ai_post_guard_rejects_disabled_ai() -> None:
     code, body = serve.ai_post_guard({"ai": {"enabled": False}})
@@ -25,14 +23,12 @@ def test_ai_post_guard_rejects_disabled_ai() -> None:
     assert code == 503
     assert "disabled" in body["error"].lower()
 
-
 def test_ai_post_guard_reports_unready_provider() -> None:
     code, body = serve.ai_post_guard({"ai": {"enabled": True, "ready": False, "provider": "codex", "issues": ["config broken"]}})
 
     assert code == 503
     assert body["provider"] == "codex"
     assert "config broken" in body["error"]
-
 
 def test_validate_ask_payload_accepts_image_for_browser_local_slug() -> None:
     parsed, invalid = ai_routes.validate_ask_payload({
@@ -51,7 +47,6 @@ def test_validate_ask_payload_accepts_image_for_browser_local_slug() -> None:
     assert invalid is None
     assert parsed["local_image"]["width"] == 512
 
-
 def test_validate_ask_payload_keeps_unknown_nonlocal_slug_closed() -> None:
     _parsed, invalid = ai_routes.validate_ask_payload({
         "slug": "missing",
@@ -66,20 +61,17 @@ def test_validate_ask_payload_keeps_unknown_nonlocal_slug_closed() -> None:
 
     assert invalid == (400, {"error": "unknown slug: missing"})
 
-
 def test_handler_local_api_token_accepts_matching_header() -> None:
     handler = object.__new__(serve.Handler)
     handler.headers = {"X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN}
 
     assert handler._has_local_api_token() is True
 
-
 def test_handler_local_api_token_rejects_missing_header() -> None:
     handler = object.__new__(serve.Handler)
     handler.headers = {}
 
     assert handler._has_local_api_token() is False
-
 
 def make_handler(path: str, headers: dict[str, str] | None = None, body: bytes = b"") -> tuple[serve.Handler, dict]:
     captured: dict = {}
@@ -91,7 +83,6 @@ def make_handler(path: str, headers: dict[str, str] | None = None, body: bytes =
     handler._json = lambda code, body: captured.update({"code": code, "body": body})
     return handler, captured
 
-
 class TrackingWriter(io.BytesIO):
     def __init__(self):
         super().__init__()
@@ -100,7 +91,6 @@ class TrackingWriter(io.BytesIO):
     def write(self, data) -> int:
         self.write_sizes.append(len(data))
         return super().write(data)
-
 
 def test_convert_microscopy_upload_streams_body_to_temp(monkeypatch) -> None:
     class TrackingBody(io.BytesIO):
@@ -156,7 +146,6 @@ def test_convert_microscopy_upload_streams_body_to_temp(monkeypatch) -> None:
     assert not written_paths["input"].exists()
     assert not written_paths["output"].exists()
 
-
 def test_convert_microscopy_upload_omits_warning_header_without_warnings(monkeypatch) -> None:
     raw = b"0123"
     handler, captured = make_handler("/api/microscopy/convert", body=raw)
@@ -182,7 +171,6 @@ def test_convert_microscopy_upload_omits_warning_header_without_warnings(monkeyp
     assert not any(name == "X-VoxelLab-Convert-Warnings" for name, _value in captured["headers"])
     assert captured["headers"] == [("Content-Type", "image/tiff"), ("Content-Length", "3")]
     assert handler.wfile.getvalue() == b"ome"
-
 
 def test_split_convert_microscopy_upload_returns_bounded_multipart_parts(monkeypatch) -> None:
     raw = b"native-czi"
@@ -234,7 +222,6 @@ def test_split_convert_microscopy_upload_returns_bounded_multipart_parts(monkeyp
     assert any(size > 4 for size in handler.wfile.write_sizes)
     assert all(not path.exists() for path in written_paths)
 
-
 def test_split_convert_microscopy_upload_keeps_single_part_as_tiff(monkeypatch) -> None:
     raw = b"native-nd2"
     handler, captured = make_handler("/api/microscopy/convert", body=raw)
@@ -275,7 +262,6 @@ def test_split_convert_microscopy_upload_keeps_single_part_as_tiff(monkeypatch) 
     assert handler.wfile.getvalue() == b"II*\x00one-position"
     assert written_path is not None and not written_path.exists()
 
-
 def test_convert_microscopy_upload_rejects_short_body(monkeypatch) -> None:
     handler, captured = make_handler("/api/microscopy/convert", body=b"short")
     monkeypatch.setattr(serve, "CONVERT_STREAM_CHUNK_BYTES", 4)
@@ -294,7 +280,6 @@ def test_convert_microscopy_upload_rejects_short_body(monkeypatch) -> None:
 
     assert captured["code"] == 400
     assert "Content-Length" in captured["body"]["error"]
-
 
 def test_convert_microscopy_upload_returns_stable_converter_reason(monkeypatch) -> None:
     handler, captured = make_handler("/api/microscopy/convert", body=b"input")
@@ -321,7 +306,6 @@ def test_convert_microscopy_upload_returns_stable_converter_reason(monkeypatch) 
             "reason": "converter_path_missing",
         },
     }
-
 
 def test_convert_microscopy_upload_does_not_return_external_process_output(monkeypatch) -> None:
     handler, captured = make_handler("/api/microscopy/convert", body=b"input")
@@ -350,7 +334,6 @@ def test_convert_microscopy_upload_does_not_return_external_process_output(monke
     }
     assert "super-secret" not in str(captured)
 
-
 def test_convert_microscopy_upload_rejects_unsupported_format_with_stable_reason() -> None:
     handler, captured = make_handler("/api/microscopy/convert")
     handler._enforce_rate_limit = lambda _path: None
@@ -361,7 +344,6 @@ def test_convert_microscopy_upload_rejects_unsupported_format_with_stable_reason
         "code": 400,
         "body": {"error": "unsupported microscopy format", "reason": "unsupported_format"},
     }
-
 
 def test_convert_endpoint_plumbs_opt_in_split_mode_without_changing_legacy_mode() -> None:
     calls = []
@@ -383,7 +365,6 @@ def test_convert_endpoint_plumbs_opt_in_split_mode_without_changing_legacy_mode(
         (".czi", 5, {"split": False, "source_name": "cells.czi"}),
     ]
 
-
 def test_read_json_payload_caps_body_size() -> None:
     body = b"{}"
     handler, captured = make_handler("/api/ask", headers={"Content-Length": str(serve.MAX_API_JSON_BODY_BYTES + 1)}, body=body)
@@ -391,14 +372,12 @@ def test_read_json_payload_caps_body_size() -> None:
     assert handler._read_json_payload_or_error() is None
     assert captured == {"code": 413, "body": {"error": "body too large"}}
 
-
 def test_read_json_payload_rejects_invalid_json() -> None:
     body = b"{not-json"
     handler, captured = make_handler("/api/ask", headers={"Content-Length": str(len(body))}, body=body)
 
     assert handler._read_json_payload_or_error() is None
     assert captured == {"code": 400, "body": {"error": "invalid JSON body"}}
-
 
 def test_runtime_config_overlays_env_proxy_and_feature_flags(monkeypatch, tmp_path: Path) -> None:
     _ = (tmp_path / "config.json").write_text(json.dumps({
@@ -457,7 +436,6 @@ def test_runtime_config_overlays_env_proxy_and_feature_flags(monkeypatch, tmp_pa
     assert called["env"]["MODAL_AUTH_TOKEN"] == "modal-auth-token"
     assert "localApiToken" not in config
 
-
 def test_do_get_config_json_returns_runtime_config(monkeypatch) -> None:
     expected = {"siteName": "VoxelLab"}
     handler, captured = make_handler("/config.json")
@@ -467,14 +445,12 @@ def test_do_get_config_json_returns_runtime_config(monkeypatch) -> None:
 
     assert captured == {"code": 200, "body": expected}
 
-
 def test_do_post_local_token_returns_same_origin_token() -> None:
     handler, captured = make_handler("/api/local-token", headers={"Origin": "http://127.0.0.1:8000", "Host": "127.0.0.1:8000"})
 
     serve.Handler.do_POST(handler)
 
     assert captured == {"code": 200, "body": {"localApiToken": serve.LOCAL_API_TOKEN}}
-
 
 def test_do_get_proxy_asset_rejects_untrusted_target(monkeypatch) -> None:
     handler, captured = make_handler(
@@ -493,14 +469,12 @@ def test_do_get_proxy_asset_rejects_untrusted_target(monkeypatch) -> None:
 
     assert captured == {"code": 400, "body": {"error": "invalid or untrusted asset url"}}
 
-
 def test_do_get_analyze_status_rejects_missing_local_api_token() -> None:
     handler, captured = make_handler("/api/analyze/status", headers={"Sec-Fetch-Site": "same-origin"})
 
     serve.Handler.do_GET(handler)
 
     assert captured == {"code": 403, "body": {"error": "missing or invalid local api token"}}
-
 
 def test_do_get_proxy_asset_rejects_missing_local_api_token() -> None:
     handler, captured = make_handler(
@@ -512,7 +486,6 @@ def test_do_get_proxy_asset_rejects_missing_local_api_token() -> None:
 
     assert captured == {"code": 403, "body": {"error": "missing or invalid local api token"}}
 
-
 def test_do_post_cloud_proxy_rejects_missing_local_api_token(monkeypatch) -> None:
     handler, captured = make_handler("/api/cloud/get_upload_urls")
     monkeypatch.setattr(serve, "runtime_config", lambda: {"ai": {"enabled": True, "ready": True}})
@@ -520,7 +493,6 @@ def test_do_post_cloud_proxy_rejects_missing_local_api_token(monkeypatch) -> Non
     serve.Handler.do_POST(handler)
 
     assert captured == {"code": 403, "body": {"error": "missing or invalid local api token"}}
-
 
 def test_do_post_cloud_proxy_forwards_body_with_runtime_token(monkeypatch) -> None:
     body = b'{"job_id":"job_123","items":[{"upload_id":"f000000"}]}'
@@ -549,7 +521,6 @@ def test_do_post_cloud_proxy_forwards_body_with_runtime_token(monkeypatch) -> No
     }
     assert captured == {"code": 200, "body": {"status": "started"}}
 
-
 def test_do_post_cloud_proxy_rejects_invalid_upload_url_payload(monkeypatch) -> None:
     body = b'{"items":[{"filename":"slice.dcm"}]}'
     headers = {
@@ -566,7 +537,6 @@ def test_do_post_cloud_proxy_rejects_invalid_upload_url_payload(monkeypatch) -> 
         "body": {"error": "expected body {items:[{upload_id, filename}, ...]}"},
     }
 
-
 def test_do_post_cloud_proxy_rejects_missing_job_id(monkeypatch) -> None:
     body = b'{}'
     headers = {
@@ -580,7 +550,6 @@ def test_do_post_cloud_proxy_rejects_missing_job_id(monkeypatch) -> None:
 
     assert captured == {"code": 400, "body": {"error": "missing job_id"}}
 
-
 def test_do_post_cloud_proxy_rejects_malformed_json_body(monkeypatch) -> None:
     body = b'{"job_id":'
     headers = {
@@ -593,7 +562,6 @@ def test_do_post_cloud_proxy_rejects_malformed_json_body(monkeypatch) -> None:
     serve.Handler.do_POST(handler)
 
     assert captured == {"code": 400, "body": {"error": "invalid JSON body"}}
-
 
 def test_do_post_cloud_proxy_rejects_negative_upload_bytes(monkeypatch) -> None:
     body = b'{"job_id":"job_123","total_upload_bytes":-1}'
@@ -610,7 +578,6 @@ def test_do_post_cloud_proxy_rejects_negative_upload_bytes(monkeypatch) -> None:
         "code": 400,
         "body": {"error": "total_upload_bytes must be a non-negative integer"},
     }
-
 
 def test_proxy_modal_json_caps_success_body(monkeypatch) -> None:
     class Response:
@@ -642,7 +609,6 @@ def test_proxy_modal_json_caps_success_body(monkeypatch) -> None:
     )
     assert response.read_sizes == [6]
 
-
 def test_proxy_modal_json_caps_http_error_body(monkeypatch) -> None:
     error = urllib.error.HTTPError(
         "https://modal.example",
@@ -665,7 +631,6 @@ def test_proxy_modal_json_caps_http_error_body(monkeypatch) -> None:
         {"error": "modal error response body too large"},
     )
 
-
 def test_do_post_analyze_rejects_unknown_slug(monkeypatch) -> None:
     headers = {"X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN}
     key = "v2:11111111111111111111111111111111"
@@ -681,7 +646,6 @@ def test_do_post_analyze_rejects_unknown_slug(monkeypatch) -> None:
         "analysisKey": key,
         "resultUrl": "./data/analysis-v2-11111111111111111111111111111111.json",
     }}
-
 
 def test_do_post_analyze_parses_slice_ranges_before_starting(monkeypatch) -> None:
     headers = {"X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN}
@@ -710,7 +674,6 @@ def test_do_post_analyze_parses_slice_ranges_before_starting(monkeypatch) -> Non
         "resultUrl": "./data/analysis-v2-22222222222222222222222222222222.json",
     }}
 
-
 def test_do_post_analyze_rejects_missing_or_path_like_analysis_identity(monkeypatch) -> None:
     headers = {"X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN}
     monkeypatch.setattr(serve, "runtime_config", lambda: {"ai": {"enabled": True, "ready": True}})
@@ -719,7 +682,6 @@ def test_do_post_analyze_rejects_missing_or_path_like_analysis_identity(monkeypa
         handler, captured = make_handler(f"/api/analyze?slug=scan&analysisKey={identity}", headers=headers)
         serve.Handler.do_POST(handler)
         assert captured == {"code": 400, "body": {"error": "invalid analysis key"}}
-
 
 def test_do_post_analyze_rejects_malformed_json_body(monkeypatch) -> None:
     body = b'{"unexpected":'
@@ -734,7 +696,6 @@ def test_do_post_analyze_rejects_malformed_json_body(monkeypatch) -> None:
     serve.Handler.do_POST(handler)
 
     assert captured == {"code": 400, "body": {"error": "invalid JSON body"}}
-
 
 def test_analyze_rejects_same_slug_while_first_popen_is_launching(monkeypatch, tmp_path: Path) -> None:
     running = {}
@@ -804,7 +765,6 @@ def test_analyze_rejects_same_slug_while_first_popen_is_launching(monkeypatch, t
     assert not first_thread.is_alive()
     assert first_result["value"] == (202, "started: scan")
 
-
 def test_analyze_spawn_failure_clears_launch_reservation(monkeypatch, tmp_path: Path) -> None:
     running = {}
     lock = threading.Lock()
@@ -830,7 +790,6 @@ def test_analyze_spawn_failure_clears_launch_reservation(monkeypatch, tmp_path: 
 
     assert result == (500, "failed to start analysis: boom")
     assert running == {}
-
 
 def test_analyze_allows_bounded_distinct_source_identities_for_the_same_slug(monkeypatch, tmp_path: Path) -> None:
     running = {}
@@ -884,7 +843,6 @@ def test_analyze_allows_bounded_distinct_source_identities_for_the_same_slug(mon
     ) == (429, "too many analysis jobs are already running")
     assert len(launched) == 2
 
-
 def test_do_get_analyze_status_returns_running_payload(monkeypatch) -> None:
     handler, captured = make_handler(
         "/api/analyze/status",
@@ -898,7 +856,6 @@ def test_do_get_analyze_status_returns_running_payload(monkeypatch) -> None:
     serve.Handler.do_GET(handler)
 
     assert captured == {"code": 200, "body": {"scan": {"running": True, "last": "working"}}}
-
 
 def test_do_get_analyze_status_filters_by_validated_analysis_key(monkeypatch) -> None:
     key = "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -922,7 +879,6 @@ def test_do_get_analyze_status_filters_by_validated_analysis_key(monkeypatch) ->
     assert seen == [key]
     assert captured == {"code": 200, "body": {key: {"running": True, "slug": "scan"}}}
 
-
 def test_do_get_analyze_status_rejects_blank_or_path_like_analysis_key() -> None:
     headers = {
         "Sec-Fetch-Site": "same-origin",
@@ -932,7 +888,6 @@ def test_do_get_analyze_status_rejects_blank_or_path_like_analysis_key() -> None
         handler, captured = make_handler(f"/api/analyze/status?{query}", headers=headers)
         serve.Handler.do_GET(handler)
         assert captured == {"code": 400, "body": {"error": "invalid analysis key"}}
-
 
 def test_analyze_status_persists_terminal_error_state() -> None:
     class FakeProc:
@@ -965,7 +920,6 @@ def test_analyze_status_persists_terminal_error_state() -> None:
     assert "provider offline" in payload["error"]
     serve.RUNNING.clear()
 
-
 def test_analyze_status_persists_terminal_done_state() -> None:
     class FakeProc:
         stdout = iter(["Done. Refresh the viewer.\n"])
@@ -997,7 +951,6 @@ def test_analyze_status_persists_terminal_done_state() -> None:
     assert payload["error"] is None
     serve.RUNNING.clear()
 
-
 def test_analyze_rejects_reusing_a_running_key_for_another_slug(monkeypatch, tmp_path: Path) -> None:
     running = {}
     lock = threading.Lock()
@@ -1028,7 +981,6 @@ def test_analyze_rejects_reusing_a_running_key_for_another_slug(monkeypatch, tmp
     ) == (409, "analysis key is already bound to another slug")
     assert len(launched) == 1
     assert running[key]["slug"] == "scan"
-
 
 def test_analysis_status_history_is_bounded_without_evicting_live_jobs() -> None:
     running = {}
@@ -1068,7 +1020,6 @@ def test_analysis_status_history_is_bounded_without_evicting_live_jobs() -> None
     assert list(exact) == [live_key]
     assert exact[live_key]["slug"] == "current-scan"
 
-
 def test_do_get_consult_returns_cached_consult(monkeypatch, tmp_path: Path) -> None:
     consult = {
         "disclaimer": "Research use only.",
@@ -1094,7 +1045,6 @@ def test_do_get_consult_returns_cached_consult(monkeypatch, tmp_path: Path) -> N
         "code": 200,
         "body": {"cached": True, **consult},
     }
-
 
 def test_do_get_ai_models_returns_cli_catalog(monkeypatch) -> None:
     catalog = {
@@ -1125,14 +1075,12 @@ def test_do_get_ai_models_returns_cli_catalog(monkeypatch) -> None:
 
     assert captured == {"code": 200, "body": catalog}
 
-
 def test_do_get_ai_models_requires_local_token() -> None:
     handler, captured = make_handler("/api/ai/models", headers={"Sec-Fetch-Site": "same-origin"})
 
     serve.Handler.do_GET(handler)
 
     assert captured == {"code": 403, "body": {"error": "missing or invalid local api token"}}
-
 
 def test_do_get_consult_returns_named_error_on_invalid_cache(monkeypatch, tmp_path: Path) -> None:
     _ = (tmp_path / "consult.json").write_text("[1,2,3]")
@@ -1150,7 +1098,6 @@ def test_do_get_consult_returns_named_error_on_invalid_cache(monkeypatch, tmp_pa
     assert captured["code"] == 409
     assert captured["body"]["error"] == "consult cache is invalid"
     assert captured["body"]["regeneratePath"] == "/api/consult?force=1"
-
 
 def test_do_post_consult_forwards_force_flag(monkeypatch) -> None:
     headers = {
@@ -1175,7 +1122,6 @@ def test_do_post_consult_forwards_force_flag(monkeypatch) -> None:
     assert seen == {"force": True}
     assert captured == {"code": 200, "body": {"impression": "ok", "ask_radiologist": [], "limitations": ""}}
 
-
 def test_do_post_consult_rejects_when_no_analysis_is_available(monkeypatch) -> None:
     headers = {
         "Sec-Fetch-Site": "same-origin",
@@ -1188,7 +1134,6 @@ def test_do_post_consult_rejects_when_no_analysis_is_available(monkeypatch) -> N
     serve.Handler.do_POST(handler)
 
     assert captured == {"code": 400, "body": {"error": "no analysis data to consult on — run analyze.py first"}}
-
 
 def test_do_post_ask_rejects_empty_question(monkeypatch) -> None:
     body = b'{"slug":"scan","slice":0,"question":"   ","x":1,"y":2}'
@@ -1204,7 +1149,6 @@ def test_do_post_ask_rejects_empty_question(monkeypatch) -> None:
 
     assert captured == {"code": 400, "body": {"error": "empty question"}}
 
-
 def test_do_post_ask_rejects_malformed_json_body(monkeypatch) -> None:
     body = b'{"slug":'
     headers = {
@@ -1218,45 +1162,75 @@ def test_do_post_ask_rejects_malformed_json_body(monkeypatch) -> None:
 
     assert captured == {"code": 400, "body": {"error": "invalid JSON body"}}
 
-
-def test_do_post_ask_forwards_region_payload(monkeypatch) -> None:
-    body = b'{"slug":"scan","slice":4,"question":"what is this?","viewerContext":"Cloud action ready.","region":{"x0":1,"y0":2,"x1":5,"y1":6}}'
+@pytest.mark.parametrize("path", ["/api/ask", "/api/ask/stream"])
+@pytest.mark.parametrize("location", [{}, {"x": 1, "y": 2}, {"region": {"x0": 1, "y0": 2, "x1": 5, "y1": 6}}])
+@pytest.mark.parametrize("provider", [None, "claude", "codex"])
+@pytest.mark.parametrize("local", [False, True])
+def test_do_post_ask_forwards_payload(monkeypatch, path, location, provider, local) -> None:
+    slug = "local_fixture_1" if local else "scan"
+    payload = {"slug": slug, "slice": 4, "question": "what is this?", "provider": provider, **location}
+    if provider:
+        payload["model"] = "fixture-model"
+    if local:
+        payload["viewerContext"] = "Current slice only."
+        payload["localImage"] = {"dataUrl": "data:image/jpeg;base64,/9j/2Q==", "width": 512, "height": 256}
+    body = json.dumps(payload).encode()
     headers = {
         "X-VoxelLab-Local-Token": serve.LOCAL_API_TOKEN,
         "Content-Length": str(len(body)),
     }
-    handler, captured = make_handler("/api/ask", headers=headers, body=body)
+    handler, captured = make_handler(path, headers=headers, body=body)
+    rate_limit_paths = []
+    handler._enforce_rate_limit = lambda path: rate_limit_paths.append(path)
+    handler.send_response = lambda code: captured.update(code=code)
+    response_headers = {}
+    handler.send_header = lambda key, value: response_headers.update({key: value})
+    handler.end_headers = lambda: None
     monkeypatch.setattr(serve, "runtime_config", lambda: {"ai": {"enabled": True, "ready": True}})
     monkeypatch.setattr(serve, "valid_slugs", lambda: {"scan"})
     seen = {}
+    result = {"cached": False, "key": "fixture", "slice": 4, "x": 1, "y": 2,
+              "question": "what is this?", "answer": "ok", "crop": "fixture.jpg"}
 
     class FakeAsk:
         @staticmethod
-        def ask(slug, slice_idx, question, region=None, provider=None, model=None, viewer_context=None):
-            seen["slug"] = slug
-            seen["slice_idx"] = slice_idx
-            seen["question"] = question
-            seen["region"] = region
-            seen["provider"] = provider
-            seen["model"] = model
-            seen["viewer_context"] = viewer_context
-            return {"answer": "ok"}
+        def ask(slug, slice_idx, question, *, x=None, y=None, region=None, provider=None,
+                model=None, viewer_context=None, local_image=None, on_event=None):
+            seen.update(slug=slug, slice_idx=slice_idx, question=question, x=x, y=y,
+                        region=region, provider=provider, model=model,
+                        viewer_context=viewer_context, local_image=local_image)
+            if on_event:
+                on_event({"type": "delta", "text": "ok"})
+            return result
 
     monkeypatch.setattr(serve, "_lazy_ask", lambda: FakeAsk)
 
     serve.Handler.do_POST(handler)
 
+    assert rate_limit_paths == ["/api/ask"]
     assert seen == {
-        "slug": "scan",
+        "slug": slug,
         "slice_idx": 4,
         "question": "what is this?",
-        "region": (1, 2, 5, 6),
-        "provider": None,
-        "model": None,
-        "viewer_context": "Cloud action ready.",
+        "x": location.get("x"),
+        "y": location.get("y"),
+        "region": (1, 2, 5, 6) if "region" in location else None,
+        "provider": provider,
+        "model": "fixture-model" if provider else None,
+        "viewer_context": "Current slice only." if local else None,
+        "local_image": {"data_url": "data:image/jpeg;base64,/9j/2Q==", "width": 512,
+                        "height": 256, "name": slug, "modality": ""} if local else None,
     }
-    assert captured == {"code": 200, "body": {"answer": "ok"}}
-
+    if path == "/api/ask":
+        assert captured == {"code": 200, "body": result}
+    else:
+        assert captured == {"code": 200}
+        assert response_headers["Content-Type"] == "text/event-stream"
+        events = [json.loads(line.removeprefix("data: "))
+                  for line in handler.wfile.getvalue().decode().splitlines() if line]
+        assert events == [ai_routes.version_ask_event(event) for event in [
+            {"type": "delta", "text": "ok"}, {"type": "result", "result": result}, {"type": "done"},
+        ]]
 
 def test_do_post_ask_rejects_ambiguous_point_and_region_payload(monkeypatch) -> None:
     body = b'{"slug":"scan","slice":4,"question":"what is this?","x":1,"y":2,"region":{"x0":1,"y0":2,"x1":5,"y1":6}}'
@@ -1274,7 +1248,6 @@ def test_do_post_ask_rejects_ambiguous_point_and_region_payload(monkeypatch) -> 
         "body": {"error": "give at most one location: {x, y} OR {region:{x0,y0,x1,y1}}, or neither to ask about the whole study"},
     }
 
-
 def test_do_post_ask_rejects_inverted_region_box(monkeypatch) -> None:
     body = b'{"slug":"scan","slice":4,"question":"what is this?","region":{"x0":5,"y0":2,"x1":1,"y1":6}}'
     headers = {
@@ -1291,7 +1264,6 @@ def test_do_post_ask_rejects_inverted_region_box(monkeypatch) -> None:
         "body": {"error": "region coordinates must define a non-empty top-left to bottom-right box"},
     }
 
-
 def test_do_post_ask_rejects_negative_slice(monkeypatch) -> None:
     body = b'{"slug":"scan","slice":-1,"question":"what is this?","x":1,"y":2}'
     headers = {
@@ -1306,7 +1278,6 @@ def test_do_post_ask_rejects_negative_slice(monkeypatch) -> None:
 
     assert captured == {"code": 400, "body": {"error": "slice must be a non-negative integer"}}
 
-
 def test_json_writer_ignores_broken_pipe() -> None:
     handler = object.__new__(serve.Handler)
     handler.send_response = lambda code: None
@@ -1315,7 +1286,6 @@ def test_json_writer_ignores_broken_pipe() -> None:
     handler.wfile = types.SimpleNamespace(write=lambda payload: (_ for _ in ()).throw(BrokenPipeError()))
 
     serve.Handler._json(handler, 200, {"ok": True})
-
 
 def test_log_message_suppresses_optional_sidecar_404(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
@@ -1326,7 +1296,6 @@ def test_log_message_suppresses_optional_sidecar_404(monkeypatch) -> None:
 
     assert writes == []
 
-
 def test_log_message_keeps_unexpected_404(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
     writes: list[str] = []
@@ -1335,7 +1304,6 @@ def test_log_message_keeps_unexpected_404(monkeypatch) -> None:
     serve.Handler.log_message(handler, '"GET /missing.json HTTP/1.1" 404 -')
 
     assert writes == ['[serve] "GET /missing.json HTTP/1.1" 404 -\n']
-
 
 def test_consume_rate_limit_enforces_capacity(monkeypatch) -> None:
     serve.RATE_LIMIT_BUCKETS.clear()
@@ -1351,7 +1319,6 @@ def test_consume_rate_limit_enforces_capacity(monkeypatch) -> None:
     assert allowed is False
     assert retry_after >= 1
 
-
 def test_enforce_rate_limit_returns_retry_hint(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
     monkeypatch.setattr(handler, "_rate_limit_key", lambda: "local")
@@ -1362,14 +1329,12 @@ def test_enforce_rate_limit_returns_retry_hint(monkeypatch) -> None:
         {"error": "rate limit exceeded", "retryAfterSeconds": 12},
     )
 
-
 def test_localhost_origin_allows_only_loopback_hosts() -> None:
     assert serve.localhost_origin("http://localhost:8000") == "http://localhost:8000"
     assert serve.localhost_origin("https://127.0.0.1:3000") == "https://127.0.0.1:3000"
     assert serve.localhost_origin("https://evil.example") == ""
     assert serve.loopback_host("::1") is True
     assert serve.loopback_host("0.0.0.0") is False
-
 
 def test_allowed_proxy_asset_url_allows_only_configured_https_origins(monkeypatch) -> None:
     monkeypatch.setattr(serve._asset_proxy, "public_proxy_address", lambda _hostname: "93.184.216.34")
@@ -1383,7 +1348,6 @@ def test_allowed_proxy_asset_url_allows_only_configured_https_origins(monkeypatc
     assert serve.allowed_proxy_asset_url("https://evil.example/data/a.png", config) == ""
     assert serve.allowed_proxy_asset_url("http://pub.example/data/a.png", config) == ""
 
-
 def test_allowed_proxy_asset_url_rejects_private_ip_hosts() -> None:
     config = {"r2PublicUrl": "https://127.0.0.1:8443/assets"}
 
@@ -1391,7 +1355,6 @@ def test_allowed_proxy_asset_url_rejects_private_ip_hosts() -> None:
     assert serve.allowed_proxy_asset_url("https://169.254.169.254/latest/meta-data", {
         "trustedUploadOrigins": ["https://169.254.169.254"],
     }) == ""
-
 
 def test_allowed_proxy_asset_url_fails_closed_when_dns_fails(monkeypatch) -> None:
     def fail_dns(*_args, **_kwargs):
@@ -1403,7 +1366,6 @@ def test_allowed_proxy_asset_url_fails_closed_when_dns_fails(monkeypatch) -> Non
         "https://assets.example/data/a.png",
         {"trustedUploadOrigins": ["https://assets.example"]},
     ) == ""
-
 
 def test_proxy_connection_uses_once_validated_address_and_tls_hostname(monkeypatch) -> None:
     dns_calls = 0
@@ -1445,7 +1407,6 @@ def test_proxy_connection_uses_once_validated_address_and_tls_hostname(monkeypat
     assert connected["server_hostname"] == "assets.example"
     assert dns_calls == 1
 
-
 def test_configured_proxy_origins_include_manifest_remote_asset_hosts(tmp_path: Path, monkeypatch) -> None:
     manifest = tmp_path / "manifest.json"
     _ = manifest.write_text(json.dumps({
@@ -1470,17 +1431,14 @@ def test_configured_proxy_origins_include_manifest_remote_asset_hosts(tmp_path: 
     assert "https://labels.example" in origins
     assert "https://sym.example" in origins
 
-
 def test_allowed_proxy_asset_url_rejects_all_when_no_proxy_origins_are_configured() -> None:
     assert serve.allowed_proxy_asset_url("https://pub.example/data/a.png", {}) == ""
-
 
 def test_proxy_asset_request_uses_browser_user_agent() -> None:
     req = serve.proxy_asset_request("https://pub.example/data/a.png")
 
     assert req.full_url == "https://pub.example/data/a.png"
     assert req.get_header("User-agent") == "Mozilla/5.0 (VoxelLab local asset proxy)"
-
 
 def test_proxy_asset_no_redirect_handler_raises_http_error() -> None:
     handler = serve._asset_proxy._NoRedirect()
@@ -1500,7 +1458,6 @@ def test_proxy_asset_no_redirect_handler_raises_http_error() -> None:
         assert exc.url == "http://169.254.169.254/latest/meta-data"
     else:
         raise AssertionError("redirect was not blocked")
-
 
 def test_proxy_asset_real_opener_blocks_http_redirect() -> None:
     target_hits = 0
@@ -1539,7 +1496,6 @@ def test_proxy_asset_real_opener_blocks_http_redirect() -> None:
     assert exc_info.value.code == 302
     assert target_hits == 0
     assert serve.allowed_proxy_asset_url(url, {"trustedUploadOrigins": [url]}) == ""
-
 
 def test_do_get_proxy_asset_streams_remote_body(monkeypatch) -> None:
     class Headers:
@@ -1599,7 +1555,6 @@ def test_do_get_proxy_asset_streams_remote_body(monkeypatch) -> None:
     assert handler.wfile.write_sizes == [4, 4, 2]
     assert handler.wfile.getvalue() == b"0123456789"
 
-
 def test_do_get_proxy_asset_blocks_redirect_to_private_host(monkeypatch) -> None:
     handler, captured = make_handler(
         "/api/proxy-asset?url=https%3A%2F%2Fpub.example%2Fdata%2Fa.png",
@@ -1632,7 +1587,6 @@ def test_do_get_proxy_asset_blocks_redirect_to_private_host(monkeypatch) -> None
         "body": {"error": "asset fetch failed: redirect blocked: Found"},
     }
 
-
 def test_end_headers_adds_localhost_cors_and_csp(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
     headers: list[tuple[str, str]] = []
@@ -1652,7 +1606,6 @@ def test_end_headers_adds_localhost_cors_and_csp(monkeypatch) -> None:
     assert "https://cdn.jsdelivr.net" not in csp
     assert "worker-src 'self'" in csp
 
-
 def test_static_paths_allow_viewer_assets_and_only_required_node_modules() -> None:
     assert serve.allowed_static_path("/") is True
     assert serve.allowed_static_path("/js/bootstrap.js") is True
@@ -1669,14 +1622,12 @@ def test_static_paths_allow_viewer_assets_and_only_required_node_modules() -> No
     assert serve.allowed_static_path("/node_modules/three/examples/jsm/loaders/OBJLoader.js") is False
     assert serve.allowed_static_path("/js/%2e%2e/AGENTS.md") is False
 
-
 def test_trackball_controls_rewrite_keeps_three_self_hosted() -> None:
     source = "import { EventDispatcher } from 'three';"
 
     assert serve.rewritten_trackball_controls_source(source) == (
         "import { EventDispatcher } from '../../../build/three.module.js';"
     )
-
 
 def test_end_headers_skips_cors_for_sensitive_local_api_routes(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
@@ -1691,7 +1642,6 @@ def test_end_headers_skips_cors_for_sensitive_local_api_routes(monkeypatch) -> N
     assert "Access-Control-Allow-Origin" not in dict(headers)
     assert "Content-Security-Policy" in dict(headers)
 
-
 def test_end_headers_skips_cors_for_non_local_origin(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
     headers: list[tuple[str, str]] = []
@@ -1703,7 +1653,6 @@ def test_end_headers_skips_cors_for_non_local_origin(monkeypatch) -> None:
 
     assert "Access-Control-Allow-Origin" not in dict(headers)
     assert "Content-Security-Policy" in dict(headers)
-
 
 def test_do_options_returns_204(monkeypatch) -> None:
     handler = object.__new__(serve.Handler)
@@ -1718,7 +1667,6 @@ def test_do_options_returns_204(monkeypatch) -> None:
     assert ("Content-Length", "0") in seen["headers"]
     assert seen["ended"] is True
 
-
 def test_private_local_api_options_reject_cross_origin_with_403() -> None:
     handler, captured = make_handler(
         "/api/consult",
@@ -1728,7 +1676,6 @@ def test_private_local_api_options_reject_cross_origin_with_403() -> None:
     serve.Handler.do_OPTIONS(handler)
 
     assert captured == {"code": 403, "body": {"error": "/api/consult is same-origin only"}}
-
 
 def test_private_local_api_get_rejects_cross_origin_with_403() -> None:
     handler, captured = make_handler(
@@ -1740,14 +1687,12 @@ def test_private_local_api_get_rejects_cross_origin_with_403() -> None:
 
     assert captured == {"code": 403, "body": {"error": "/api/local-token is same-origin only"}}
 
-
 def test_private_local_api_get_rejects_missing_browser_context_headers() -> None:
     handler, captured = make_handler("/api/local-token")
 
     serve.Handler.do_GET(handler)
 
     assert captured == {"code": 403, "body": {"error": "/api/local-token requires a same-origin browser context"}}
-
 
 def test_private_local_api_get_rejects_same_origin_lan_host() -> None:
     handler, captured = make_handler(
@@ -1762,7 +1707,6 @@ def test_private_local_api_get_rejects_same_origin_lan_host() -> None:
         "body": {"error": "/api/local-token is available only on loopback hosts"},
     }
 
-
 def test_main_rejects_non_loopback_bind_before_starting_server(monkeypatch, capsys) -> None:
     monkeypatch.setattr(serve.sys, "argv", ["serve.py", "--bind", "0.0.0.0"])
     monkeypatch.setattr(
@@ -1773,7 +1717,6 @@ def test_main_rejects_non_loopback_bind_before_starting_server(monkeypatch, caps
 
     assert serve.main() is False
     assert "refusing non-loopback bind" in capsys.readouterr().err
-
 
 def test_viewer_server_selects_ipv6_socket_for_ipv6_loopback(monkeypatch) -> None:
     captured = {}
@@ -1792,7 +1735,6 @@ def test_viewer_server_selects_ipv6_socket_for_ipv6_loopback(monkeypatch) -> Non
 
     assert captured["family"] == serve.socket.AF_INET6
     assert captured["address"] == ("::1", 8000)
-
 
 def test_private_local_api_get_rejects_same_origin_fetch_metadata_without_origin() -> None:
     handler, captured = make_handler("/api/local-token", headers={"Sec-Fetch-Site": "same-origin"})

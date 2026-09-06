@@ -3,9 +3,29 @@ import { test } from 'node:test';
 
 const {
   classifyUltrasoundSource,
-  canScanConvert,
-  scanConvertToVolume,
 } = await import('../js/ultrasound.js');
+
+test('DICOM region spatial format describes data, not probe geometry', () => {
+  for (const [format, dataType] of [[1, 'still'], [2, 'm-mode'], [3, 'doppler'], [4, 'waveform']]) {
+    const result = classifyUltrasoundSource({
+      Modality: 'US',
+      SequenceOfUltrasoundRegions: [{ RegionSpatialFormat: format }],
+    });
+    assert.equal(result.dataType, dataType);
+    assert.equal(result.probeGeometry, 'unknown');
+    assert.equal(result.volumetricEligible, false);
+  }
+});
+
+test('mixed ultrasound regions cannot be reconstructed as a spatial stack', () => {
+  for (const format of [2, 3, 4, 5]) {
+    const result = classifyUltrasoundSource({
+      Modality: 'US',
+      SequenceOfUltrasoundRegions: [{ RegionSpatialFormat: 1 }, { RegionSpatialFormat: format }],
+    }, { status: 'calibrated', source: 'external-json', probeGeometry: 'sector', mode: 'stacked-sector' });
+    assert.equal(result.reconstructionEligible, false);
+  }
+});
 
 test('classifyUltrasoundSource identifies US cine data and blocks volumetric use', () => {
   const result = classifyUltrasoundSource({
@@ -54,7 +74,7 @@ test('classifyUltrasoundSource detects Doppler data type', () => {
   });
 
   assert.equal(result.dataType, 'doppler');
-  assert.match(result.reason, /not spatial/i);
+  assert.match(result.reason, /reconstruction is not supported/i);
 });
 
 test('calibrated ultrasound source becomes reconstruction-eligible without claiming display volume', () => {
@@ -75,9 +95,4 @@ test('calibrated ultrasound source becomes reconstruction-eligible without claim
   assert.equal(result.reconstructionEligible, true);
   assert.equal(result.scanConversionAvailable, true);
   assert.equal(result.volumetricEligible, false);
-  assert.equal(canScanConvert(result), true);
-});
-
-test('scanConvertToVolume throws until engine is implemented', () => {
-  assert.throws(() => scanConvertToVolume(null, null), /not yet implemented/i);
 });

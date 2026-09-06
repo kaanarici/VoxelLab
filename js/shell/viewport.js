@@ -1,7 +1,3 @@
-// Viewport utilities: orientation markers, invert toggle, zoom-to-fit,
-// and MR window/level presets. Pure DOM/CSS operations — no Three.js,
-// no canvas pixel manipulation.
-
 import { $ } from '../dom.js';
 import { state } from '../core/state.js';
 import { MR_PRESETS } from '../core/constants.js';
@@ -11,8 +7,6 @@ import { obliqueBasis } from '../mpr/mpr-oblique-geometry.js';
 import { updateScaleBar } from '../overlay/scale-bar.js';
 import { setFitZoom, setInvertDisplay, setWindowLevel, setVolumeTransfer } from '../core/state/viewer-commands.js';
 
-// L/R/A/P/S/I corner labels from ImageOrientationPatient (2D mode).
-
 const DIRS = { L: 'L', R: 'R', A: 'A', P: 'P', S: 'S', I: 'I' };
 const OPPOSITE = { L: 'R', R: 'L', A: 'P', P: 'A', S: 'I', I: 'S' };
 
@@ -21,7 +15,6 @@ const UI_FADE = 'ui-fade-in';
 let _last2dOrientSig = '';
 let _lastMprOrientSig = '';
 
-/** Same 0.38s fade as studies rail / skeletons; skips when reduced-motion is set. */
 function restartOrientationFade(elements) {
   const list = elements.filter(Boolean);
   if (!list.length) return;
@@ -35,12 +28,11 @@ function restartOrientationFade(elements) {
 
 function majorAxis(x, y, z) {
   const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z);
-  if (ax >= ay && ax >= az) return x > 0 ? DIRS.L : DIRS.R;  // +X LPS = Left
-  if (ay >= ax && ay >= az) return y > 0 ? DIRS.P : DIRS.A;  // +Y LPS = Posterior
-  return z > 0 ? DIRS.S : DIRS.I;                              // +Z LPS = Superior
+  if (ax >= ay && ax >= az) return x > 0 ? DIRS.L : DIRS.R;
+  if (ay >= ax && ay >= az) return y > 0 ? DIRS.P : DIRS.A;
+  return z > 0 ? DIRS.S : DIRS.I;
 }
 
-/** @param {object} [series] — when omitted, uses manifest series at `state.seriesIdx`. */
 export function updateOrientationMarkers(series) {
   const els = {
     left:   $('orient-left'),
@@ -51,10 +43,7 @@ export function updateOrientationMarkers(series) {
   if (!els.left) return;
 
   const s = series ?? state.manifest?.series?.[state.seriesIdx];
-  // Only label sides when the series has a REAL patient frame. Microscopy,
-  // secondary captures and plain image stacks have no patient orientation (some
-  // are assigned an identity IOP at import), so labeling them L/R/A/P would be
-  // false precision — clear the markers instead of guessing.
+
   if (!hasPatientFrame(s)) {
     _last2dOrientSig = '';
     for (const el of Object.values(els)) {
@@ -65,13 +54,9 @@ export function updateOrientationMarkers(series) {
   }
   const [r0, r1, r2, c0, c1, c2] = s.orientation;
 
-  // Row direction (IOP first triplet) = direction of increasing column index
-  // → points toward the RIGHT side of the displayed image.
   const rightLabel = majorAxis(r0, r1, r2);
   const leftLabel  = OPPOSITE[rightLabel];
 
-  // Column direction (IOP second triplet) = direction of increasing row index
-  // → points toward the BOTTOM of the displayed image.
   const bottomLabel = majorAxis(c0, c1, c2);
   const topLabel    = OPPOSITE[bottomLabel];
 
@@ -86,12 +71,6 @@ export function updateOrientationMarkers(series) {
   restartOrientationFade([els.left, els.right, els.top, els.bottom]);
 }
 
-/**
- * Relabel the 3D view-preset buttons (Top/Front/L/R/…) with the anatomy each
- * camera direction actually reveals for THIS series, so non-axial / flipped
- * acquisitions don't get a confident wrong-side label. Neutral view-axis labels
- * when the series has no patient frame.
- */
 export function updateThreeDViewLabels(series) {
   const labels = viewPresetAnatomy(series) || NEUTRAL_VIEW_LABELS;
   for (const view in labels) {
@@ -102,7 +81,6 @@ export function updateThreeDViewLabels(series) {
   }
 }
 
-/** Per-MPR-pane L/R/A/P/S/I markers (2D markers are hidden in MPR mode). */
 export function updateMprOrientationMarkers(series) {
   const prefixes = ['mpr-ax', 'mpr-co', 'mpr-sa', 'mpr-ob'];
   if (!hasPatientFrame(series)) {
@@ -182,8 +160,6 @@ export function toggleInvert() {
 }
 export function isInverted() { return !!state.invertDisplay; }
 
-// Fit the physical in-plane box inside the stage. Size the CSS box first so
-// --zoom is not applied to the 512×512 HTML placeholder.
 export function zoomToFit() {
   const canvas = $('view');
   const stage = $('view-stage');

@@ -74,7 +74,7 @@ async function syncParentDirectory(filePath, fsApi) {
     handle = await fsApi.open(path.dirname(filePath), 'r');
     await handle.sync();
   } catch {
-    // Directory fsync is unavailable on some platforms/filesystems.
+
   } finally {
     if (handle) await handle.close().catch(() => {});
   }
@@ -92,14 +92,14 @@ async function writeSettingsAtomic(filePath, contents, fsApi = fs) {
     try {
       await fsApi.chmod(tempPath, 0o600);
     } catch {
-      // File permissions are best-effort on non-POSIX filesystems.
+
     }
     await fsApi.rename(tempPath, filePath);
     await syncParentDirectory(filePath, fsApi);
     try {
       await fsApi.chmod(filePath, 0o600);
     } catch {
-      // File permissions are best-effort on non-POSIX filesystems.
+
     }
   } catch (error) {
     if (handle) await handle.close().catch(() => {});
@@ -153,7 +153,7 @@ export async function clearCloudSettings(userDataPath, { fsApi = fs } = {}) {
     await fsApi.rm(filePath, { force: true });
     await syncParentDirectory(filePath, fsApi);
   } catch {
-    // Missing settings file is already clear.
+
   }
   return readCloudSettings(userDataPath);
 }

@@ -11,7 +11,6 @@ import pytest
 
 pytestmark = pytest.mark.filterwarnings("ignore:.*__module__ attribute.*:DeprecationWarning")
 
-
 def test_rtk_projection_wrapper_smoke(tmp_path: Path) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)

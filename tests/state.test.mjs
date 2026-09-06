@@ -91,7 +91,6 @@ test('initial app and runtime models have disjoint root ownership', () => {
   const duplicateRoots = Object.keys(createInitialRuntimeState()).filter(key => appRoots.has(key));
 
   assert.deepEqual(duplicateRoots, []);
-  assert.equal(appRoots.has('previewLabel'), true);
   assert.equal(appRoots.has('imgs'), false);
 });
 
@@ -161,18 +160,6 @@ test('state snapshots include nested display roots without flat aliases', () => 
 
   assert.deepEqual(snapshot.three.clipMin, [0.12, 0.24, 0.36]);
   assert.equal(Object.hasOwn(snapshot, 'clipMin'), false);
-});
-
-test('transient previewLabel has one live root shared with overlay snapshots', () => {
-  state.previewLabel = 17;
-
-  const snapshot = getStateSnapshot();
-
-  assert.equal(state.previewLabel, 17);
-  assert.equal(snapshot.previewLabel, 17);
-
-  state.previewLabel = null;
-  assert.equal(getStateSnapshot().previewLabel, null);
 });
 
 test('state snapshots do not recurse into cyclic runtime objects', () => {

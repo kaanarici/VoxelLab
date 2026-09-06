@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""RTK-backed projection reconstruction wrapper for VoxelLab."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ from engine_report import normalize_engine_validation
 from engine_sources import normalize_source_manifest, projection_manifest_errors
 from geometry import cross3, normalize3
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run RTK projection reconstruction from a VoxelLab manifest + NPY stack.")
     _ = parser.add_argument("--input-manifest", required=True, help="Path to normalized projection source manifest JSON.")
@@ -29,21 +27,22 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--backend", choices=("auto", "cpu"), default="auto", help="RTK backend selection.")
     return parser.parse_args()
 
-
 def load_rtk() -> tuple[Any, Any]:
     try:
         import itk
         from itk import RTK as rtk
-    except Exception as exc:  # pragma: no cover - import failure path is runtime-specific.
+    except Exception as exc:
         raise RuntimeError("itk-rtk is required; run `npm run setup -- --rtk`") from exc
     return itk, rtk
 
-
 def detector_spacing(projection: dict[str, Any]) -> list[float]:
-    spacing = projection.get("detectorSpacingMm", projection.get("inputSpacingMm", [1.0, 1.0]))
-    values = [float(spacing[0]), float(spacing[1])] if isinstance(spacing, list) and len(spacing) >= 2 else [1.0, 1.0]
-    return [values[0] if values[0] > 0 else 1.0, values[1] if values[1] > 0 else 1.0]
-
+    spacing = projection.get("detectorSpacingMm", projection.get("inputSpacingMm"))
+    if not isinstance(spacing, list) or len(spacing) != 2:
+        raise ValueError("Projection reconstruction requires calibrated detector pixel spacing")
+    values = [float(value) for value in spacing]
+    if not all(np.isfinite(value) and value > 0 for value in values):
+        raise ValueError("Projection detector spacing must be finite and positive")
+    return values
 
 def projection_origin(rows: int, cols: int, spacing_rc: list[float]) -> list[float]:
     row_spacing, col_spacing = spacing_rc
@@ -52,7 +51,6 @@ def projection_origin(rows: int, cols: int, spacing_rc: list[float]) -> list[flo
         -((rows - 1) * row_spacing) / 2.0,
         0.0,
     ]
-
 
 def volume_direction(itk: Any, orientation: list[float]) -> Any:
     row = orientation[:3]
@@ -64,7 +62,6 @@ def volume_direction(itk: Any, orientation: list[float]) -> Any:
         [row[2], col[2], slice_dir[2]],
     ], dtype=np.float64)
     return itk.matrix_from_array(matrix)
-
 
 def build_geometry(itk: Any, rtk: Any, projection: dict[str, Any], projection_count: int, matrix_list: list[list[list[float]]]) -> Any:
     geometry = rtk.ThreeDCircularProjectionGeometry.New()
@@ -112,13 +109,11 @@ def build_geometry(itk: Any, rtk: Any, projection: dict[str, Any], projection_co
         )
     return geometry
 
-
 def image_array(itk: Any, image: Any, label: str) -> np.ndarray:
     array = itk.GetArrayFromImage(image)
     if array is None:
         raise RuntimeError(f"RTK {label} filter did not produce an output image")
     return array.astype(np.float32, copy=False)
-
 
 def reconstruct(manifest: dict[str, Any], projection_stack: np.ndarray, backend: str = "auto") -> dict[str, Any]:
     if projection_stack.ndim != 3:
@@ -131,6 +126,8 @@ def reconstruct(manifest: dict[str, Any], projection_stack: np.ndarray, backend:
 
     projection = manifest["projection"]
     geometry_model = str(projection.get("geometryModel", projection.get("geometry", "")) or "")
+    if geometry_model == "parallel-beam-stack":
+        raise RuntimeError("parallel-beam geometry requires a calibrated external reconstruction engine; the prototype fallback was removed")
     if geometry_model == "limited-angle-tomo":
         raise RuntimeError("limited-angle geometry requires an iterative reconstruction runtime; FDK is not appropriate")
     itk, rtk = load_rtk()
@@ -143,14 +140,14 @@ def reconstruct(manifest: dict[str, Any], projection_stack: np.ndarray, backend:
     projections.SetOrigin(projection_origin(rows, cols, detector_spacing_rc))
 
     width, height, depth = [int(value) for value in projection["outputShape"]]
-    row_spacing, col_spacing, slice_spacing = [float(value) for value in projection["outputSpacingMm"]]
+    x_spacing, y_spacing, z_spacing = [float(value) for value in projection["outputSpacingMm"]]
     first_ipp = [float(value) for value in projection["firstIPP"]]
     orientation = [float(value) for value in projection["orientation"]]
 
     image_type = itk.Image[itk.F, 3]
     source = rtk.ConstantImageSource[image_type].New()
     source.SetOrigin(first_ipp)
-    source.SetSpacing([col_spacing, row_spacing, slice_spacing])
+    source.SetSpacing([x_spacing, y_spacing, z_spacing])
     source.SetSize([width, height, depth])
     source.SetConstant(0.0)
     source.SetDirection(volume_direction(itk, orientation))
@@ -186,7 +183,6 @@ def reconstruct(manifest: dict[str, Any], projection_stack: np.ndarray, backend:
     }
     return {"volume": volume, "report": report}
 
-
 def main() -> int:
     args = parse_args()
     manifest = normalize_source_manifest(json.loads(Path(args.input_manifest).read_text()))
@@ -208,7 +204,6 @@ def main() -> int:
     }
     _ = output_path.write_text(json.dumps(payload, indent=2))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

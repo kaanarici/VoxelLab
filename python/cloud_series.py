@@ -1,18 +1,14 @@
-"""Shared helpers for cloud/public series asset URLs."""
-
 from __future__ import annotations
 
 import copy
 import urllib.parse
 from typing import Any
 
-
 def normalize_origin(value: str) -> str:
     parsed = urllib.parse.urlparse(str(value or ""))
     if not parsed.scheme or not parsed.netloc:
         return ""
     return f"{parsed.scheme}://{parsed.netloc}"
-
 
 def apply_public_series_urls(
     entry: dict[str, Any],
@@ -35,7 +31,6 @@ def apply_public_series_urls(
     if out.get("hasStats"):
         out.setdefault("statsUrl", f"{base}/data/{slug}_stats.json")
     return out
-
 
 def validate_public_series_urls(entry: dict[str, Any], public_base: str) -> list[str]:
     base = str(public_base or "").rstrip("/")

@@ -1,6 +1,3 @@
-// Persist and restore the main window's size, position, and maximized/fullscreen
-// state across launches. Bounds are validated against the current displays so a
-// window saved on a now-disconnected monitor never restores off-screen.
 import { screen } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -31,8 +28,6 @@ function boundsOnScreen(bounds) {
   });
 }
 
-// Bounds + flags to pass into `new BrowserWindow(...)`. Size is always honored
-// (clamped to the minimum); position is only restored when still on a display.
 export function restoredWindowOptions(app) {
   const state = readState(app);
   const width = Math.max(MIN_SIZE.width, Math.round(Number(state?.width) || DEFAULT_BOUNDS.width));
@@ -53,8 +48,6 @@ function debounce(fn, ms) {
   };
 }
 
-// Save the window's normal (non-maximized) bounds plus the maximized/fullscreen
-// flags, debounced on resize/move and flushed on state changes and close.
 export function trackWindowState(window, app) {
   let normalBounds = window.getBounds();
   const persist = () => {
@@ -70,7 +63,7 @@ export function trackWindowState(window, app) {
         isFullScreen: window.isFullScreen(),
       }));
     } catch {
-      // Best-effort; a transient write failure must never break the window.
+
     }
   };
   const debounced = debounce(persist, 400);

@@ -1,4 +1,3 @@
-/* global document, window */
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedTimeSeriesOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';

@@ -47,8 +47,6 @@ export function toggleAskMode() {
   return on;
 }
 
-// The crosshair / marquee / hint only show while the pen sub-tool is armed; in
-// plain ask mode the viewer keeps its normal pan/window-level cursors.
 export function syncAskPickingUi() {
   const wrap = $('canvas-wrap');
   const xform = $('view-xform');

@@ -6,7 +6,7 @@ const { samplePlaneIntensity, boundsOfPoints } = await import('../js/microscopy/
 const all = () => true;
 
 test('samplePlaneIntensity accumulates raw single-channel values over the bbox', () => {
-  // 3x2 plane, row-major. Values chosen > 255 to prove raw (not 8-bit) domain.
+
   const plane = { width: 3, height: 2, pixels: new Float32Array([40000, 10000, 20000, 0, 30000, 5000]) };
   const { n, sum, sum2, min, max } = samplePlaneIntensity(plane, all, { minX: 0, maxX: 2, minY: 0, maxY: 1 });
   assert.equal(n, 6);
@@ -18,7 +18,7 @@ test('samplePlaneIntensity accumulates raw single-channel values over the bbox',
 
 test('samplePlaneIntensity respects the inclusion test at pixel centers', () => {
   const plane = { width: 2, height: 1, pixels: new Float32Array([40000, 10000]) };
-  // Only the left pixel center (0.5) is inside.
+
   const inside = (cx) => cx < 1;
   const { n, sum, min, max } = samplePlaneIntensity(plane, inside, { minX: 0, maxX: 1, minY: 0, maxY: 0 });
   assert.equal(n, 1);

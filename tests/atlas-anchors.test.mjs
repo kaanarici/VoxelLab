@@ -12,7 +12,6 @@ const labels = {
   },
 };
 
-// 4x4 label plane: label 5 fills the top-left 2x2, label 9 the bottom-right 2x2.
 function plane2x2() {
   const p = new Uint8Array(16);
   p[0] = p[1] = p[4] = p[5] = 5;
@@ -23,7 +22,7 @@ function plane2x2() {
 test('returns present regions with name, color, area, and centroid sorted top-to-bottom', () => {
   const { regions } = presentRegionsForSlice(series, 0, labels, { plane: plane2x2(), minAreaPx: 1 });
   assert.equal(regions.length, 2);
-  assert.deepEqual(regions.map((r) => r.label), [5, 9]); // sorted by cy ascending
+  assert.deepEqual(regions.map((r) => r.label), [5, 9]);
   assert.equal(regions[0].name, 'Liver');
   assert.deepEqual(regions[0].color, [10, 20, 30]);
   assert.equal(regions[0].areaPx, 4);
@@ -45,11 +44,10 @@ test('respects hiddenLabels', () => {
 });
 
 test('snaps the anchor to an in-region pixel for split/concave regions', () => {
-  // Label 3 occupies only two far-apart pixels; the arithmetic centroid (1.5,0)
-  // lands in background, so the snapped anchor must be one of the two pixels.
+
   const p = new Uint8Array(16);
-  p[0] = 3; // (0,0)
-  p[3] = 3; // (3,0)
+  p[0] = 3;
+  p[3] = 3;
   const { regions } = presentRegionsForSlice(
     series,
     0,

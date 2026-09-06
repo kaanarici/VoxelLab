@@ -27,9 +27,7 @@ function resolveSeries(host, seriesOrSlug) {
   if (active?.slug === seriesOrSlug) return active;
   const matches = (host?.manifest?.series || []).filter((series) => series?.slug === seriesOrSlug);
   if (matches.length === 1) return matches[0];
-  // Test and isolated utility callers without a manifest remain usable. Real
-  // viewer callers pass the selected series object, so an ambiguous slug never
-  // becomes a durable identity.
+
   return matches.length ? null : { slug: String(seriesOrSlug || '') };
 }
 
@@ -125,7 +123,6 @@ function entryId(kind, slug, sliceIdx, entry, index) {
   return `${kind}:${slug}|${sliceIdx}:${entry?.id ?? index}`;
 }
 
-// Shape: { measurements: 1, angles: 0, rois: 2, notes: 1, total: 4 }.
 export function drawingCountsForSlice(host, seriesOrSlug, sliceIdx) {
   const ctx = context(host, seriesOrSlug);
   if (!ctx) return { measurements: 0, angles: 0, rois: 0, notes: 0, total: 0 };
@@ -136,7 +133,6 @@ export function drawingCountsForSlice(host, seriesOrSlug, sliceIdx) {
   return { measurements, angles, rois, notes, total: measurements + angles + rois + notes };
 }
 
-// Shape: [{ kind: "line", id: "measure:brain_ax|12:0", sliceIdx: 12, data: {...} }].
 export function drawingEntriesForSeries(host, seriesOrSlug) {
   const ctx = context(host, seriesOrSlug);
   if (!ctx) return [];

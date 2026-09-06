@@ -1,23 +1,10 @@
-// Per-slice region anchors for the atlas view.
-//
-// Single source of truth = the same per-slice label bytes the 2D compositor
-// paints (a slice of state.regionVoxels, or the decoded regions PNG). Scanning
-// that plane keeps every callout anchor in lock-step with the rendered figure
-// for ANY loaded modality/body part, with no precomputed sidecar required.
-//
-// For each present label the anchor is the deepest-interior point (the maximum of
-// a distance transform), so the dot lands in the thick bulk of the structure's
-// largest blob — robust to concave shapes, holes, and scattered speckle — rather
-// than on a stray edge pixel.
-
 import { readImageByteData } from '../overlay/overlay-data.js';
 import { regionLabelName } from '../core/region-meta.js';
 
-const MAX_LABEL = 253; // 254/255 are reserved/avoided by the slice compositor
-const DEFAULT_MIN_AREA_PX = 8; // drop single-pixel speckle from the callouts
-const DEFAULT_MAX_LABELS = 40; // cap callouts so two columns stay legible
+const MAX_LABEL = 253;
+const DEFAULT_MIN_AREA_PX = 8;
+const DEFAULT_MAX_LABELS = 40;
 
-/** Per-slice label bytes (Uint8Array w*h) for the active region overlay, or null. */
 export function regionPlaneForSlice(series, sliceIdx, labels) {
   if (!series || !labels?.available) return null;
   const W = series.width | 0;
@@ -40,18 +27,12 @@ function colorForLabel(meta, label) {
   return Array.isArray(c) && c.length === 3 ? c : [170, 170, 170];
 }
 
-// Deepest-interior point of `label` within its bounding box: the pixel furthest
-// from any non-region pixel (the maximum of a chamfer distance transform). This
-// lands the anchor in the thickest part of the structure's largest blob — robust
-// to concave shapes, holes, and small disconnected speckle — instead of a stray
-// edge pixel near the arithmetic centroid. A 1px background pad makes bbox-border
-// pixels measure their true distance to the outside.
 function deepestInteriorPoint(plane, W, label, minX, minY, maxX, maxY) {
   const bw = maxX - minX + 1;
   const bh = maxY - minY + 1;
   const pw = bw + 2;
   const ph = bh + 2;
-  const dist = new Float32Array(pw * ph); // 0 = background (incl. the 1px pad)
+  const dist = new Float32Array(pw * ph);
   const INF = 1e9;
   for (let ly = 0; ly < bh; ly += 1) {
     const srow = (minY + ly) * W + minX;
@@ -84,11 +65,6 @@ function deepestInteriorPoint(plane, W, label, minX, minY, maxX, maxY) {
   return { x: bestX, y: bestY };
 }
 
-/**
- * Regions present on `sliceIdx`, each with a deepest-interior anchor in voxel
- * space. Returns { regions: [{ label, name, color:[r,g,b], cx, cy, areaPx }],
- * hiddenCount } where hiddenCount is how many small regions the cap dropped.
- */
 export function presentRegionsForSlice(series, sliceIdx, labels, opts = {}) {
   const minAreaPx = opts.minAreaPx ?? DEFAULT_MIN_AREA_PX;
   const maxLabels = opts.maxLabels ?? DEFAULT_MAX_LABELS;
@@ -101,14 +77,12 @@ export function presentRegionsForSlice(series, sliceIdx, labels, opts = {}) {
   const W = series.width | 0;
   const H = series.height | 0;
   const count = new Float64Array(256);
-  // Per-label bounding box (for the distance-transform anchor).
+
   const minX = new Int32Array(256).fill(W);
   const minY = new Int32Array(256).fill(H);
   const maxX = new Int32Array(256).fill(-1);
   const maxY = new Int32Array(256).fill(-1);
-  // Optional per-region base-intensity histogram (indexed [label*256 + value]),
-  // used by the 3D overlay to drop labels for structures the transfer function
-  // has windowed out — by measuring the fraction of a region's voxels in-window.
+
   const base = opts.baseBytes && opts.baseBytes.length === W * H ? opts.baseBytes : null;
   const hist = base ? new Uint32Array(256 * 256) : null;
 
@@ -134,8 +108,7 @@ export function presentRegionsForSlice(series, sliceIdx, labels, opts = {}) {
 
   let regions = present.map((label) => {
     const anchor = deepestInteriorPoint(plane, W, label, minX[label], minY[label], maxX[label], maxY[label]);
-    // Cumulative voxel count by intensity 0..255, so the 3D overlay can read
-    // "voxels in [low,high]" as cdf[hi]-cdf[lo-1] in O(1) on every slider drag.
+
     let intensityCdf;
     if (base) {
       const cdf = new Uint32Array(256);

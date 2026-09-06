@@ -1,10 +1,5 @@
-// Analyze Particles: label connected foreground regions of a binary mask, measure each
-// against the raw source plane, and filter by size/circularity. Pure, no DOM. Mirrors
-// ImageJ Analyze > Analyze Particles (default 8-connectivity).
-
 import { samplePlaneIntensity } from './microscopy-plane-sampler.js';
 
-// 8-connected two-pass union-find labeling. Returns { labels: Int32Array (0=bg), count }.
 function labelComponents(mask, W, H) {
   const len = W * H;
   const labels = new Int32Array(len);
@@ -17,10 +12,10 @@ function labelComponents(mask, W, H) {
       const i = y * W + x;
       if (!mask[i]) continue;
       const neighbors = [];
-      if (x > 0 && labels[i - 1]) neighbors.push(labels[i - 1]);                       // W
-      if (y > 0 && labels[i - W]) neighbors.push(labels[i - W]);                        // N
-      if (x > 0 && y > 0 && labels[i - W - 1]) neighbors.push(labels[i - W - 1]);       // NW
-      if (x < W - 1 && y > 0 && labels[i - W + 1]) neighbors.push(labels[i - W + 1]);   // NE
+      if (x > 0 && labels[i - 1]) neighbors.push(labels[i - 1]);
+      if (y > 0 && labels[i - W]) neighbors.push(labels[i - W]);
+      if (x > 0 && y > 0 && labels[i - W - 1]) neighbors.push(labels[i - W - 1]);
+      if (x < W - 1 && y > 0 && labels[i - W + 1]) neighbors.push(labels[i - W + 1]);
       if (neighbors.length === 0) { labels[i] = next; parent[next] = next; next++; continue; }
       const m = Math.min(...neighbors);
       labels[i] = m;
@@ -39,10 +34,6 @@ function labelComponents(mask, W, H) {
   return { labels, count };
 }
 
-// Trace the outer outline of `label` as a closed polygon of pixel-CORNER vertices (matching
-// ImageJ's wand outline), with collinear runs merged to turn points. Method: collect unit
-// boundary edges (FG/non-FG faces) with consistent clockwise orientation (FG inside), then
-// link head-to-tail into a cycle. Pixel (x,y) occupies the unit cell [x,x+1]×[y,y+1].
 function traceOutline(labels, W, H, label, startX, startY) {
   const fg = (x, y) => x >= 0 && x < W && y >= 0 && y < H && labels[y * W + x] === label;
   const next = new Map();
@@ -50,13 +41,13 @@ function traceOutline(labels, W, H, label, startX, startY) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       if (labels[y * W + x] !== label) continue;
-      if (!fg(x, y - 1)) link(x, y, x + 1, y);             // top edge, FG below
-      if (!fg(x + 1, y)) link(x + 1, y, x + 1, y + 1);     // right edge, FG left
-      if (!fg(x, y + 1)) link(x + 1, y + 1, x, y + 1);     // bottom edge, FG above
-      if (!fg(x - 1, y)) link(x, y + 1, x, y);             // left edge, FG right
+      if (!fg(x, y - 1)) link(x, y, x + 1, y);
+      if (!fg(x + 1, y)) link(x + 1, y, x + 1, y + 1);
+      if (!fg(x, y + 1)) link(x + 1, y + 1, x, y + 1);
+      if (!fg(x - 1, y)) link(x, y + 1, x, y);
     }
   }
-  // The top-left pixel's top-left corner is on the outer outline; start the walk there.
+
   const start = [startX, startY];
   const raw = [];
   let cur = start;
@@ -68,7 +59,6 @@ function traceOutline(labels, W, H, label, startX, startY) {
     cur = nx;
   } while (!(cur[0] === start[0] && cur[1] === start[1]) && raw.length < cap);
 
-  // Merge collinear consecutive vertices into turn points.
   const merged = [];
   for (let i = 0; i < raw.length; i++) {
     const prev = raw[(i - 1 + raw.length) % raw.length];
@@ -80,11 +70,6 @@ function traceOutline(labels, W, H, label, startX, startY) {
   return merged.length >= 3 ? merged : raw;
 }
 
-// Faithful port of ImageJ PolygonRoi.getTracedPerimeter(): staircase length with a per-corner
-// correction so digitized boundaries approximate the true perimeter. `verts` are turn points;
-// pw/ph are pixel width/height (1 when uncalibrated). The correction term and corner-toggle
-// logic match ImageJ source exactly — including the anisotropic (pw≠ph) correction
-// (pw+ph)−√(pw²+ph²), which a (pw+ph)/2·(2−√2) approximation gets wrong for non-square pixels.
 function tracedPerimeter(verts, pw = 1, ph = 1) {
   const n = verts.length;
   if (n < 2) return 0;
@@ -106,9 +91,6 @@ function tracedPerimeter(verts, pw = 1, ph = 1) {
   return sumdx * pw + sumdy * ph - (nCorners * ((pw + ph) - Math.hypot(pw, ph)));
 }
 
-// mask: Uint8Array (1=foreground). sourcePlane: { pixels, width, height } raw values.
-// opts: { connectivity:8, sizeRange:[minPx,maxPx], circularityRange:[lo,hi], excludeEdges }.
-// spacing: { rowMm, colMm, known } from datasetSpacingMm.
 export function analyzeParticles(mask, sourcePlane, opts = {}, spacing = {}) {
   const W = sourcePlane.width | 0;
   const H = sourcePlane.height | 0;
@@ -130,7 +112,7 @@ export function analyzeParticles(mask, sourcePlane, opts = {}, spacing = {}) {
       if (x > a.maxX) a.maxX = x;
       if (y < a.minY) a.minY = y;
       if (y > a.maxY) a.maxY = y;
-      if (a.startY < 0) { a.startX = x; a.startY = y; } // raster-first = topmost-leftmost
+      if (a.startY < 0) { a.startX = x; a.startY = y; }
     }
   }
 
@@ -145,7 +127,7 @@ export function analyzeParticles(mask, sourcePlane, opts = {}, spacing = {}) {
 
     const bbox = { minX: a.minX, maxX: a.maxX, minY: a.minY, maxY: a.maxY };
     const polygon = traceOutline(labels, W, H, lab, a.startX, a.startY);
-    // ImageJ traced perimeter + circularity (4π·area/perimeter², capped at 1.0, like ImageJ).
+
     const perimeterPx = tracedPerimeter(polygon, 1, 1);
     const perimeterMm = known ? tracedPerimeter(polygon, spacing.colMm, spacing.rowMm) : null;
     const areaMm2 = pxAreaMm2 != null ? a.area * pxAreaMm2 : null;

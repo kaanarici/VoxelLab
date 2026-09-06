@@ -1,10 +1,3 @@
-// Z-projection of a microscopy plane stack (one C/T column) into a single plane.
-// Pure: operates on raw single-channel plane buffers, no DOM. Modes mirror ImageJ's
-// Image > Stacks > Z Project (Max/Average/Sum/Standard Deviation).
-
-// planes: [{ pixels, width, height }] in Z order (one channel/time column).
-// zRange: optional inclusive [zFirst, zLast] index window; defaults to the whole stack.
-// Returns { pixels: Float64Array, width, height, mode, zRange:[lo,hi] }.
 export function projectStack(planes, { mode = 'max', zRange = null } = {}) {
   if (!Array.isArray(planes) || planes.length === 0) throw new Error('projectStack: no planes');
   const W = planes[0].width | 0;
@@ -43,7 +36,7 @@ export function projectStack(planes, { mode = 'max', zRange = null } = {}) {
       const px = planes[z].pixels;
       for (let i = 0; i < len; i++) { const d = px[i] - mean[i]; m2[i] += d * d; }
     }
-    // Sample standard deviation (N-1), matching ImageJ's SD projection.
+
     for (let i = 0; i < len; i++) out[i] = N > 1 ? Math.sqrt(m2[i] / (N - 1)) : 0;
   } else {
     throw new Error(`projectStack: unknown mode ${mode}`);

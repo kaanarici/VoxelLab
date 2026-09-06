@@ -1,9 +1,6 @@
-"""Named ultrasound scan-conversion profiles."""
-
 from __future__ import annotations
 
 from typing import Any
-
 
 DEFAULT_PROFILES = {
     "stacked-sector-default": {
@@ -20,14 +17,12 @@ DEFAULT_PROFILES = {
     },
 }
 
-
 def default_profile_id(config: dict[str, Any]) -> str:
     mode = str(config.get("mode", "") or "")
     probe = str(config.get("probeGeometry", "") or "")
     if mode == "tracked-freehand-sector" and probe == "sector":
         return "tracked-freehand-sector-default"
     return "stacked-sector-default"
-
 
 def resolve_ultrasound_profile(config: dict[str, Any]) -> dict[str, Any]:
     profile_id = str(config.get("profileId", "") or "") or default_profile_id(config)

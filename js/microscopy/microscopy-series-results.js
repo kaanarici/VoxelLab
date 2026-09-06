@@ -123,8 +123,6 @@ function cleanSlugPart(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '') || 'microscopy';
 }
 
-// Keep only a bounded raw-plane store for analysis and C/T volume rebuilding;
-// oversized stacks still import for display but fail closed for raw operations.
 const MAX_RAW_RETENTION_BYTES = 1.5e9;
 
 export function buildMicroscopySeriesResults(pages, metadata, fileName, slugBase = `micro_${Date.now().toString(36)}`) {

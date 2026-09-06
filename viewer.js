@@ -1,7 +1,3 @@
-// Medical imaging viewer — composition root: init(), module inits, viewerBridge.
-// DOM/canvas wiring: js/wire-controls.js; series load: js/select-series.js;
-// local-backend UI gating: js/local-backend-mode.js; auto W/L: js/auto-window-level.js.
-
 import { state } from './js/core/state.js';
 import { OVERLAY_ENABLE_KINDS } from './js/core/viewer-session-shape.js';
 import { $, clientToCanvasPx as _clientToCanvasPx, closeModal, openModal } from './js/dom.js';
@@ -155,8 +151,7 @@ function syncOverlayOpacityUI() {
   const visible = OVERLAY_ENABLE_KINDS.some((kind) => state.overlays[kind]);
   const wrap = $('overlay-opacity-wrap');
   if (wrap) wrap.hidden = !visible;
-  // The toolbar "Opacity" slider and the 3D-panel "Color" slider both edit
-  // state.overlays.overlayOpacity (overlay color strength) — keep them mirrored.
+
   const tb = $('overlay-opacity'); if (tb) tb.value = state.overlays.overlayOpacity;
   const row = $('anatomy-group'); if (row) row.hidden = !visible;
   const sl = $('s-anatomy-color'); if (sl) sl.value = state.overlays.overlayOpacity;
@@ -199,14 +194,11 @@ async function init() {
     updateOrientationMarkers(state.manifest.series[state.seriesIdx]);
   }
 
-  // Cross-origin preconnect + first-slice preload (no-op if everything is local).
   applyCrossOriginPreloads(state.manifest, { activeSeriesIdx: 0 });
 
   const sd = $('study-date');
   if (sd) sd.textContent = state.manifest.studyDate;
 
-  // Empty state: only show when there's genuinely no data.
-  // Default is hidden (no flash on load when data exists).
   const wrap = $('canvas-wrap');
   if (state.manifest.series.length === 0) {
     wrap.classList.add('no-series');
@@ -214,7 +206,6 @@ async function init() {
     if (seriesName) seriesName.textContent = '—';
   }
 
-  // Projects: folder organization persisted in IndexedDB
   initProjects({
     onUpdate: (currentSeriesIdx = state.seriesIdx) => renderProjectsSidebar(state.manifest, currentSeriesIdx),
     selectSeries,
@@ -281,7 +272,6 @@ async function init() {
     });
   }
 
-  // Shape: re-apply local-backend gating after config.json is loaded.
   applyLocalBackendMode();
   initCloud(cfg.modalWebhookBase, cfg.r2PublicUrl, {
     enabled: cfg.features?.cloudProcessing !== false,
@@ -333,7 +323,7 @@ async function init() {
   }));
 
   registerCommands([
-    // Tools
+
     { id: 'ruler',     label: 'Ruler',           icon: 'i-ruler',   section: 'Tools', shortcut: 'R',   keywords: 'measure distance', action: () => $('btn-measure').click() },
     { id: 'angle',     label: 'Angle',           icon: 'i-corner',  section: 'Tools', shortcut: 'G',   keywords: 'protractor',       action: () => $('btn-angle').click() },
     { id: 'roi-ell',   label: 'Ellipse ROI',     icon: 'i-circle',  section: 'Tools', shortcut: 'E',   keywords: 'region oval',      action: () => $('btn-roi-ell').click() },
@@ -341,21 +331,21 @@ async function init() {
     { id: 'roi-point', label: 'Point count ROI', icon: 'i-pin',     section: 'Tools', shortcut: 'O',   keywords: 'point count cell marker', action: () => $('btn-roi-point').click() },
     { id: 'annotate',  label: 'Annotate',        icon: 'i-pin',     section: 'Tools', shortcut: 'N',   keywords: 'pin note',         action: () => $('btn-annot').click() },
     { id: 'clear',     label: 'Clear slice drawings', icon: 'i-x',  section: 'Tools',                  keywords: 'delete remove',    action: () => $('btn-clear').click() },
-    // Overlays
+
     { id: 'brain',     label: 'Brain (skull strip)', icon: 'i-brain',  section: 'Overlays', shortcut: 'B', keywords: 'skull strip',    action: () => $('btn-brain').click() },
     { id: 'tissue',    label: 'Tissue segmentation', icon: 'i-layers', section: 'Overlays', shortcut: 'T', keywords: 'csf gm wm',     action: () => $('btn-seg').click() },
     { id: 'labels',    label: 'Anatomy overlay',  icon: 'i-map',     section: 'Overlays',                keywords: 'parcellation',    action: () => $('btn-regions').click() },
     { id: 'heatmap',   label: 'Symmetry heatmap', icon: 'i-flip',    section: 'Overlays', shortcut: 'Y', keywords: 'asymmetry',       action: () => $('btn-sym').click() },
-    // View
+
     { id: 'compare',   label: 'Compare mode',     icon: 'i-columns', section: 'View', shortcut: 'C',   keywords: 'side by side',     action: () => $('btn-compare').click() },
     { id: 'mpr',       label: 'MPR mode',         icon: 'i-grid',    section: 'View', shortcut: 'M',   keywords: 'multiplanar',      action: () => $('btn-mpr').click() },
     { id: '3d',        label: '3D volume',         icon: 'i-cube',    section: 'View', shortcut: '3',   keywords: 'three render',     action: () => $('btn-3d').click() },
     { id: 'anatomy-labels', label: 'Anatomy labels', icon: 'i-atlas', section: 'Overlays', shortcut: 'L', keywords: 'labels callouts region names anatomy', action: () => $('btn-anatomy-labels').click() },
-    // Display
+
     { id: 'auto-wl',   label: 'Auto contrast',    icon: 'i-sun',     section: 'Display', shortcut: 'A', keywords: 'window level',    action: () => $('btn-auto').click() },
     { id: 'invert',    label: 'Invert',           icon: 'i-flip',    section: 'Display', shortcut: 'I', keywords: 'negative',         action: () => $('btn-invert').click() },
     { id: 'zoomfit',   label: 'Zoom to fit',      icon: 'i-maximize',section: 'Display', shortcut: 'F', keywords: 'reset fit',        action: () => $('btn-zoomfit').click() },
-    // Export
+
     { id: 'screenshot',label: 'Screenshot',       icon: 'i-camera',  section: 'Export', shortcut: 'S',  keywords: 'capture png',      action: () => $('btn-shot').click() },
     {
       id: 'screenshot-tiff',
@@ -375,7 +365,7 @@ async function init() {
       { id: 'consult',   label: 'Consolidated read',icon: 'i-scroll',  section: 'Export',                  keywords: 'synthesize',      action: () => $('btn-consult').click() },
     ] : []),
     { id: 'help',      label: 'Help & shortcuts', icon: 'i-help',    section: 'Export', shortcut: '?',  keywords: 'keyboard reference',action: () => $('btn-help').click() },
-    // General
+
     { id: 'shortcuts', label: 'Customize shortcuts', icon: 'i-help',  section: 'General',                keywords: 'keyboard keybindings hotkeys preferences', action: openShortcutsModal },
     { id: 'cloud-processing', label: 'Cloud GPU processing', icon: 'i-upload', section: 'Cloud',         keywords: 'modal gpu segmentation process ct mr dicom upload', action: openCloudProcessingUpload },
     ...cloudActionCommands,
@@ -388,8 +378,7 @@ async function init() {
   await renderProjectsSidebar(state.manifest, state.seriesIdx);
 
   if (state.manifest.series.length > 0) {
-    // Prefer the series that was active in the previous session; fall back to the
-    // perf-mode volumetric heuristic, then to the first series.
+
     const persistedIdx = persistedInitialSeriesIndex(state.manifest);
     const preferredSeriesIdx = persistedIdx >= 0
       ? persistedIdx
@@ -402,15 +391,13 @@ async function init() {
           ),
         )
         : 0;
-    // Declared manifest metadata does not prove the bytes are reachable, so open
-    // the first series whose opening slice actually resolves.
+
     const initialSelectRequestId = state.selectRequestId;
     const probed = await firstAvailableSeriesIdx(
       state.manifest.series,
       seriesProbeOrder(state.manifest.series, preferredSeriesIdx),
     );
-    // Native open events can finish while the initial remote probe is pending.
-    // Preserve that newer selection instead of restoring the probed startup series.
+
     if (state.selectRequestId === initialSelectRequestId) {
       await selectSeries(probed >= 0 ? probed : preferredSeriesIdx);
     }
@@ -421,9 +408,6 @@ async function init() {
   syncThemeIcons();
 }
 
-// The active series' view state is only captured on switch-away, so a plain
-// refresh would lose its latest slice/mode/W-L. Snapshot + flush the current
-// series when the page is hidden or unloaded so reloads land where you left off.
 function installSessionPersistenceFlush() {
   const flush = () => {
     rememberSeriesViewState();
@@ -512,7 +496,6 @@ function syncShortcutHints(root = document) {
 
 onShortcutsChange(() => syncShortcutHints());
 
-// Theme toggle — instant, no transition (initial glyph sync: bootstrap.js + end of init())
 syncThemeIcons();
 const themeBtn = $('btn-theme');
 if (themeBtn) {

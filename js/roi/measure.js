@@ -1,12 +1,3 @@
-// Measurement (ruler) tool. Two-click linear measurements with the
-// physical distance computed from DICOM pixelSpacing. Stored per
-// (series, slice) in state.measurements and rendered through an SVG
-// overlay that sits inside the pan/zoom transform wrapper — so rulers
-// track the image automatically.
-//
-// Co-renders any ROI shapes for the current slice because rulers and
-// ROIs share the same overlay SVG.
-
 import { $, canvasScreenScale, clientToCanvasPx } from '../dom.js';
 import { inPlanePixelSpacing } from '../core/geometry.js';
 import { formatLengthFromMm } from '../core/physical-units.js';
@@ -47,7 +38,7 @@ export function appendMeasurement(key, measurement) {
   const { slug, sliceIdx } = parseSliceKey(key);
   const target = drawingTarget(slug);
   const list = measurementEntriesForSlice(state, target, sliceIdx);
-  // Shape: { id: 3, x1: 10, y1: 20, x2: 40, y2: 20, mm: 12.4 }.
+
   const { _new, ...persisted } = measurement || {};
   const next = [...list, { ...persisted, id: persisted?.id ?? nextDrawingEntryId(list) }];
   return setMeasurementEntriesForSlice(state, target, sliceIdx, next);
@@ -132,10 +123,6 @@ export function onMeasureClick(ev) {
   drawMeasurements();
 }
 
-// Full SVG redraw — rulers for the current slice, the in-progress
-// preview dot, and every ROI shape. Cheap enough to call on every
-// mouse-up / scrub tick because the overlay rarely has more than a
-// handful of elements.
 export function drawMeasurements() {
   const svg = $('overlay-svg');
   const canvas = $('view');
@@ -165,7 +152,6 @@ export function drawMeasurements() {
     line.setAttribute('class', 'm-line');
     group.appendChild(line);
 
-    // Endpoint dots — purely visual
     for (const [cx, cy] of [[m.x1, m.y1], [m.x2, m.y2]]) {
       const dot = document.createElementNS(svgNS, 'ellipse');
       dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
@@ -175,7 +161,6 @@ export function drawMeasurements() {
       group.appendChild(dot);
     }
 
-    // Label at the midpoint, raised above the line
     const midX = (m.x1 + m.x2) / 2;
     const midY = (m.y1 + m.y2) / 2;
     const screenDx = (m.x2 - m.x1) * scaleX;
@@ -200,8 +185,6 @@ export function drawMeasurements() {
     label.setAttribute('transform', `translate(${labelX} ${labelY}) scale(${scaleY / scaleX} 1) translate(${-labelX} ${-labelY})`);
     group.appendChild(label);
 
-    // Explicit delete button — a small circle with × next to the label.
-    // Clicking the line itself no longer deletes (too easy to misclick).
     const btnX = labelX + (label.textContent.length * 3.2 + 10) / scaleX;
     const btnY = labelY - 4 / scaleY;
     const btn = document.createElementNS(svgNS, 'ellipse');
@@ -225,8 +208,6 @@ export function drawMeasurements() {
     cross2.setAttribute('class', 'm-del-x');
     group.appendChild(cross2);
 
-    // Transparent hit-target over the delete button so the whole circle
-    // is clickable, not just the thin × strokes.
     const hit = document.createElementNS(svgNS, 'ellipse');
     hit.setAttribute('cx', btnX);
     hit.setAttribute('cy', btnY);
@@ -244,8 +225,6 @@ export function drawMeasurements() {
     svg.appendChild(group);
   });
 
-  // In-progress preview — shows the first click point before the user
-  // picks the second endpoint.
   if (state.measurePending) {
     const dot = document.createElementNS(svgNS, 'ellipse');
     dot.setAttribute('cx', state.measurePending.x);
@@ -256,13 +235,11 @@ export function drawMeasurements() {
     svg.appendChild(dot);
   }
 
-  // ROI shapes + labels for the current slice
   drawROIs(svg);
-  // Angle measurements for the current slice
+
   drawAngles(svg);
   updateScaleBar();
 
-  // Ask tool: dashed marquee while dragging a region (screengrab-style)
   if (getAskSession().mode && getAskSession().marquee) {
     const m = getAskSession().marquee;
     const lx = Math.min(m.x0, m.x1);

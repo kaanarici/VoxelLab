@@ -1,14 +1,3 @@
-// Atlas overlay for the 3D volume. Labels match the CURRENT scrubber slice (the
-// same regions the 2D view shows for that slice) — projected onto the slice's
-// depth plane and re-projected every frame, so the leader lines stay glued to
-// the structures and sweep as you orbit or zoom, while the pills live in two evenly-
-// spaced screen columns aligned just outside the model. Hidden when the cut face
-// turns away from the camera, or when the clip box / transfer function removes
-// the structure.
-//
-// Lazy-loaded: imported only when the 3D atlas is first enabled (it pulls in the
-// Three render loop), so the 2D atlas and app startup never load Three for this.
-
 import { state, subscribe } from '../core/state.js';
 import { $ } from '../dom.js';
 import { getThreeRuntime } from '../runtime/viewer-runtime.js';
@@ -30,9 +19,8 @@ const COL_GAP = 20;
 const COL_W_FRAC = 0.16;
 const COL_W_MIN = 120;
 const COL_W_MAX = 200;
-const MAX_VISIBLE = 28; // cap on-screen callouts for legibility
-// A label drops once fewer than this fraction of its voxels fall inside the
-// transfer-function window (i.e. the structure has mostly stopped rendering).
+const MAX_VISIBLE = 28;
+
 const MIN_VISIBLE_FRACTION = 0.1;
 
 let _enabled = false;
@@ -68,8 +56,7 @@ function updateLabels() {
 
   const overlays = activeOverlayStateForSeries(series);
   const labels = overlays.labels;
-  // Independent of the colour overlay (labels.enabled): labels need only the
-  // region data (available + meta), so they show with or without Anatomy colour.
+
   if (!labels.available || !labels.meta) { clearAtlasPills(svg); return; }
 
   const canvas = renderer.domElement;
@@ -82,7 +69,6 @@ function updateLabels() {
   _dirty = false;
   _lastW = w; _lastH = h;
 
-  // Align the overlay exactly to the renderer canvas inside #canvas-wrap.
   const wrap = $('canvas-wrap');
   if (wrap) {
     const cr = canvas.getBoundingClientRect();
@@ -96,9 +82,6 @@ function updateLabels() {
   svg.setAttribute('width', w);
   svg.setAttribute('height', h);
 
-  // When something is locked, only the locked structures render, so show ONLY
-  // their labels (the rest would point at hidden geometry). Otherwise show all
-  // minus the user's manual hidden set; hover-fade is pure CSS.
   const manualHidden = state.hiddenLabels instanceof Set ? state.hiddenLabels : new Set();
   const locked = state.lockedLabels instanceof Set ? state.lockedLabels : new Set();
   const isLockedView = locked.size > 0;
@@ -109,17 +92,14 @@ function updateLabels() {
   const W = series.width | 0;
   const H = series.height | 0;
   const D = series.slices | 0;
-  const lz = (state.sliceIdx + 0.5) / D - 0.5; // current slice's depth plane in local box space
-  const tz = (state.sliceIdx + 0.5) / D; // ...in [0,1] texcoord, for clip-box testing
+  const lz = (state.sliceIdx + 0.5) / D - 0.5;
+  const tz = (state.sliceIdx + 0.5) / D;
   const lowT = Number.isFinite(state.three.lowT) ? state.three.lowT : 0;
   const highT = Number.isFinite(state.three.highT) ? state.three.highT : 1;
   const clipMin = state.three.clipMin || [0, 0, 0];
   const clipMax = state.three.clipMax || [1, 1, 1];
   mesh.updateWorldMatrix(true, false);
 
-  // World-space normal of the slice plane (local +z, the cut face exposed by the
-  // depth scrubber). When it faces away from the camera the structures are on the
-  // far/occluded side, so we hide those callouts.
   _faceA.set(0, 0, lz); mesh.localToWorld(_faceA);
   _faceB.set(0, 0, lz + 0.05); mesh.localToWorld(_faceB);
   _faceN.copy(_faceB).sub(_faceA).normalize();
@@ -129,11 +109,10 @@ function updateLabels() {
     if (!show(r.label)) continue;
     const tx = r.cx / W;
     const ty = r.cy / H;
-    // Clipped away by the 3D clip box?
+
     if (tx < clipMin[0] || tx > clipMax[0] || ty < clipMin[1] || ty > clipMax[1]
       || tz < clipMin[2] || tz > clipMax[2]) continue;
-    // Windowed out by the transfer function? Hide when too little of the region's
-    // voxels actually fall inside [low,high] (i.e. the structure barely renders).
+
     if (r.intensityCdf) {
       const loV = Math.max(0, Math.floor(lowT * 255));
       const hiV = Math.min(255, Math.ceil(highT * 255));
@@ -142,16 +121,15 @@ function updateLabels() {
     }
     _world.set(tx - 0.5, ty - 0.5, lz);
     mesh.localToWorld(_world);
-    // Occlusion cull only in the all-visible view. When locked, the structure is
-    // isolated and you orbit around it, so keep its label stable (no flicker).
+
     if (!isLockedView) {
       _camToFace.copy(camera.position).sub(_world);
-      if (_camToFace.dot(_faceN) <= 0) continue; // slice plane turned away from camera
+      if (_camToFace.dot(_faceN) <= 0) continue;
     }
     _view.copy(_world).applyMatrix4(camera.matrixWorldInverse);
-    if (_view.z >= -0.001) continue; // behind the camera
+    if (_view.z >= -0.001) continue;
     _ndc.copy(_world).project(camera);
-    if (_ndc.x < -1.05 || _ndc.x > 1.05 || _ndc.y < -1.05 || _ndc.y > 1.05) continue; // off-screen
+    if (_ndc.x < -1.05 || _ndc.x > 1.05 || _ndc.y < -1.05 || _ndc.y > 1.05) continue;
     visible.push({
       label: r.label,
       name: r.name,
@@ -174,8 +152,7 @@ function updateLabels() {
     centerX: w / 2,
     rowH: ROW_H,
   });
-  // Aligned columns sit just outside the model's projected box (not the screen
-  // edge), so labels stay close to it. Outer edges line up; inner edges hug it.
+
   let minMX = Infinity;
   let maxMX = -Infinity;
   for (let c = 0; c < 8; c += 1) {

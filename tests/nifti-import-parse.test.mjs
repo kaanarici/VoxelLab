@@ -146,7 +146,7 @@ function tiny4dNiftiFile({
   view.setFloat32(88, 4, true);
   view.setFloat32(92, timeSpacing, true);
   view.setFloat32(108, 352, true);
-  view.setUint8(123, 10); // millimeters + seconds
+  view.setUint8(123, 10);
   view.setFloat32(136, timeOffset, true);
   view.setInt16(254, 1, true);
   view.setFloat32(280, 2, true);

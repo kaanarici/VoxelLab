@@ -1,9 +1,5 @@
 import { FZSTD_ESM_URL, PAKO_ESM_URL } from '../../core/dependencies.js';
 
-// pako/fzstd resolve to CDN (browser) or /node_modules (desktop) URLs, but Node's
-// default ESM loader cannot import an https: URL. Zarr decode runs in both the
-// browser viewer and Node (verifier/tests), so in Node import the installed
-// package by name; in the browser keep the URL the rest of the app uses.
 const IN_NODE = Boolean(globalThis.process?.versions?.node) && !('window' in globalThis);
 
 export async function zarrInflate(src) {

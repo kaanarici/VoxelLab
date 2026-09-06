@@ -20,6 +20,6 @@
       document.documentElement.style.setProperty('--rail-left-w', w + 'px');
     }
   } catch {
-    /* ignore */
+
   }
 })();

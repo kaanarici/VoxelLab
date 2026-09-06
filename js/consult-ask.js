@@ -1,5 +1,3 @@
-// Region-scoped Ask composer (inline /api/ask chat over the viewer) + study
-// consult (/api/consult) modal.
 import { state, subscribe } from './core/state.js';
 import { $, escapeHtml, openModal, clientToCanvasPx } from './dom.js';
 import { getConfig, localApiHeaders, viewerAiFlags } from './config.js';
@@ -33,14 +31,13 @@ import {
   writeStoredAskModelKey,
 } from './ask-models.js';
 
-/** Min drag size (px in slice space) each dimension — below this we nudge the user. */
 const ASK_MIN_DRAG = 24;
-/** At/below this drag size it's a click, not a box → ask about the whole study. */
+
 const ASK_CLICK_EPS = 6;
 const DEFAULT_ASK_PLACEHOLDER = 'What do you see in this region?';
-/** Auto-grow ceiling for the prompt input (px) before it scrolls internally. */
+
 const ASK_INPUT_MAX_H = 160;
-/** Fade duration (ms) when the "Thinking" shimmer retires into the answer. */
+
 const ASK_THINKING_FADE_MS = 200;
 const MAX_CLOUD_ACTION_CONTEXT_SERIES = 8;
 
@@ -309,28 +306,13 @@ function askCloudActionContext() {
   return `\n\nViewer cloud/action context:\n- ${lines.join('\n- ')}`;
 }
 
-// ---------------------------------------------------------------------------
-// Scoped Ask composer — an inline chat anchored over the viewer. One drag-
-// selected region scopes a conversation; follow-up questions stack in a thread
-// above the prompt bar. Lifecycle is state-driven (see watchComposerLifecycle):
-// any series/view/tool change closes the composer so a stale region can never
-// outlive its slice. `_ask.seq` invalidates in-flight /api/ask responses whose
-// composer was closed or re-scoped before they returned.
-// ---------------------------------------------------------------------------
-
-/**
- * Active composer scope, or null when closed.
- * @type {{ slug: string, slice: number, region: {x0:number,y0:number,x1:number,y1:number},
- *          loc: string, thumb: string, available: boolean, seq: number } | null}
- */
 let _ask = null;
 let _askSeq = 0;
 let _composerBuilt = false;
 let _lifecycleWatched = false;
-/** True while a question is streaming — blocks sending another until it lands. */
+
 let _askBusy = false;
 
-/** Selected AI provider/model (persisted), switched from the bar's model pill. */
 let _askModels = [];
 let _aiChoice = readStoredAskModelKey();
 
@@ -409,15 +391,12 @@ function autoGrowAskInput() {
   ta.style.height = `${Math.min(ASK_INPUT_MAX_H, h)}px`;
   const bar = ta.closest('.ask-bar');
   if (!bar) return;
-  // Past one line the textarea lifts onto its own full-width row above the
-  // controls (and the pill morphs to a rounded rect). FLIP the lift so the
-  // controls/textarea glide to their new spots instead of snapping.
+
   const tall = h > 44;
   if (bar.classList.contains('ask-bar--tall') === tall) return;
   flipBarReflow(bar, () => bar.classList.toggle('ask-bar--tall', tall));
 }
 
-/** FLIP the bar's children across the single-row ↔ stacked layout change. */
 function flipBarReflow(bar, mutate) {
   const kids = [...bar.children];
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { mutate(); return; }
@@ -431,7 +410,7 @@ function flipBarReflow(bar, mutate) {
     c.style.transition = 'none';
     c.style.transform = `translate(${dx}px, ${dy}px)`;
   });
-  void bar.offsetWidth; // reflow so the inverted start position paints
+  void bar.offsetWidth;
   kids.forEach((c) => {
     c.style.transition = 'transform var(--resize-dur) var(--resize-ease)';
     c.style.transform = '';
@@ -701,7 +680,6 @@ function buildAskComposer() {
   });
   el.querySelector('#ask-scope-close').addEventListener('click', () => closeAskComposer());
 
-  // "+" popover: arm the pen (region select). Outside-click / Escape closes it.
   const plus = el.querySelector('#ask-bar-plus');
   const pop = el.querySelector('#ask-bar-pop');
   const modelBtn = el.querySelector('#ask-bar-model');
@@ -738,8 +716,7 @@ function buildAskComposer() {
 function watchComposerLifecycle() {
   if (_lifecycleWatched) return;
   _lifecycleWatched = true;
-  // A scoped conversation is only valid for the slice/series/region it was
-  // opened on, so any of these transitions tears it down.
+
   const closeIfOpen = () => { if (_ask) closeAskComposer(); };
   subscribe('seriesIdx', closeIfOpen);
   subscribe('mode', closeIfOpen);
@@ -749,7 +726,6 @@ function watchComposerLifecycle() {
 const ASK_STUDY_ICON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg>`;
 const ASK_ATT_X = `<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
 
-/** Render the attachment deck (region crops + context studies) in the scope row. */
 function renderAttachments() {
   if (!_ask) return;
   const stack = $('ask-stack');
@@ -808,7 +784,6 @@ function removeAttachment(i) {
   renderAttachments();
 }
 
-/** Fill the "+" popover with the other uploaded studies (to add as context). */
 function renderPopStudies() {
   const list = $('ask-pop-studies');
   const sep = $('ask-pop-sep');
@@ -838,7 +813,6 @@ function renderPopStudies() {
   });
 }
 
-/** Stack fan-out on hover with a bouncy spring on return (avatar-group trick). */
 function _wireStackHover(stack) {
   if (stack.dataset.hoverWired) return;
   stack.dataset.hoverWired = '1';
@@ -888,9 +862,6 @@ function openAskComposer(ctx) {
   renderAttachments();
   syncAskDisclosure(currentAskModel());
 
-  // A region is now selected, so the slice is no longer a selection target:
-  // drop the crosshair cursor (class sources + the inline one the canvas
-  // mousemove handler last set) and the drag hint while the composer is open.
   $('canvas-wrap')?.classList.remove('ask-picking');
   $('view-xform')?.classList.remove('measuring');
   const view = $('view');
@@ -898,12 +869,10 @@ function openAskComposer(ctx) {
   const hint = $('ask-mode-hint');
   if (hint) hint.hidden = true;
 
-  // Show first, then size + animate: a hidden textarea reports scrollHeight 0,
-  // which previously left the empty input mis-sized until the first keystroke.
   el.hidden = false;
   const drawer = $('ask-drawer');
   drawer.classList.remove('ask-drawer-in');
-  void drawer.offsetWidth; // restart the slide-up-from-behind animation
+  void drawer.offsetWidth;
   drawer.classList.add('ask-drawer-in');
   syncAskSendEnabled();
   requestAnimationFrame(() => {
@@ -914,17 +883,16 @@ function openAskComposer(ctx) {
 
 export function closeAskComposer() {
   _ask = null;
-  _askSeq++; // any in-flight response now resolves against a dead seq
+  _askSeq++;
   _askBusy = false;
   closeAskLightbox();
   const el = $('ask-composer');
   if (el) el.hidden = true;
   setAskPen(false);
-  // Pen retired with the composer; the viewer is a normal pannable viewer again.
+
   syncAskPickingUi();
 }
 
-// --- Region quick-look: click the attachment to preview the crop large ---
 let _lightboxKeyHandler = null;
 
 function openAskLightbox(src) {
@@ -943,7 +911,7 @@ function openAskLightbox(src) {
   lb.classList.remove('ask-lightbox-in');
   void lb.offsetWidth;
   lb.classList.add('ask-lightbox-in');
-  // Capture-phase so Escape closes the preview before the composer/global handler.
+
   _lightboxKeyHandler = (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -963,7 +931,6 @@ function closeAskLightbox() {
   }
 }
 
-/** Close the composer if it owns the current Escape (handled before exit-ask-mode). */
 export function cancelAskQuestionIfOpen() {
   const el = $('ask-composer');
   if (!_ask || !el || el.hidden) return false;
@@ -971,10 +938,6 @@ export function cancelAskQuestionIfOpen() {
   return true;
 }
 
-// Reveal the answer word by word with a soft blur-fade. Whitespace tokens are
-// kept as text nodes so wrapping and newlines are preserved exactly; the stagger
-// caps so very long answers don't trail on forever. Pure opacity/blur, so the
-// effect is identical in light and dark themes (the text keeps var(--text)).
 function renderAnswerWithFade(el, text) {
   el.textContent = '';
   const cell = document.createElement('div');
@@ -994,8 +957,7 @@ function renderAnswerWithFade(el, text) {
     }
   }
   el.appendChild(cell);
-  // Grow the answer's height in (grid-rows) as the words fade, so the drawer
-  // expands smoothly rather than jumping to the full height.
+
   el.classList.add('ask-a-reveal');
   requestAnimationFrame(() => el.classList.add('ask-a-in'));
 }
@@ -1019,9 +981,6 @@ function appendLiveAnswer(el, text) {
   cell.textContent += text || '';
 }
 
-// The steps timeline (prompt-kit "Steps"): a continuous line on the left with the
-// kind icon spaced from it per call, grouped under a collapsible trigger. Live
-// calls stream in via upsertToolChip; cached results render as a collapsed group.
 const _svgIcon = (inner, size = 14) =>
   `<svg class="ask-step-ico-svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 
@@ -1056,24 +1015,21 @@ function _buildToolChip(host, { id, kind, label, detail }) {
     head.addEventListener('click', () => {
       const opening = step.classList.toggle('open');
       head.setAttribute('aria-expanded', String(opening));
-      // Keep the toggled header fixed; only the content below it moves (one
-      // direction), instead of the drawer-up + reveal-down dual motion.
+
       if (opening) requestAnimationFrame(() => step.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
     });
   }
   host.appendChild(step);
-  // Grow + fade the row in (a frame later so the 0fr→1fr transition fires).
+
   requestAnimationFrame(() => step.classList.add('ask-step-in'));
   return step;
 }
 
-/** The kind icon stays put; running pulses it, error tints it red. */
 function _setChipState(step, state) {
   step.classList.toggle('ask-step--running', state === 'running');
   step.classList.toggle('ask-step--error', state === 'error');
 }
 
-/** Lazily create the collapsible steps group (chevron-left trigger + timeline). */
 function _ensureStepsGroup(host) {
   let group = host.querySelector('.ask-steps');
   if (group) return group;
@@ -1097,7 +1053,6 @@ function _ensureStepsGroup(host) {
   return group;
 }
 
-/** Live: create a step when a tool starts; flip its node on its result. */
 function upsertToolChip(host, ev) {
   if (!host || !ev.id) return;
   const timeline = _ensureStepsGroup(host).querySelector('.ask-steps-timeline');
@@ -1120,8 +1075,6 @@ function appendToolOutput(host, ev) {
   detail.textContent = `${detail.textContent || ''}${prefix}${ev.text}`.slice(-5000);
 }
 
-/** Tools done: collapse the timeline to a clean summary line you can re-expand
- *  (or drop an empty group if no real tools ran). */
 function collapseStepsGroup(host) {
   const group = host?.querySelector('.ask-steps');
   if (!group) return;
@@ -1136,7 +1089,6 @@ function collapseStepsGroup(host) {
   }
 }
 
-/** Post-hoc (cached results have no live stream): build the group collapsed. */
 function renderToolSteps(host, steps) {
   if (!host || !Array.isArray(steps) || !steps.length) return;
   host.innerHTML = '';
@@ -1172,8 +1124,7 @@ async function submitAskQuestion() {
 
   const thread = $('ask-thread');
   thread.hidden = false;
-  // Only the latest turn reserves the breathing room below "Thinking"; older
-  // turns collapse to their natural height.
+
   thread.querySelectorAll('.ask-qa--active').forEach((el) => el.classList.remove('ask-qa--active'));
   const block = document.createElement('div');
   block.className = 'ask-qa ask-qa--active';
@@ -1187,7 +1138,7 @@ async function submitAskQuestion() {
   `;
   thread.appendChild(block);
   thread.scrollTop = thread.scrollHeight;
-  // Grow + fade the whole turn in (a frame later so the 0fr→1fr transition fires).
+
   requestAnimationFrame(() => { block.classList.add('ask-qa-in'); thread.scrollTop = thread.scrollHeight; });
   const ansEl = block.querySelector('.ask-qa-a');
 
@@ -1203,8 +1154,6 @@ async function submitAskQuestion() {
   let liveAnswer = '';
   let liveAnswerStarted = false;
 
-  // Errors can arrive after a tool ran (ansEl hidden, group mid-"Working…"), so
-  // fail() must settle the timeline and restore the answer slot, not just write text.
   const fail = (msg) => {
     collapseStepsGroup(toolsHost);
     ansEl.hidden = false;
@@ -1214,9 +1163,6 @@ async function submitAskQuestion() {
     thread.scrollTop = thread.scrollHeight;
   };
 
-  // One region with no extra context → the single-region fast path. Otherwise
-  // the app sends attachment notes as viewerContext so the visible question
-  // stays exactly what the user typed.
   const regions = (ctx.attachments || []).filter((a) => a.type === 'region');
   const studies = (ctx.attachments || []).filter((a) => a.type === 'study');
   let region = null;
@@ -1260,14 +1206,12 @@ async function submitAskQuestion() {
     for await (const ev of readAskEventStream(r.body)) {
       if (stale()) return;
       if (ev.type === 'tool') {
-        // The agent is working: hide "Thinking" the moment the first tool runs.
+
         if (ev.state === 'running' && liveTools++ === 0) ansEl.hidden = true;
         upsertToolChip(toolsHost, ev);
         thread.scrollTop = thread.scrollHeight;
       } else if (ev.type === 'phase') {
-        // Tools are done; the model is composing the answer. Collapse the
-        // timeline and bring "Thinking" back for the compose phase. (Driven by
-        // the StructuredOutput finalizer, so it is interleave-safe.)
+
         if (ev.value === 'composing') {
           composed = true;
           collapseStepsGroup(toolsHost);
@@ -1299,14 +1243,13 @@ async function submitAskQuestion() {
     if (stale()) return;
     if (streamError || !result) { fail(streamError || 'no answer'); return; }
     result = normalizeAskResult(result);
-    // Refresh the cached ask sidecar (the server just rewrote it).
+
     const asksUrl = `./data/${ctx.slug}_asks.json`;
-    try { await cachedFetchResponse.invalidate(asksUrl); } catch { /* best-effort */ }
+    try { await cachedFetchResponse.invalidate(asksUrl); } catch {                   }
     const askData = await cachedFetchJson(asksUrl);
     if (stale()) return;
     if (askData) setAskHistory(normalizeAskSidecar(askData).entries);
-    // Cached results stream no live tools — fall back to the reported steps;
-    // otherwise the group was collapsed by the 'composing' phase (fallback here).
+
     if (!liveTools) renderToolSteps(toolsHost, result.steps || []);
     else if (!composed) collapseStepsGroup(toolsHost);
     if (liveAnswerStarted) {
@@ -1318,9 +1261,8 @@ async function submitAskQuestion() {
       thread.scrollTop = thread.scrollHeight;
       return;
     }
-    ansEl.hidden = false; // ensure "Thinking" is back before it fades to the answer
-    // Fade the "Thinking" shimmer out, then stream the answer in from the same
-    // left edge (the pending element and the answer share .ask-qa-a metrics).
+    ansEl.hidden = false;
+
     ansEl.style.opacity = '0';
     await delay(ASK_THINKING_FADE_MS);
     if (stale()) return;
@@ -1339,16 +1281,11 @@ async function submitAskQuestion() {
     if (stale()) return;
     fail(e.message);
   } finally {
-    // Re-enable sending once this turn settles (unless a newer turn now owns it).
+
     if (!stale()) { _askBusy = false; syncAskSendEnabled(); }
   }
 }
 
-/**
- * Drag a rectangle on the slice (like a screengrab), then ask about it inline.
- * @param {MouseEvent} ev
- */
-/** Open the composer in whole-study scope; the pen (+) adds a region on top. */
 export function openStudyAsk() {
   if (state.mode !== '2d' || !state.loaded) return;
   const series = state.manifest?.series?.[state.seriesIdx];
@@ -1387,7 +1324,7 @@ export function handleAskPointerDown(ev) {
     const raw = getAskSession().marquee;
     setAskMarquee(null);
     drawMeasurements();
-    // One-shot: after a drag the pen retires and the cursor returns to pan.
+
     setAskPen(false);
     syncAskPickingUi();
 
@@ -1403,7 +1340,7 @@ export function handleAskPointerDown(ev) {
     const rw = x1 - x0 + 1;
     const rh = y1 - y0 + 1;
     const flags = viewerAiFlags();
-    // A click (no real box) in pen mode adds nothing — the composer is already open.
+
     if (rw <= ASK_CLICK_EPS && rh <= ASK_CLICK_EPS) return;
     if (rw < ASK_MIN_DRAG || rh < ASK_MIN_DRAG) {
       notify(`Drag a larger box (at least ${ASK_MIN_DRAG}×${ASK_MIN_DRAG} px on each side).`, { kind: 'warning' });

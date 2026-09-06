@@ -15,12 +15,10 @@ await Promise.all([
   loadTemplate('./templates/modals-shell.html', 'modal-root'),
 ]);
 
-// Move theme / show-panel controls into the correct host before first paint (chrome-shell runs later).
 initDesktopSidebarToggles();
-// Match sun/moon to html.light (theme-init.js) after the button is in its final host.
+
 syncThemeIcons();
 
-// Apply persisted collapse state before viewer init paints — avoids collapsed/expanded flash on reload.
 const { wireCollapsiblePanels } = await import('./collapsible-sidebar.js');
 wireCollapsiblePanels();
 

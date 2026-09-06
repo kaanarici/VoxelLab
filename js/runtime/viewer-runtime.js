@@ -116,7 +116,7 @@ export function stashRuntimeVolumeCache(series = currentSeries(), {
   ) {
     return false;
   }
-  // Shape: { key: "t2_axial|base", voxels, hrVoxels, plus overlay voxel slots from OVERLAY_CACHE_BY_TYPE }.
+
   const overlayVoxels = {};
   const peerSlugs = {};
   for (const cache of Object.values(OVERLAY_CACHE_BY_TYPE)) {

@@ -1,32 +1,8 @@
-// Oblique MPR — user-defined plane through the volume.
-//
-// The three orthogonal MPR views (axial / coronal / sagittal) are fixed
-// to the DICOM acquisition axes. An oblique plane lets the user pick any
-// orientation — useful for following structures that don't lie in a
-// canonical plane (aorta, optic nerves, curved vertebrae, etc.).
-//
-// A plane is defined by:
-//   · a point that sits on the plane (we use the MPR crosshair position)
-//   · two orthogonal direction vectors spanning the plane (the "u" and
-//     "v" axes in the output image)
-//
-// We parameterize the plane by two angles:
-//   · yaw   — rotation around acquisition-grid z
-//   · pitch — tilt relative to the axial plane
-//
-// Starting from the identity orientation (u=+x, v=+y, normal=+z) we
-// rotate u and v by (yaw, pitch) to produce any plane. Output pixel (u,v)
-// maps to a volume voxel at
-//   p = center + u * du + v * dv
-// where du and dv are the unit u/v vectors scaled to voxel size.
-//
-// Orthogonal, oblique, CPU, and GPU paths share trilinear intensity sampling.
-
 import { getFusedWLLut, getFusedWLU32 } from '../colormap.js';
 import { drawCompositeSlice } from '../slice-compositor.js';
 import { dot3 } from '../core/geometry.js';
 import { OVERLAY_CACHE_BY_KIND, overlayBytesPresent } from '../runtime/overlay-cache-keys.js';
-import { projectDiscreteSlabLabel, projectVolumeSample } from './mpr-projection.js';
+import { projectDiscreteSlabLabel, projectVolumeSample, voxelCoordinateInside } from './mpr-projection.js';
 import { obliqueBasis } from './mpr-oblique-geometry.js';
 import { sampleTrilinear } from './mpr-sampling.js';
 
@@ -52,7 +28,6 @@ function normalizedPlaneExtent(extent) {
   };
 }
 
-// Shape: { widthMm: 192, heightMm: 176 } for the current oblique plane through the volume.
 export function obliquePlaneExtentMm(dims, spacing, center, yaw, pitch) {
   const { W, H, D } = dims;
   const basis = obliqueBasis(yaw, pitch);
@@ -102,7 +77,6 @@ export function obliqueSamplingCenterVoxel(center, spacing, yaw, pitch, extentMm
   ];
 }
 
-// Shape: { width: 820, height: 608 } chosen to fill the visible oblique stage.
 export function fitObliqueCanvas(availableWidth, availableHeight, extent) {
   const width = Math.max(1, Math.round(availableWidth || 1));
   const height = Math.max(1, Math.round(availableHeight || 1));
@@ -148,7 +122,6 @@ function ensureObliqueBuffers(target, width, height, overlays) {
   return next;
 }
 
-// Shape: { width: 512, height: 512, baseBytes: Uint8Array(...), segBytes: null, regionBytes: null, symBytes: null, fusionBytes: null }.
 export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, spacing, center, yaw, pitch, extentMm, overlays = null, target = null, sampleVolume = sampleTrilinear, projection = null) {
   const { W, H, D } = dims;
   const overlayState = overlays || {};
@@ -163,9 +136,6 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
   const dv = [basis.v[0] * stepVMm / spacing.col, basis.v[1] * stepVMm / spacing.row, basis.v[2] * stepVMm / spacing.slice];
   const halfW = (width - 1) / 2;
   const halfH = (height - 1) / 2;
-  const maxVx = W - 1;
-  const maxVy = H - 1;
-  const maxVz = D - 1;
   const isThinProjection = !projection || projection.sampleCount <= 1 || projection.mode === 'thin';
 
   let sampleIndex = 0;
@@ -179,7 +149,7 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
       const vy = rowY + ox * du[1];
       const vz = rowZ + ox * du[2];
 
-      if (vx < 0 || vx > maxVx || vy < 0 || vy > maxVy || vz < 0 || vz > maxVz) {
+      if (isThinProjection && !voxelCoordinateInside(dims, vx, vy, vz)) {
         baseBytes[sampleIndex] = 0;
         for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
           const dest = sampled[cache.bytes];
@@ -211,25 +181,11 @@ export function sampleObliqueCompositeSlice(width, height, vox, voxScale, dims, 
   return sampled;
 }
 
-// Draw an oblique reslice onto a 2D canvas.
-//
-//   canvas     — target HTMLCanvasElement
-//   vox        — Uint8Array | Float32Array (row-major D,H,W)
-//   voxScale   — multiply sampled value by this (1 for uint8, 255 for float)
-//   dims       — { W, H, D }
-//   spacing    — { px, py, sz } mm per voxel
-//   center     — [x, y, z] voxel coordinate the plane passes through
-//   yaw, pitch — plane orientation in degrees
-//   extentMm   — physical size of the output window in mm (square)
-//   lo, hi     — reserved (W/L + colormap come from state via fused LUTs)
-//
-// Output matches 2D / orthogonal MPR: same window/level and colormap as
-// drawSlice (getFusedWLU32 / getFusedWLLut).
 export function drawObliqueMPR(canvas, vox, voxScale, dims, spacing, center, yaw, pitch, extentMm, _lo, _hi, overlays = null, sampleVolume = sampleTrilinear, projection = null) {
   const outW = canvas.width;
   const outH = canvas.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  // Shape: reusable sampled-byte planes for the current oblique canvas size.
+
   canvas._obliqueComposite = sampleObliqueCompositeSlice(
     outW,
     outH,

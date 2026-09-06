@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Fast manifest/config contract checks for the static MRI viewer."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 from series_contract import load_json, validate_manifest_data
-
 
 def validate_config_data(data: Any) -> list[str]:
     if not isinstance(data, dict):
@@ -38,7 +36,6 @@ def validate_config_data(data: Any) -> list[str]:
 
     return errors
 
-
 def validate_paths(manifest_path: Path, config_path: Path | None) -> list[str]:
     errors: list[str] = []
     try:
@@ -54,7 +51,6 @@ def validate_paths(manifest_path: Path, config_path: Path | None) -> list[str]:
 
     return errors
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate data/manifest.json and config.json contracts.")
     _ = parser.add_argument("--root", type=Path, default=Path.cwd(), help="Repo root. Default: current directory.")
@@ -62,7 +58,6 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--config", type=Path, help="Config path. Default: <root>/config.json.")
     _ = parser.add_argument("--no-config", action="store_true", help="Skip config.json validation.")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -78,7 +73,6 @@ def main() -> int:
     if config_path is not None:
         print(f"OK: {config_path}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

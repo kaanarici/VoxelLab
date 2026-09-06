@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Doctor command for VoxelLab's local AI provider setup."""
 
 from __future__ import annotations
 
@@ -15,14 +14,12 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from ai_runtime import public_ai_status
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check whether the configured AI provider is ready.")
     _ = parser.add_argument("--provider", choices=["claude", "codex"], help="Provider override")
     _ = parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     _ = parser.add_argument("--disabled", action="store_true", help="Treat AI as disabled for contract testing")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -40,7 +37,6 @@ def main() -> int:
             for issue in status["issues"]:
                 print(f"  - {issue}")
     return 0 if status["enabled"] and status["ready"] else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

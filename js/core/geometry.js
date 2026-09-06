@@ -1,6 +1,3 @@
-// Canonical patient-space geometry helpers shared by browser import,
-// MPR, 3D scaling, measurements, compare, and SR export.
-
 import { ORTHONORMAL_TOLERANCE } from './contracts.js';
 
 export function numberList(value, minLength = 0) {
@@ -31,7 +28,6 @@ export function dot3(a, b) {
   return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
 }
 
-/** Return the right-handed cross product for two 3-vectors. */
 export function cross3(a, b) {
   return [
     a[1] * b[2] - a[2] * b[1],
@@ -44,7 +40,6 @@ export function norm3(v) {
   return Math.hypot(v[0], v[1], v[2]);
 }
 
-/** Normalize a 3-vector or return `null` when its magnitude is effectively zero. */
 export function normalize3(v) {
   const length = norm3(v);
   return length > 1e-6 ? v.map((item) => item / length) : null;
@@ -68,7 +63,6 @@ export function isOrthonormalImagePlane(iop, tolerance = ORTHONORMAL_TOLERANCE) 
   return Math.abs(dot3(row, col)) <= tolerance;
 }
 
-/** Derive the normalized slice normal from a DICOM ImageOrientationPatient value. */
 export function sliceNormalFromIOP(iop) {
   const basis = orientationFromIOP(iop);
   return basis ? normalize3(cross3(basis.row, basis.col)) : null;
@@ -85,13 +79,11 @@ export function sliceAxisAlignmentFromSeries(series = {}) {
   return normal && spanNorm > 1e-6 ? Math.abs(dot3(span, normal)) / spanNorm : 0;
 }
 
-/** Project a DICOM slice position onto a known slice normal in patient space. */
 export function projectionAlongNormal(meta, normal) {
   const ipp = numberList(meta?.ImagePositionPatient, 3);
   return ipp.length >= 3 && normal ? dot3(ipp, normal) : null;
 }
 
-/** Sort slice-like datasets in spatial order, falling back to InstanceNumber when needed. */
 export function sortDatasetsSpatially(datasets = [], getMeta = (item) => item?.meta || item) {
   if (!datasets.length) return [];
   const firstMeta = getMeta(datasets[0]);
@@ -108,7 +100,6 @@ export function sortDatasetsSpatially(datasets = [], getMeta = (item) => item?.m
   });
 }
 
-/** Summarize inter-slice spacing and whether the stack is regular enough for volume use. */
 export function sliceSpacingStatsFromPositions(positions = [], normal) {
   if (positions.length < 2 || !normal) {
     return { mean: 0, min: 0, max: 0, regular: false };
@@ -136,7 +127,6 @@ function frameOfReferenceSummary(metas = []) {
   return { consistent, uid: consistent ? uid : '' };
 }
 
-/** Build the browser-facing geometry record from a manifest series entry. */
 export function geometryFromSeries(series = {}) {
   const basis = orientationFromIOP(series.orientation || DEFAULT_IOP) || {
     row: [1, 0, 0],
@@ -192,7 +182,6 @@ export function geometryFromSeries(series = {}) {
   };
 }
 
-/** Physical box of the 3D mesh before max-axis normalization (column, row, slice). */
 export function volumeDisplayExtents(series = {}) {
   const geo = geometryFromSeries(series);
   const width = Math.max(1, Number(series.width) || 1);
@@ -208,14 +197,12 @@ export function volumeDisplayExtents(series = {}) {
   };
 }
 
-/** Unit-cube scale for the Three.js volume mesh; longest physical axis maps to 1. */
 export function volumeDisplayScale(series = {}) {
   const extents = volumeDisplayExtents(series);
   const longest = Math.max(extents.x, extents.y, extents.z, 1e-6);
   return [extents.x / longest, extents.y / longest, extents.z / longest];
 }
 
-/** Return the patient-space point at a clamped slice index along the series slice axis. */
 export function patientPointAtSlice(series = {}, sliceIdx = 0) {
   const geo = geometryFromSeries(series);
   const slices = Math.max(1, Math.floor(Number(series.slices || 1)));
@@ -223,7 +210,6 @@ export function patientPointAtSlice(series = {}, sliceIdx = 0) {
   return geo.firstIPP.map((value, axis) => value + (geo.sliceDir[axis] * geo.sliceSpacing * index));
 }
 
-/** Return the nearest slice index to a patient-space point or flag it as out-of-range. */
 export function closestSliceIndexForPatientPoint(series = {}, patientPoint = null) {
   const slices = Math.max(0, Math.floor(Number(series.slices || 0)));
   if (!Array.isArray(patientPoint) || patientPoint.length < 3 || !slices) {
@@ -281,7 +267,6 @@ export const patientLpsToVoxel = (series = {}, point = null) => {
   ];
 };
 
-// Shape: { rowMm: 0.5, colMm: 0.5, known: true } for in-plane pixel spacing.
 export function inPlanePixelSpacing(series = {}) {
   const ps = Array.isArray(series.pixelSpacing) ? series.pixelSpacing : [];
   const row = Number(ps[0]);
@@ -294,7 +279,6 @@ export function inPlanePixelSpacing(series = {}) {
   };
 }
 
-// Shape: { width: 512, height: 768 } for a 2D slice whose displayed aspect follows physical pixel spacing.
 export function inPlaneDisplaySize(series = {}) {
   const width = Math.max(1, Math.round(Number(series.width || 1)));
   const height = Math.max(1, Math.round(Number(series.height || 1)));
@@ -308,7 +292,6 @@ export function inPlaneDisplaySize(series = {}) {
   };
 }
 
-/** Convert voxel coordinates to patient-space LPS millimeters using the series affine. */
 export function voxelToPatientLps(series, vx, vy, vz) {
   const geometry = geometryFromSeries(series);
   const m = geometry.affineLps;
@@ -319,7 +302,6 @@ export function voxelToPatientLps(series, vx, vy, vz) {
   ];
 }
 
-/** Derive spacing, orientation, and IPP endpoints from a sorted list of DICOM metas. */
 export function geometryFromDicomMetas(metas = []) {
   const first = metas[0] || {};
   const basis = orientationFromIOP(first.ImageOrientationPatient || DEFAULT_IOP) || {
@@ -354,7 +336,6 @@ export function geometryFromDicomMetas(metas = []) {
   };
 }
 
-/** Classify whether slice geometry is volumetric, irregular, single-frame, or insufficient. */
 export function classifyGeometryKind(spacingStats, sliceCount) {
   if (sliceCount <= 0) return 'insufficient';
   if (sliceCount === 1) return 'single_frame';
@@ -362,7 +343,6 @@ export function classifyGeometryKind(spacingStats, sliceCount) {
   return spacingStats.regular ? 'cartesian_volume' : 'cartesian_stack_irregular';
 }
 
-/** Package a complete geometry contract object for manifests, tests, and downstream tools. */
 export function buildGeometryRecord(metas = [], { width = 0, height = 0, source = 'dicom_classic_singleframe' } = {}) {
   const sliceCount = metas.length;
   if (!sliceCount) {
@@ -388,7 +368,6 @@ export function buildGeometryRecord(metas = [], { width = 0, height = 0, source 
     ? 'cartesian_stack_irregular'
     : classifyGeometryKind(spacingStats, sliceCount);
 
-  // Build affine via geometryFromSeries using the DICOM-meta-derived geometry.
   const seriesForAffine = {
     pixelSpacing: geo.pixelSpacing,
     sliceSpacing: geo.sliceSpacing,
@@ -416,7 +395,6 @@ export function buildGeometryRecord(metas = [], { width = 0, height = 0, source 
   };
 }
 
-/** Return a stable compare-group key from FrameOfReferenceUID or a geometry fallback. */
 export function seriesCompareGroup(series = {}) {
   if (series.frameOfReferenceUIDConsistent === false) return null;
   if (series.slicePositionsDistinct === false) return null;

@@ -1,5 +1,3 @@
-// Modal dialog for renaming a project folder. Focus-trapped overlay.
-
 import { escapeHtml, trapFocus, releaseFocus } from '../dom.js';
 import { renameProject } from './projects-sidebar-state.js';
 
