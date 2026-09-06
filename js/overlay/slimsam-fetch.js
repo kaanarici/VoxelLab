@@ -1,5 +1,3 @@
-// SAM embedding + metadata fetch for the SlimSAM browser tool.
-
 import { FZSTD_ESM_URL } from '../core/dependencies.js';
 import { cachedFetchJson, cachedFetchResponse } from '../cached-fetch.js';
 import { assetUrlForBrowser } from '../series/series-image-stack.js';
@@ -45,7 +43,7 @@ export async function slimsamFetchMeta(slug) {
       _metaCache.set(slug, meta);
       return meta;
     }
-  } catch { /* fall through */ }
+  } catch {                    }
 
   const base = _inferR2Base();
   if (base) {
@@ -55,7 +53,7 @@ export async function slimsamFetchMeta(slug) {
         _metaCache.set(slug, meta);
         return meta;
       }
-    } catch { /* fall through */ }
+    } catch {                    }
   }
 
   _metaCache.set(slug, null);
@@ -73,7 +71,7 @@ export async function slimsamFetchEmbeddings(slug, meta) {
     if (local.ok) {
       return slimsamProcessEmbedResponse(slug, local, false, totalFloats);
     }
-  } catch { /* fall through */ }
+  } catch {                    }
 
   if (base) {
     try {

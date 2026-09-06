@@ -10,7 +10,6 @@ from modal_dicom import (
     stack_pixels_with_rescale,
 )
 
-
 class FakeDicom:
     def __init__(
         self,
@@ -37,7 +36,6 @@ class FakeDicom:
             self.ImageType = image_type
         self.pixel_array = [[1, 2], [3, 4]]
 
-
 class FakePixelCube:
     def __init__(self, frames):
         self._frames = frames
@@ -48,12 +46,10 @@ class FakePixelCube:
     def __getitem__(self, index):
         return self._frames[index]
 
-
 class FakeSeqItem:
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
-
 
 def test_modal_dicom_selects_primary_stack():
     selected, modality, key = select_primary_dicom_stack([
@@ -65,7 +61,6 @@ def test_modal_dicom_selects_primary_stack():
     assert modality == "CT"
     assert key[1] == "main"
     assert [ds.InstanceNumber for ds in selected] == [1, 2]
-
 
 def test_modal_dicom_expands_multiframe_and_validates_geometry():
     ds = FakeDicom(series_uid="enhanced", instance=1)
@@ -92,7 +87,6 @@ def test_modal_dicom_expands_multiframe_and_validates_geometry():
     assert len(expanded) == 2
     assert mpr_geometry_error(expanded) == ""
 
-
 def test_modal_dicom_mpr_rejects_shifted_middle_slice() -> None:
     slices = [
         FakeDicom(instance=1, position=[0, 0, 0]),
@@ -102,7 +96,6 @@ def test_modal_dicom_mpr_rejects_shifted_middle_slice() -> None:
 
     assert "slice positions aligned" in mpr_geometry_error(slices)
 
-
 def test_modal_dicom_mpr_rejects_non_unit_iop() -> None:
     slices = [
         FakeDicom(instance=1, orientation=[2, 0, 0, 0, 1, 0], position=[0, 0, 0]),
@@ -110,7 +103,6 @@ def test_modal_dicom_mpr_rejects_non_unit_iop() -> None:
     ]
 
     assert "orthonormal" in mpr_geometry_error(slices)
-
 
 def test_modal_dicom_mpr_rejects_mixed_spacing() -> None:
     slices = [
@@ -120,7 +112,6 @@ def test_modal_dicom_mpr_rejects_mixed_spacing() -> None:
 
     assert "consistent DICOM PixelSpacing" in mpr_geometry_error(slices)
 
-
 def test_modal_dicom_mpr_rejects_per_slice_orientation_mismatch() -> None:
     slices = [
         FakeDicom(instance=1, orientation=[1, 0, 0, 0, 1, 0], position=[0, 0, 0]),
@@ -128,7 +119,6 @@ def test_modal_dicom_mpr_rejects_per_slice_orientation_mismatch() -> None:
     ]
 
     assert "consistent slice orientation" in mpr_geometry_error(slices)
-
 
 def test_modal_dicom_expands_multiframe_with_per_frame_rescale() -> None:
     ds = FakeDicom(series_uid="enhanced", instance=1)
@@ -163,7 +153,6 @@ def test_modal_dicom_expands_multiframe_with_per_frame_rescale() -> None:
     assert expanded[1].RescaleSlope == 3.0
     assert expanded[1].RescaleIntercept == -200.0
 
-
 def test_modal_dicom_stack_pixels_applies_per_slice_rescale() -> None:
     first = FakeDicom(modality="MR", instance=1)
     first.pixel_array = [[1, 2], [3, 4]]
@@ -181,7 +170,6 @@ def test_modal_dicom_stack_pixels_applies_per_slice_rescale() -> None:
         [[-5.0, -2.0], [1.0, 4.0]],
     ]
 
-
 def test_modal_dicom_projection_inputs_require_source_manifest():
     selected, error = ensure_projection_inputs(
         [FakeDicom(modality="XA", series_uid="proj", instance=1)],
@@ -191,11 +179,9 @@ def test_modal_dicom_projection_inputs_require_source_manifest():
     assert selected == []
     assert "source manifest" in error
 
-
 def test_modal_dicom_projection_modality_allowlist_matches_browser() -> None:
     assert is_projection_like_dicom(FakeDicom(modality="IO"))
     assert is_projection_like_dicom(FakeDicom(modality="PX"))
-
 
 def test_modal_dicom_reports_non_primary_series_as_dropped() -> None:
     datasets = [
@@ -214,3 +200,22 @@ def test_modal_dicom_reports_non_primary_series_as_dropped() -> None:
         "columns": 256,
         "sliceCount": 1,
     }]
+
+
+def test_enhanced_zero_intercept_overrides_nonzero_dataset_intercept():
+    ds = FakeDicom(rows=2, cols=2)
+    ds.NumberOfFrames = 2
+    ds.RescaleIntercept = -1024
+    ds.SharedFunctionalGroupsSequence = [FakeSeqItem(
+        PixelMeasuresSequence=[FakeSeqItem(PixelSpacing=[1, 1], SliceThickness=1)],
+        PlaneOrientationSequence=[FakeSeqItem(ImageOrientationPatient=[1, 0, 0, 0, 1, 0])],
+    )]
+    ds.PerFrameFunctionalGroupsSequence = [FakeSeqItem(
+        PlanePositionSequence=[FakeSeqItem(ImagePositionPatient=[0, 0, index])],
+        PixelValueTransformationSequence=[FakeSeqItem(RescaleSlope=1, RescaleIntercept=0)],
+    ) for index in range(2)]
+    ds.pixel_array = FakePixelCube([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    expanded, error = expand_primary_stack([ds])
+    assert not error
+    assert expanded[0].RescaleIntercept == 0
+    assert stack_pixels_with_rescale(expanded).tolist()[0][0][0] == 1

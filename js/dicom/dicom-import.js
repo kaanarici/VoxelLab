@@ -1,6 +1,3 @@
-// Browser-side DICOM / NIfTI import: parsing lives in dicom-import-parse.js.
-// This file wires parsed stacks into the manifest + sidebar.
-
 import { notify } from '../notify.js';
 import { notifyProjectsChanged } from '../projects/projects-sidebar.js';
 import {
@@ -97,8 +94,7 @@ export function injectLocalSeries(manifest, entry, sliceSources, rawVolume, loca
     setLocalRuntimeMapEntry('_localMicroscopyStacks', slug, stacks);
     const activeKey = `${displayEntry.microscopy.channelIndex || 0}|${displayEntry.microscopy.timeIndex || 0}`;
     setLocalRuntimeMapEntry('_localStacks', slug, stacks[activeKey] || imgs);
-    // Retain raw single-channel planes (uint16-aware) for raw-domain analysis. Skipped when
-    // retention exceeded the byte budget (rawPlanes === null) — analysis then fails closed.
+
     if (rawPlanes) setLocalRuntimeMapEntry('_localMicroscopyPlanes', slug, rawPlanes);
   }
   if (rawVolume) {

@@ -1,5 +1,3 @@
-// DICOM Structured Report (TID 1500) export — loader + download; see dicom-sr-*.js.
-
 import { DCMJS_IMPORT_URL } from '../core/dependencies.js';
 import { collectMeasurements } from './dicom-sr-collect.js';
 import { buildSRDataset } from './dicom-sr-dataset.js';

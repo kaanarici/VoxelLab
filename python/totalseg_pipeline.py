@@ -1,12 +1,3 @@
-"""
-Run TotalSegmentator on the user's chest CT (and brain MR) volumes,
-then write per-slice label PNGs + a legend JSON in the same shape that
-the existing viewer expects (same as regions.py output).
-
-Replaces the heuristic regions.py output for these series with REAL
-nnU-Net based anatomical labels.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -31,10 +22,6 @@ from pipeline_paths import ENV_DICOM_ROOT, candidate_dicom_files, resolve_dicom_
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 
-# A clinically useful subset of the 104 TS classes that are likely present
-# in a chest CT. We pass this with --roi_subset so the run is much faster
-# than the full model. The names must match TotalSegmentator's class names
-# exactly.
 CT_ROI_SUBSET = [
     "lung_upper_lobe_left", "lung_lower_lobe_left",
     "lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right",
@@ -63,12 +50,7 @@ CT_ROI_SUBSET = [
 
 def read_series_slices(folder: Path, modality: str | None = None,
                        body_parts: set[str] | None = None):
-    """Read every DICOM in folder. Optionally filter by Modality and
-    BodyPartExamined. Returns slices sorted by patient-space geometry.
 
-    body_parts filter: if given, keeps slices whose BodyPartExamined is in
-    the set (case-insensitive). Empty BodyPartExamined is always kept.
-    """
     entries = []
     for f in candidate_dicom_files(folder):
         try:
@@ -90,9 +72,8 @@ def read_series_slices(folder: Path, modality: str | None = None,
         entries.append(ds)
     return sort_datasets_spatially(entries)
 
-
 def stack_to_hu(slices) -> np.ndarray:
-    """(D, H, W) float32 in HU for CT."""
+
     arrs = []
     for ds in slices:
         pix = ds.pixel_array.astype(np.float32)
@@ -101,21 +82,13 @@ def stack_to_hu(slices) -> np.ndarray:
         arrs.append(pix * slope + inter)
     return np.stack(arrs)
 
-
 def stack_raw(slices) -> np.ndarray:
-    """(D, H, W) float32 of pixel data without HU rescaling (for MR)."""
+
     arrs = [ds.pixel_array.astype(np.float32) for ds in slices]
     return np.stack(arrs)
 
-
 def write_nifti(vol_dhw: np.ndarray, slices, out_path: Path) -> tuple[float, float, float]:
-    """Convert (D, H, W) numpy volume into a NIfTI file at out_path with a
-    correctly oriented affine built via the shared geometry contract.
 
-    Without the LPS→RAS conversion, TotalSegmentator will misinterpret
-    left/right and label the wrong lungs/kidneys/etc.
-    """
-    # Use shared geometry contract for affine — no local derivation.
     geo = geometry_from_slices(slices)
     series_dict = {
         "pixelSpacing": geo["pixelSpacing"],
@@ -130,15 +103,13 @@ def write_nifti(vol_dhw: np.ndarray, slices, out_path: Path) -> tuple[float, flo
     row_spacing = float(geo["pixelSpacing"][0])
     slice_mm = float(geo["sliceSpacing"])
 
-    # Convert LPS → RAS by negating X and Y rows
     lps_to_ras = np.diag([-1.0, -1.0, 1.0, 1.0])
     affine = lps_to_ras @ affine_lps_mat
 
-    vol_xyz = np.transpose(vol_dhw, (2, 1, 0))  # (W=col, H=row, D=slice)
+    vol_xyz = np.transpose(vol_dhw, (2, 1, 0))
     img = nib.Nifti1Image(vol_xyz.astype(np.float32), affine)
     nib.save(img, str(out_path))
     return col_spacing, row_spacing, slice_mm
-
 
 def combine_ts_outputs(
     ts_dir: Path,
@@ -147,11 +118,9 @@ def combine_ts_outputs(
 ) -> tuple[np.ndarray, dict[int, str]]:
     return combine_totalseg_outputs(ts_dir, target_shape_dhw, reference_nii_path, np, nib)
 
-
 def write_outputs(slug: str, label_vol: np.ndarray, legend: dict[int, str],
                   px_x: float, px_y: float, slice_mm: float):
-    """Write per-slice PNGs + legend JSON to data/<slug>_regions/* and
-    data/<slug>_regions.json. Same shape as regions.py."""
+
     out_dir = DATA / f"{slug}_regions"
     if out_dir.exists():
         for old in out_dir.glob("*.png"):
@@ -189,12 +158,11 @@ def write_outputs(slug: str, label_vol: np.ndarray, legend: dict[int, str],
     }, indent=2))
 
     print(f"  wrote {out_dir.name}/ ({D} slices, {len(legend)} labels) + {stats_path.name}", flush=True)
-    # Top 5 by mL
+
     top = sorted(regions.values(), key=lambda r: -r["mL"])[:5]
     for t in top:
         print(f"    {t['name']:30s} {t['mL']:8.1f} mL", flush=True)
     return out_dir, stats_path
-
 
 def run_ts(input_nii: Path, output_dir: Path, task: str = "total",
            fast: bool = True, roi_subset: list[str] | None = None) -> bool:
@@ -216,7 +184,6 @@ def run_ts(input_nii: Path, output_dir: Path, task: str = "total",
         return False
     print(f"  TotalSegmentator OK", flush=True)
     return True
-
 
 def process_ct_series(source: Path, slug: str, src_folder: str, manifest: dict) -> bool:
     print(f"\n=== {slug} ({src_folder}) ===", flush=True)
@@ -246,7 +213,6 @@ def process_ct_series(source: Path, slug: str, src_folder: str, manifest: dict) 
             print(f"  ERROR: no labels produced", flush=True)
             return False
 
-    # Use manifest slice spacing so exported region volumes match the viewer.
     series_entry = next((s for s in manifest["series"] if s["slug"] == slug), None)
     if series_entry is None:
         print(f"  ERROR: {slug} not in manifest", flush=True)
@@ -258,9 +224,8 @@ def process_ct_series(source: Path, slug: str, src_folder: str, manifest: dict) 
     series_entry["anatomySource"] = "totalseg"
     return True
 
-
 def process_mr_brain(source: Path, slug: str, src_folder: str, manifest: dict) -> tuple[bool, str]:
-    """Returns (success, task_used)."""
+
     print(f"\n=== {slug} (MR brain, {src_folder}) ===", flush=True)
     folder = source / src_folder
     slices = read_series_slices(folder, modality="MR", body_parts={"BRAIN", "HEAD"})
@@ -284,12 +249,10 @@ def process_mr_brain(source: Path, slug: str, src_folder: str, manifest: dict) -
         nii_path = td / f"{slug}.nii.gz"
         _ = write_nifti(vol, slices, nii_path)
 
-        # Try tasks in order. brain_structures gives the most relevant labels for a brain MR.
         for task in ("brain_structures", "total_mr", "tissue_types_mr"):
             print(f"\n  --- trying task: {task} ---", flush=True)
             ts_out = td / f"ts_out_{task}"
-            # brain_structures is small enough to run at full resolution; total_mr and
-            # tissue_types_mr we run with --fast to keep runtime reasonable.
+
             use_fast = task != "brain_structures"
             ok = run_ts(nii_path, ts_out, task=task, fast=use_fast, roi_subset=None)
             if not ok:
@@ -305,7 +268,6 @@ def process_mr_brain(source: Path, slug: str, src_folder: str, manifest: dict) -
 
     print(f"  ERROR: no MR task produced labels for {slug}", flush=True)
     return False, ""
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser(description="TotalSegmentator → viewer region PNGs.")
@@ -364,7 +326,7 @@ def main() -> bool:
     mr_result = (False, "")
     mr_ref = None
     if do_mr:
-        # Use first MR series with a T1 weight as the reference, or the first available
+
         mr_ref = next((s for s in mr_slugs if "t1" in s), mr_slugs[0] if mr_slugs else None)
         mr_src = sources.get(mr_ref, "") if mr_ref else ""
         if mr_ref and mr_src:
@@ -386,7 +348,6 @@ def main() -> bool:
     print(f"  CT successes: {ct_success}", flush=True)
     print(f"  MR success:   {mr_result}", flush=True)
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

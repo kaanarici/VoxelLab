@@ -1,10 +1,8 @@
-// GLSL for Data3D volume raycasting (used by volume-raycast-material.js).
-export const VOLUME_RAYCAST_VERTEX_SHADER = /* glsl */`
+export const VOLUME_RAYCAST_VERTEX_SHADER =           `
       varying vec3 vOrigin;
       varying vec3 vDir;
       void main() {
-        // Orthographic camera: parallel rays along view -Z. Converging rays from
-        // the camera point shear the volume toward the bounding-box faces while orbiting.
+
         vec3 viewDirObj = normalize((inverse(modelViewMatrix) * vec4(0.0, 0.0, -1.0, 0.0)).xyz);
         vDir = viewDirObj;
         vOrigin = position - viewDirObj * 4.0 + vec3(0.5);
@@ -12,13 +10,13 @@ export const VOLUME_RAYCAST_VERTEX_SHADER = /* glsl */`
       }
     `;
 
-export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
+export const VOLUME_RAYCAST_FRAGMENT_SHADER =           `
       precision highp float;
       precision highp sampler3D;
       uniform sampler3D uVolume;
       uniform sampler3D uLabel;
-      uniform int       uLabelMode;           // 0 off, 1 tissue seg, 2 regions
-      uniform sampler2D uLabelLUT;            // 256×1 RGBA: rgb=color, a=opacity
+      uniform int       uLabelMode;
+      uniform sampler2D uLabelLUT;
       uniform float     uLabelAlpha;
       uniform float uSteps;
       uniform float uLowT;
@@ -30,11 +28,11 @@ export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
       uniform int   uClipPlaneEnabled;
       uniform int   uMode;
       uniform vec3  uVolSize;
-      uniform int   uIsolate;   // 1 = render ONLY selected (visible) labels' voxels
+      uniform int   uIsolate;
+      uniform int uHiddenLabels[256];
       varying vec3 vOrigin;
       varying vec3 vDir;
 
-      // Ray–axis-aligned-box intersection
       vec2 hitBox(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax) {
         vec3 invR = 1.0 / rd;
         vec3 tMin = (bmin - ro) * invR;
@@ -44,10 +42,6 @@ export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
         return vec2(max(max(t1.x, t1.y), t1.z), min(min(t2.x, t2.y), t2.z));
       }
 
-      // Sample the 256-entry label LUT. Each texel is (r, g, b, opacity)
-      // with values in [0, 1]. Index 0 is the "no label" slot and is
-      // always (0, 0, 0, 1). Sampling at the center of texel idx:
-      //    u = (idx + 0.5) / 256
       vec4 labelLUT(int idx) {
         if (idx <= 0 || idx > 255) return vec4(0.0, 0.0, 0.0, 1.0);
         float u = (float(idx) + 0.5) / 256.0;
@@ -56,6 +50,19 @@ export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
 
       bool clippedByObliquePlane(vec3 p) {
         return uClipPlaneEnabled == 1 && dot(uClipPlane.xyz, p) + uClipPlane.w < 0.0;
+      }
+
+      bool labelVisible(int label) {
+        return uLabelMode == 0 || (uHiddenLabels[label] == 0 && (uIsolate == 0 || label > 0));
+      }
+
+      vec3 labelColor(float intensity, int label) {
+        vec3 color = vec3(intensity);
+        if (uLabelMode > 0 && label > 0) {
+          vec3 tint = labelLUT(label).rgb;
+          if (tint.r + tint.g + tint.b > 0.001) color = mix(color, tint, uLabelAlpha);
+        }
+        return color;
       }
 
       void main() {
@@ -75,28 +82,18 @@ export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
             if (clippedByObliquePlane(p)) { p += rd * dt; continue; }
             float raw = texture(uVolume, p).r;
 
-            // Skip near-zero voxels regardless of lowT — prevents the
-            // entire background from rendering as a solid black shell
-            // when the user drags the low threshold to 0%.
             if (raw < 0.003) { p += rd * dt; continue; }
 
             if (raw >= uLowT && raw <= uHighT) {
               float s = (raw - uLowT) / max(1e-4, uHighT - uLowT);
               float a = 1.0 - exp(-s * uIntensity * voxelStep * 1.5);
 
-              // Per-label transfer: pick up label color AND an opacity
-              // multiplier. For tissue seg this makes CSF (label 1) almost
-              // transparent and WM (label 3) the most opaque, so the
-              // volume reads as nested anatomy (cortex → deep white
-              // matter → ventricles).
               vec3 base = vec3(s);
               if (uLabelMode > 0) {
                 int lbl = int(texture(uLabel, p).r * 255.0 + 0.5);
                 vec4 lut = labelLUT(lbl);
-                // Isolation: render ONLY voxels of the selected (visible) labels.
-                // The body is unlabelled (lbl 0, hardcoded opaque) and hidden
-                // labels carry alpha 0 — skip both so just the structure remains.
-                if (uIsolate == 1 && (lbl == 0 || lut.a < 0.004)) { p += rd * dt; continue; }
+
+                if (!labelVisible(lbl)) { p += rd * dt; continue; }
                 if (lut.r + lut.g + lut.b > 0.001) {
                   base = mix(vec3(s), lut.rgb, uLabelAlpha);
                 }
@@ -112,43 +109,41 @@ export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
           if (acc.a < 0.01) discard;
           gl_FragColor = vec4(acc.rgb, acc.a);
         } else if (uMode == 1) {
-          // Maximum intensity projection. Return the brightest voxel along
-          // the ray inside the window. Great for vessels on SWI / MRA.
+
           float maxV = 0.0;
           int maxLbl = 0;
           for (float i = 0.0; i < 2048.0; i++) {
             if (i >= uSteps) break;
             if (clippedByObliquePlane(p)) { p += rd * dt; continue; }
             float raw = texture(uVolume, p).r;
+            int label = uLabelMode > 0 ? int(texture(uLabel, p).r * 255.0 + 0.5) : 0;
+            if (!labelVisible(label)) { p += rd * dt; continue; }
             if (raw >= uLowT && raw <= uHighT && raw > maxV) {
               maxV = raw;
-              if (uLabelMode > 0) {
-                maxLbl = int(texture(uLabel, p).r * 255.0 + 0.5);
-              }
+              maxLbl = label;
             }
             p += rd * dt;
           }
           if (maxV <= uLowT + 0.001) discard;
           float s = (maxV - uLowT) / max(1e-4, uHighT - uLowT);
           s = clamp(s, 0.0, 1.0);
-          vec3 col = vec3(s);
-          if (uLabelMode > 0 && maxLbl > 0) {
-            vec4 lut = labelLUT(maxLbl);
-            if (lut.r + lut.g + lut.b > 0.001) col = mix(col, lut.rgb, uLabelAlpha);
-          }
-          gl_FragColor = vec4(col, 1.0);
+          gl_FragColor = vec4(labelColor(s, maxLbl), 1.0);
         } else {
-          // Minimum intensity projection. Returns the darkest voxel along
-          // the ray. Useful for vessels / microbleeds / calcium on SWI
-          // (they're dark on susceptibility-weighted imaging).
+
           float minV = 1.0;
+          int minLbl = 0;
           bool any = false;
           for (float i = 0.0; i < 2048.0; i++) {
             if (i >= uSteps) break;
             if (clippedByObliquePlane(p)) { p += rd * dt; continue; }
             float raw = texture(uVolume, p).r;
+            int label = uLabelMode > 0 ? int(texture(uLabel, p).r * 255.0 + 0.5) : 0;
+            if (!labelVisible(label)) { p += rd * dt; continue; }
             if (raw >= uLowT && raw <= uHighT) {
-              if (raw < minV) minV = raw;
+              if (!any || raw < minV) {
+                minV = raw;
+                minLbl = label;
+              }
               any = true;
             }
             p += rd * dt;
@@ -156,7 +151,7 @@ export const VOLUME_RAYCAST_FRAGMENT_SHADER = /* glsl */`
           if (!any) discard;
           float s = 1.0 - (minV - uLowT) / max(1e-4, uHighT - uLowT);
           s = clamp(s, 0.0, 1.0);
-          gl_FragColor = vec4(vec3(s), 1.0);
+          gl_FragColor = vec4(labelColor(s, minLbl), 1.0);
         }
       }
     `;

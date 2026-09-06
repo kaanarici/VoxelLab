@@ -1,39 +1,30 @@
 import { CHARLS_CODEC_URL, OPENJPEG_CODEC_URL } from '../core/dependencies.js';
 
-// DICOM compressed pixel data: lazy Cornerstone WASM from CDN. Each UID maps to a
-// `category` on the registry rows below (volumetric-safe vs display-only vs blocked).
-
 const TRANSFER_SYNTAX_REGISTRY = new Map([
-  // Uncompressed
+
   ['1.2.840.10008.1.2',     { name: 'Implicit VR Little Endian',       codec: null,       category: 'uncompressed' }],
   ['1.2.840.10008.1.2.1',   { name: 'Explicit VR Little Endian',       codec: null,       category: 'uncompressed' }],
   ['1.2.840.10008.1.2.1.99',{ name: 'Deflated Explicit VR Little Endian', codec: null,    category: 'uncompressed' }],
   ['1.2.840.10008.1.2.2',   { name: 'Explicit VR Big Endian',          codec: null,       category: 'uncompressed' }],
 
-  // JPEG 2000
   ['1.2.840.10008.1.2.4.90', { name: 'JPEG 2000 Lossless',            codec: 'jpeg2000',  category: 'lossless' }],
   ['1.2.840.10008.1.2.4.91', { name: 'JPEG 2000 Lossy',               codec: 'jpeg2000',  category: 'lossy-quantitative' }],
 
-  // JPEG-LS
   ['1.2.840.10008.1.2.4.80', { name: 'JPEG-LS Lossless',              codec: 'jpegls',    category: 'lossless' }],
   ['1.2.840.10008.1.2.4.81', { name: 'JPEG-LS Near-Lossless',         codec: 'jpegls',    category: 'lossy-quantitative' }],
 
-  // JPEG baseline/lossless
   ['1.2.840.10008.1.2.4.50', { name: 'JPEG Baseline (lossy)',         codec: 'jpeg',      category: 'lossy-display' }],
   ['1.2.840.10008.1.2.4.51', { name: 'JPEG Extended (lossy)',         codec: 'jpeg',      category: 'lossy-display' }],
   ['1.2.840.10008.1.2.4.57', { name: 'JPEG Lossless (process 14)',    codec: 'jpeg',      category: 'lossy-display' }],
   ['1.2.840.10008.1.2.4.70', { name: 'JPEG Lossless SV1',            codec: 'jpeg',      category: 'lossy-display' }],
 
-  // RLE
   ['1.2.840.10008.1.2.5',    { name: 'RLE Lossless',                  codec: 'rle',       category: 'lossless' }],
 
-  // MPEG (not decodable for pixel data extraction)
   ['1.2.840.10008.1.2.4.100', { name: 'MPEG2 Main Profile',           codec: null,        category: 'unsupported' }],
   ['1.2.840.10008.1.2.4.101', { name: 'MPEG2 High Profile',           codec: null,        category: 'unsupported' }],
   ['1.2.840.10008.1.2.4.102', { name: 'MPEG-4 AVC/H.264',            codec: null,        category: 'unsupported' }],
   ['1.2.840.10008.1.2.4.103', { name: 'MPEG-4 AVC/H.264 BD',         codec: null,        category: 'unsupported' }],
 
-  // HTJ2K (future — not yet supported by Cornerstone WASM)
   ['1.2.840.10008.1.2.4.201', { name: 'HTJ2K Lossless',               codec: null,        category: 'unsupported' }],
   ['1.2.840.10008.1.2.4.202', { name: 'HTJ2K Lossy RPCL',            codec: null,        category: 'unsupported' }],
   ['1.2.840.10008.1.2.4.203', { name: 'HTJ2K Lossless RPCL',         codec: null,        category: 'unsupported' }],
@@ -65,7 +56,6 @@ export function getCodecType(uid) {
   return info.codec;
 }
 
-// Grayscale-faithful decoders only; lossy-display TS and canvas JPEG paths stay blocked.
 export async function decodePixelData(compressedBuffer, transferSyntaxUID, rows, cols, bitsAllocated) {
   const info = transferSyntaxInfo(transferSyntaxUID);
 
@@ -91,12 +81,10 @@ export async function decodePixelData(compressedBuffer, transferSyntaxUID, rows,
     return decodeRLE(compressedBuffer, rows, cols, bitsAllocated);
   }
 
-  // Uncompressed or unknown codec — pass through
   console.warn(`[dicom-codecs] no codec handler for: ${transferSyntaxUID}`);
   return null;
 }
 
-// JPEG 2000 decode via @cornerstonejs/codec-openjpeg WASM
 let _openjpeg = null;
 function copyDecodedPixels(decoded, pixelCount, bitsAllocated) {
   const bytesPerPixel = bitsAllocated === 16 ? 2 : 1;
@@ -132,7 +120,6 @@ async function decodeWithOpenJPEG(buffer, rows, cols, bitsAllocated) {
   }
 }
 
-// JPEG-LS decode via @cornerstonejs/codec-charls WASM
 let _charls = null;
 async function decodeWithCharls(buffer, rows, cols, bitsAllocated) {
   if (!_charls) {
@@ -161,9 +148,6 @@ async function decodeWithCharls(buffer, rows, cols, bitsAllocated) {
   }
 }
 
-// RLE Lossless: one grayscale byte plane per 8 allocated bits. The fixed 64-byte
-// header and exactly-sized planes prevent malformed color or partial data from
-// being misrepresented as calibrated grayscale samples.
 function decodeRLE(compressedBuffer, rows, cols, bitsAllocated) {
   try {
     if (!(compressedBuffer instanceof ArrayBuffer) || (bitsAllocated !== 8 && bitsAllocated !== 16)) return null;
@@ -198,7 +182,7 @@ function decodeRLE(compressedBuffer, rows, cols, bitsAllocated) {
       const end = plane + 1 < numSegments ? offsets[plane + 1] : compressedBuffer.byteLength;
       if (end <= start || (end - start) % 2 !== 0) return null;
       const segment = new Uint8Array(compressedBuffer, start, end - start);
-      // RLE byte-plane index: segment 0 = MSB for 16-bit, segment 0 = only byte for 8-bit.
+
       const planeOffset = bytesPerPixel === 1 ? 0 : (plane === 0 ? 1 : 0);
 
       let inputIndex = 0;

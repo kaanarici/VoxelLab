@@ -1,9 +1,6 @@
-"""Ask/consult envelope validators shared by producer tests."""
-
 from __future__ import annotations
 
 from typing import Any
-
 
 class EnvelopeValidationError(ValueError):
     def __init__(self, envelope: str, reason: str) -> None:
@@ -11,18 +8,15 @@ class EnvelopeValidationError(ValueError):
         self.reason = reason
         super().__init__(f"{envelope}:{reason}")
 
-
 def _object(value: Any, envelope: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise EnvelopeValidationError(envelope, "not_object")
     return value
 
-
 def _unexpected(payload: dict[str, Any], allowed: set[str], envelope: str) -> None:
     for key in payload:
         if key not in allowed:
             raise EnvelopeValidationError(envelope, f"unexpected_field:{key}")
-
 
 def _string(payload: dict[str, Any], key: str, envelope: str, *, allow_empty: bool = False) -> str:
     if key not in payload:
@@ -34,7 +28,6 @@ def _string(payload: dict[str, Any], key: str, envelope: str, *, allow_empty: bo
         raise EnvelopeValidationError(envelope, f"{key}_empty")
     return value
 
-
 def _bool(payload: dict[str, Any], key: str, envelope: str) -> bool:
     if key not in payload:
         raise EnvelopeValidationError(envelope, f"{key}_missing")
@@ -43,7 +36,6 @@ def _bool(payload: dict[str, Any], key: str, envelope: str) -> bool:
         raise EnvelopeValidationError(envelope, f"{key}_not_boolean")
     return value
 
-
 def _nonnegative_int(payload: dict[str, Any], key: str, envelope: str) -> int:
     if key not in payload:
         raise EnvelopeValidationError(envelope, f"{key}_missing")
@@ -51,7 +43,6 @@ def _nonnegative_int(payload: dict[str, Any], key: str, envelope: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise EnvelopeValidationError(envelope, f"{key}_not_nonnegative_integer")
     return value
-
 
 def _region(payload: dict[str, Any], envelope: str) -> list[int] | None:
     if "region" not in payload:
@@ -68,9 +59,8 @@ def _region(payload: dict[str, Any], envelope: str) -> list[int] | None:
         raise EnvelopeValidationError(envelope, "region_inverted")
     return bounds
 
-
 def _steps(payload: dict[str, Any], envelope: str) -> list[dict[str, str]] | None:
-    """Optional self-reported agent actions: a list of {kind, label, detail}."""
+
     if "steps" not in payload:
         return None
     value = payload["steps"]
@@ -86,9 +76,7 @@ def _steps(payload: dict[str, Any], envelope: str) -> list[dict[str, str]] | Non
         steps.append({"kind": kind, "label": label, "detail": detail})
     return steps
 
-
 ASK_ACTION_IDS = {"open-cloud-workflow", "open-cloud-results", "open-registration-compare"}
-
 
 def _actions(payload: dict[str, Any], envelope: str) -> list[dict[str, str]] | None:
     if "actions" not in payload:
@@ -117,7 +105,6 @@ def _actions(payload: dict[str, Any], envelope: str) -> list[dict[str, str]] | N
         })
     return actions
 
-
 def _normalize_ask_fields(payload: dict[str, Any], envelope: str) -> dict[str, Any]:
     normalized: dict[str, Any] = {
         "key": _string(payload, "key", envelope),
@@ -141,7 +128,6 @@ def _normalize_ask_fields(payload: dict[str, Any], envelope: str) -> dict[str, A
         normalized["actions"] = actions
     return normalized
 
-
 def normalize_ask_entry(value: Any) -> dict[str, Any]:
     envelope = "ask-entry"
     payload = _object(value, envelope)
@@ -151,7 +137,6 @@ def normalize_ask_entry(value: Any) -> dict[str, Any]:
         envelope,
     )
     return _normalize_ask_fields(payload, envelope)
-
 
 def normalize_ask_sidecar(value: Any) -> dict[str, Any]:
     envelope = "ask-sidecar"
@@ -163,7 +148,6 @@ def normalize_ask_sidecar(value: Any) -> dict[str, Any]:
         raise EnvelopeValidationError(envelope, "entries_not_array")
     return {"slug": slug, "entries": [normalize_ask_entry(entry) for entry in entries]}
 
-
 def normalize_ask_result(value: Any) -> dict[str, Any]:
     envelope = "ask-result"
     payload = _object(value, envelope)
@@ -174,7 +158,6 @@ def normalize_ask_result(value: Any) -> dict[str, Any]:
     )
     entry_payload = {key: item_value for key, item_value in payload.items() if key != "cached"}
     return {"cached": _bool(payload, "cached", envelope), **_normalize_ask_fields(entry_payload, envelope)}
-
 
 def _string_array(payload: dict[str, Any], key: str, envelope: str) -> list[str]:
     if key not in payload:
@@ -189,7 +172,6 @@ def _string_array(payload: dict[str, Any], key: str, envelope: str) -> list[str]
         normalized.append(item)
     return normalized
 
-
 def _normalize_consult_fields(payload: dict[str, Any], envelope: str) -> dict[str, Any]:
     return {
         "disclaimer": _string(payload, "disclaimer", envelope),
@@ -200,13 +182,11 @@ def _normalize_consult_fields(payload: dict[str, Any], envelope: str) -> dict[st
         "limitations": _string(payload, "limitations", envelope, allow_empty=True),
     }
 
-
 def normalize_consult_document(value: Any) -> dict[str, Any]:
     envelope = "consult-document"
     payload = _object(value, envelope)
     _unexpected(payload, {"disclaimer", "provider", "model", "impression", "ask_radiologist", "limitations"}, envelope)
     return _normalize_consult_fields(payload, envelope)
-
 
 def normalize_consult_result(value: Any) -> dict[str, Any]:
     envelope = "consult-result"

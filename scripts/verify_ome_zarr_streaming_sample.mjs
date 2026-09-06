@@ -1,11 +1,5 @@
 #!/usr/bin/env node
-/* global console, process, fetch, AbortSignal */
-// Live end-to-end proof that VoxelLab streams a real, public, compressed,
-// multiscale OME-Zarr dataset: fetches IDR metadata + chunks over the network,
-// decodes Blosc(LZ4, byte-shuffle) uint16 chunks with the dependency-free codec,
-// and asserts the decoded level-0 plane matches the authoritative numcodecs
-// golden committed under tests/fixtures/zarr/. This is a network verifier (like
-// demo:verify:*), not a hermetic unit test.
+
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { decodeZarrChunk } from '../js/microscopy/zarr/zarr-codecs.js';
@@ -68,9 +62,6 @@ async function main() {
   assert.equal(level0.compressor?.id, 'blosc', 'level-0 compressor is blosc');
   assert.equal(level0.compressor?.cname, 'lz4', 'level-0 blosc cname is lz4');
 
-  // normalizeOmeZarrMetadata().levels carry {level, path, scale} but not plane
-  // dimensions, so enrich each level with width/height/downsample from its own
-  // .zarray shape + the x/y axis indices before level-of-detail selection.
   const xIndex = metadata.axes.findIndex((axis) => axis.name === 'x');
   const yIndex = metadata.axes.findIndex((axis) => axis.name === 'y');
   const baseWidth = level0['shape'][xIndex];
@@ -81,13 +72,10 @@ async function main() {
     return { ...level, width, height, downsample: width ? Math.round(baseWidth / width) : 1 };
   });
 
-  // Pyramid level-of-detail selection: a tiny budget must pick a coarse level.
   const coarse = selectPyramidLevel(enrichedLevels, { maxPlanePixels: 10_000 });
   assert.ok(coarse.level && coarse.path !== '0', `coarse selection should avoid level 0, got ${coarse.path}`);
   console.log(`Level select (budget 10k px): level ${coarse.path} (${coarse.reason})`);
 
-  // The proof: live-fetch + decode the real level-0 (c0,z0) chunk and match the
-  // numcodecs golden bit-for-bit at the statistics level.
   console.log('Streaming + decoding level-0 chunk [0,0,0,0] (Blosc/LZ4/byte-shuffle)...');
   const chunk = await store.readChunk('0', [0, 0, 0, 0], level0);
   const count = chunk['shape'][chunk['shape'].length - 1] * chunk['shape'][chunk['shape'].length - 2];
@@ -98,7 +86,6 @@ async function main() {
   assert.equal(stats.max, golden.max, 'max');
   assert.equal(stats.sum, golden.sum, 'sum');
 
-  // Prove a coarser level also streams + decodes (multiscale, not just level 0).
   const coarseMeta = arrayMetadataByPath[coarse.path];
   const coarseChunk = await store.readChunk(coarse.path, [0, 0, 0, 0], coarseMeta);
   assert.ok(coarseChunk.view.byteLength > 0, 'coarse level chunk decodes');

@@ -1,12 +1,9 @@
-"""Small shared environment helpers for local VoxelLab tooling."""
-
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-
 
 def load_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
     env: dict[str, str] = {}
@@ -19,7 +16,6 @@ def load_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
         key, value = line.split("=", 1)
         env[key.strip()] = value.strip().strip('"').strip("'")
     return env
-
 
 def overlay_env(base: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(base or os.environ)

@@ -1,7 +1,3 @@
-// "Analyze" sidebar panel: Z-projection + threshold + Analyze Particles for the active
-// microscopy series. Mirrors the Hyperstack panel's dense, tool-oriented style. Results flow
-// into the existing ROI Results table; a threshold/particle overlay previews on the slice.
-
 import { $ } from '../dom.js';
 import { signalPanelReady } from '../collapsible-sidebar.js';
 import { state, subscribe } from '../core/state.js';

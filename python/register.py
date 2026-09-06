@@ -1,28 +1,7 @@
-"""
-Verifies rigid co-registration between brain MR series that the viewer's
-"Compare" mode currently assumes are aligned.
-
-For each non-reference brain series we run an ANTsPy rigid registration to
-t1_se (the cleanest, highest-resolution series) and compute four alignment
-metrics:
-
-  - normalized MSE within the intersection of the nonzero extents
-  - mutual information
-  - dice overlap of binary tissue masks
-  - rigid transform magnitude (translation + rotation pulled from the affine)
-
-The result is written to data/registration.json so the viewer can decide
-whether to flash a "registration mismatch" warning in Compare mode.
-
-Run from a Python env with ANTsPy installed. This script only writes
-data/registration.json.
-"""
-
 from __future__ import annotations
 
 import argparse
 import json
-import math
 import sys
 import time
 from datetime import datetime, timezone
@@ -32,7 +11,8 @@ import ants
 import numpy as np
 import pydicom
 
-from geometry import geometry_from_slices, sort_datasets_spatially
+from geometry import sort_datasets_spatially
+from registration_alignment import ants_image_from_slices, registration_transform
 from pipeline_paths import ENV_DICOM_ROOT, candidate_dicom_files, resolve_dicom_root, slug_source_map
 
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -40,26 +20,8 @@ DATA = Path(__file__).resolve().parents[1] / "data"
 REFERENCE = "t1_se"
 MOVING_SLUGS = ["t2_tse", "flair", "dwi_adc", "swi_3d"]
 
-# Approximate adult brain radius for converting an angular rotation into a
-# linear displacement at the surface of the brain — used as a sanity number
-# in the report so a viewer dev can reason about "how far did pixels move".
-BRAIN_RADIUS_MM = 80.0
-
-
-def scaled_pixel_array(dataset: pydicom.dataset.FileDataset) -> np.ndarray:
-    """Return pixel data with DICOM rescale applied as float32."""
-    slope = float(getattr(dataset, "RescaleSlope", 1) or 1)
-    intercept = float(getattr(dataset, "RescaleIntercept", 0) or 0)
-    return dataset.pixel_array.astype(np.float32) * slope + intercept
-
-
 def load_series(source: Path, slug: str, sources: dict[str, str]):
-    """Load a brain MR DICOM series as an ants image.
 
-    Reads DICOMs, keeps MR brain/head slices, sorts by patient-space geometry.
-    Volume axis order is (D, H, W) which we transpose to (W, H, D) for ANTs
-    (it expects x, y, z fastest-first). Returns None on failure.
-    """
     src = sources.get(slug)
     if not src:
         print(f"  [{slug}] no sourceFolder in manifest", file=sys.stderr)
@@ -82,58 +44,18 @@ def load_series(source: Path, slug: str, sources: dict[str, str]):
         print(f"no MR slices found for {slug} in {folder}", file=sys.stderr)
         return None
 
-    arrs = [scaled_pixel_array(d) for d in mr]
-    vol_dhw = np.stack(arrs)                            # (D, H, W)
-    vol_xyz = np.transpose(vol_dhw, (2, 1, 0))          # (W, H, D) → (x, y, z)
-
-    geometry = geometry_from_slices(mr)
-    spacing = (
-        float(geometry["pixelSpacing"][1]),
-        float(geometry["pixelSpacing"][0]),
-        float(geometry["sliceSpacing"]),
-    )
-    origin = tuple(float(x) for x in geometry["firstIPP"])
-    direction = np.array([
-        [geometry["orientation"][0], geometry["orientation"][3], 0.0],
-        [geometry["orientation"][1], geometry["orientation"][4], 0.0],
-        [geometry["orientation"][2], geometry["orientation"][5], 0.0],
-    ], dtype=np.float64)
-    direction[:, 2] = np.cross(direction[:, 0], direction[:, 1])
-    last = geometry["lastIPP"]
-    first = geometry["firstIPP"]
-    if len(last) >= 3 and len(first) >= 3 and len(mr) > 1:
-        slice_dir = np.array([
-            (last[0] - first[0]) / max(1, len(mr) - 1),
-            (last[1] - first[1]) / max(1, len(mr) - 1),
-            (last[2] - first[2]) / max(1, len(mr) - 1),
-        ], dtype=np.float64)
-        slice_norm = np.linalg.norm(slice_dir)
-        if slice_norm > 1e-6:
-            direction[:, 2] = slice_dir / slice_norm
-
-    img = ants.from_numpy(
-        vol_xyz,
-        origin=origin,
-        spacing=spacing,
-        direction=direction,
-    )
-    print(
-        f"  [{slug:8s}] shape={vol_xyz.shape}  spacing={spacing}  "
-        + f"origin={tuple(round(o, 2) for o in origin)}",
-        flush=True,
-    )
+    img = ants_image_from_slices(mr, np, ants)
+    print(f"  [{slug}] shape={img.shape} spacing={img.spacing} origin={img.origin}", flush=True)
     return img
-
 
 def alignment_metrics(fixed: ants.core.ants_image.ANTsImage,
                       warped: ants.core.ants_image.ANTsImage) -> dict:
-    """Compute MSE (intersection-masked, intensity-normalized), MI, and Dice."""
+
     f = fixed.numpy()
     w = warped.numpy()
 
     if f.shape != w.shape:
-        # ANTs resamples warped into fixed space, so this shouldn't happen,
-        # but if it does we bail loudly rather than silently mis-comparing.
+
         raise RuntimeError(f"shape mismatch: fixed={f.shape} warped={w.shape}")
 
     fmax = float(f.max()) if f.size else 1.0
@@ -143,9 +65,6 @@ def alignment_metrics(fixed: ants.core.ants_image.ANTsImage,
     if wmax <= 0:
         wmax = 1.0
 
-    # Intersection of nonzero extents — only score where *both* volumes
-    # have signal, so background-vs-background doesn't drag MSE to zero
-    # and crop-edges don't drag dice down.
     f_mask = f > 0
     w_mask = w > 0
     inter = f_mask & w_mask
@@ -163,9 +82,6 @@ def alignment_metrics(fixed: ants.core.ants_image.ANTsImage,
         print(f"    (mutual_information failed: {e})", flush=True)
         mi = float("nan")
 
-    # Dice on tissue masks. 5% of max is a conservative noise floor that
-    # works across MR contrasts (T1, T2, FLAIR, ADC, SWI all have black
-    # background and bright-ish tissue at >5%).
     f_bin = f > (0.05 * fmax)
     w_bin = w > (0.05 * wmax)
     denom = f_bin.sum() + w_bin.sum()
@@ -180,63 +96,14 @@ def alignment_metrics(fixed: ants.core.ants_image.ANTsImage,
         "dice":               dice,
     }
 
-
-def transform_magnitude(tform_paths: list) -> dict:
-    """Pull translation + rotation out of the rigid transform file ANTs wrote.
-
-    ANTs writes its rigid transform as an ITK affine .mat with 12 parameters:
-    9 for the 3x3 matrix (row-major) + 3 for the translation. The fixed
-    parameters store the rotation center, which we ignore for *magnitude*
-    purposes (rotation is invariant under center choice; translation as
-    reported here is the raw translation parameter, not center-corrected).
-    """
-    rigid_path = None
-    for p in tform_paths:
-        # ants returns mat for affine/rigid, nii.gz for warps
-        if p.endswith(".mat"):
-            rigid_path = p
-            break
-    if rigid_path is None and tform_paths:
-        rigid_path = tform_paths[0]
-
-    tx, ty, tz = 0.0, 0.0, 0.0
-    rot_deg = 0.0
-
-    if rigid_path is not None:
-        tf = ants.read_transform(rigid_path)
-        params = np.array(tf.parameters, dtype=np.float64)
-        if params.size >= 12:
-            R = params[:9].reshape(3, 3)
-            t = params[9:12]
-            tx, ty, tz = float(t[0]), float(t[1]), float(t[2])
-            trace = float(np.trace(R))
-            cos_theta = (trace - 1.0) / 2.0
-            cos_theta = max(-1.0, min(1.0, cos_theta))
-            rot_deg = float(math.degrees(math.acos(cos_theta)))
-        elif params.size == 6:
-            # Some ITK rigid encodings use (rx, ry, rz, tx, ty, tz) Euler angles.
-            tx, ty, tz = float(params[3]), float(params[4]), float(params[5])
-            rx, ry, rz = float(params[0]), float(params[1]), float(params[2])
-            rot_deg = float(math.degrees(math.sqrt(rx * rx + ry * ry + rz * rz)))
-
-    translation_mag = math.sqrt(tx * tx + ty * ty + tz * tz)
-    rot_displacement = BRAIN_RADIUS_MM * math.radians(rot_deg)
-
+def transform_magnitude(tform_paths: list[str]) -> dict:
+    transform = registration_transform(ants, tform_paths, np)
     return {
-        "translation_mm":           [tx, ty, tz],
-        "translation_magnitude_mm": translation_mag,
-        "rotation_deg":             rot_deg,
-        "rotation_magnitude_mm":    rot_displacement,
+        "translation_mm": transform["translationMm"],
+        "translation_reference": transform["translationReference"],
+        "translation_magnitude_mm": transform["translationMagnitudeMm"],
+        "rotation_deg": transform["rotationDeg"],
     }
-
-
-def verdict_for(translation_mag: float, rotation_deg: float, dice: float) -> str:
-    if (translation_mag < 2.0 and rotation_deg < 2.0 and dice > 0.9):
-        return "aligned"
-    if (translation_mag < 5.0 and rotation_deg < 5.0 and dice > 0.8):
-        return "slightly off"
-    return "misregistered"
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser(description="Rigid registration metrics for Compare mode.")
@@ -321,17 +188,13 @@ def main() -> bool:
         metrics = alignment_metrics(fixed, warped)
         magnitude = transform_magnitude(tform_paths)
 
-        v = verdict_for(
-            magnitude["translation_magnitude_mm"],
-            magnitude["rotation_deg"],
-            metrics["dice"],
-        )
+        v = "alignment unverified"
 
         pairs[slug] = {
             "translation_mm":          magnitude["translation_mm"],
+            "translation_reference": magnitude["translation_reference"],
             "translation_magnitude_mm": magnitude["translation_magnitude_mm"],
             "rotation_deg":            magnitude["rotation_deg"],
-            "rotation_magnitude_mm":   magnitude["rotation_magnitude_mm"],
             "mse_normalized":          metrics["mse_normalized"],
             "mutual_information":      metrics["mutual_information"],
             "dice":                    metrics["dice"],
@@ -368,7 +231,6 @@ def main() -> bool:
             + f"verdict={p['verdict']}"
         )
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

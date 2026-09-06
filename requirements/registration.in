@@ -1,0 +1,5 @@
+antspyx==0.6.3
+pydicom==3.0.2
+pytest==9.1.1
+numpy==2.3.5
+scipy==1.15.3

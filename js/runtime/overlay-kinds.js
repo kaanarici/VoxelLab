@@ -11,7 +11,6 @@ function uniqueStrings(values = []) {
   return out;
 }
 
-// Shape: canonical runtime overlay names, e.g. ['tissue', 'labels', 'heatmap', 'fusion'].
 export const CANONICAL_OVERLAY_KINDS = Object.freeze(
   uniqueStrings(Object.values(OVERLAY_CACHE_BY_KIND).map((cache) => cache.kind)),
 );
@@ -60,7 +59,6 @@ function ensureOverlayHintBag() {
   return true;
 }
 
-// Shape: { labels: { available: true } }.
 export function setSeriesOverlayHints(series, hints = {}) {
   if (!isOverlayRecord(series) || !isOverlayRecord(hints)) return series;
   const key = overlayHintKey(series);
@@ -88,7 +86,6 @@ export function clearSeriesOverlayHints(series) {
   return deletePassthroughRootEntry('_seriesOverlayHints', key);
 }
 
-// Shape: { byKind: { tissue: { available: true } }, availableKinds: ['tissue'] }.
 export function overlayKindsForSeries(series) {
   const byKind = {};
   for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {

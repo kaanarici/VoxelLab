@@ -85,7 +85,7 @@ function stylePixels(value) {
 
 function installMprDom(width, height) {
   const registry = new Map();
-  // Shape: mpr-* canvas nodes with tiny 2D context stub used by drawMPR.
+
   registry.set('mpr-ax', createCanvas(width, height));
   registry.set('mpr-co', createCanvas(width, height));
   registry.set('mpr-sa', createCanvas(height, height));
@@ -93,7 +93,7 @@ function installMprDom(width, height) {
   registry.set('mpr-ax-cross', createCrosshairOverlay());
   registry.set('mpr-co-cross', createCrosshairOverlay());
   registry.set('mpr-sa-cross', createCrosshairOverlay());
-  // Shape: simple text labels, e.g. "X 4/8", "Y 3/6", "Z 7/32".
+
   registry.set('mpr-ax-idx', { textContent: '' });
   registry.set('mpr-co-idx', { textContent: '' });
   registry.set('mpr-sa-idx', { textContent: '' });
@@ -107,7 +107,7 @@ function installMprDom(width, height) {
 
 function setSeriesState({ slug = 'mpr_case', width = 8, height = 6, slices = 5, hasSeg = false, hasRegions = false, hasSym = false } = {}) {
   const voxelCount = width * height * slices;
-  // Shape: active manifest with one MPR-capable series.
+
   state.manifest = {
     series: [{ slug, width, height, slices, rowSpacing: 1, colSpacing: 1, sliceSpacing: 1, hasSeg, hasRegions, hasSym }],
   };
@@ -198,7 +198,7 @@ test('drawMPR readiness uses ensureVoxels only when base volume is missing', () 
 test('drawMPR sizes the axial pane and crosshair from physical row/column spacing', () => {
   installMprDom(8, 6);
   setSeriesState({ slug: 'axial_spacing', width: 8, height: 6, slices: 5 });
-  // Shape: anisotropic in-plane voxels where rows are 2 mm tall and columns are 1 mm wide.
+
   state.manifest.series[0].pixelSpacing = [2, 1];
   state.mpr.x = 4;
   state.mpr.y = 3;

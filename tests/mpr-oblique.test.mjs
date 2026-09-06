@@ -14,6 +14,26 @@ const {
 } = await import('../js/mpr/mpr-oblique.js');
 const { createMprProjection } = await import('../js/mpr/mpr-projection.js');
 
+test('oblique slabs include intersections beyond the center plane footprint', () => {
+  const dims = { W: 5, H: 5, D: 5 };
+  const spacing = { row: 1, col: 1, slice: 1 };
+  const center = [2, 2, 2];
+  const extent = obliquePlaneExtentMm(dims, spacing, center, 0, 30);
+  const basis = obliqueBasis(0, 30);
+  for (const mode of ['avg', 'mip', 'minip']) {
+    const projection = createMprProjection({ mode, slabThicknessMm: 4 }, spacing, {
+      axisU: basis.u,
+      axisV: basis.v,
+    });
+    const sampled = sampleObliqueCompositeSlice(
+      17, 17, new Uint8Array(125).fill(200), 1, dims, spacing, center, 0, 30, extent,
+      { regionVoxels: new Uint8Array(125).fill(7) }, null, undefined, projection,
+    );
+    assert.equal(sampled.baseBytes[18], 200, mode);
+    assert.equal(sampled.regionBytes[18], 7, mode);
+  }
+});
+
 test('obliqueBasis keeps an orthonormal identity plane at zero yaw/pitch', () => {
   const basis = obliqueBasis(0, 0);
   assert.deepEqual(basis.u, [1, 0, 0]);
@@ -22,7 +42,7 @@ test('obliqueBasis keeps an orthonormal identity plane at zero yaw/pitch', () =>
 });
 
 test('sampleObliqueCompositeSlice returns the shared byte contract for a base-only plane', () => {
-  // Shape: 2x2 axial plane sampled from z=1 in a 2x2x2 byte volume.
+
   const vox = Uint8Array.from([
     0, 0, 0, 0,
     10, 20, 30, 40,
@@ -50,7 +70,7 @@ test('sampleObliqueCompositeSlice returns the shared byte contract for a base-on
 });
 
 test('sampleObliqueCompositeSlice keeps labels discrete while heatmaps interpolate', () => {
-  // Shape: single-pixel oblique sample at x=0.49 between two source voxels.
+
   const sampled = sampleObliqueCompositeSlice(
     1,
     1,
@@ -78,7 +98,7 @@ test('sampleObliqueCompositeSlice keeps labels discrete while heatmaps interpola
 });
 
 test('sampleObliqueCompositeSlice reuses caller-provided buffers when shape is unchanged', () => {
-  // Shape: reusable sampled planes for a 2x2 oblique output.
+
   const first = sampleObliqueCompositeSlice(
     2,
     2,

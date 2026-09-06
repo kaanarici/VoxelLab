@@ -1,10 +1,3 @@
-// Mesh export orchestrator (impure edge): turn segmentation label masks into
-// true-to-life 3D surface meshes and download them. Per-item exports one
-// structure; whole-study merges every label. Geometry flows: binary mask →
-// marching cubes (voxel space) → affine to patient LPS mm → STL/OBJ encode →
-// blob download (the same anchor pattern as roi-results-export, the only
-// cross-target path since Electron exposes no save IPC here).
-
 import { state } from '../core/state.js';
 import { geometryFromSeries } from '../core/geometry.js';
 import { regionLabelName } from '../core/region-meta.js';
@@ -63,7 +56,6 @@ function regionVoxelsFor(series) {
   return ensureRegionVoxelsSync(series);
 }
 
-/** Build a patient-space surface mesh for one label, or null when it has no voxels. */
 function buildLabelMesh(series, voxels, affine, label) {
   const W = series.width | 0;
   const H = series.height | 0;
@@ -79,7 +71,6 @@ function encode(mesh, fmt, name) {
   return encodeStlBinary({ ...mesh, name });
 }
 
-/** Export one segmentation structure as an STL/OBJ surface mesh. */
 export function exportLabelMesh(series = state.manifest?.series?.[state.seriesIdx], label, fmt = 'stl', opts = {}) {
   const format = fmt === 'obj' ? 'obj' : 'stl';
   if (!series) return finishExport(exportOutcome(false, 'No loaded series available for mesh export.', { reason: 'no-series' }), opts);
@@ -102,10 +93,6 @@ export function exportLabelMesh(series = state.manifest?.series?.[state.seriesId
   }), opts);
 }
 
-/**
- * Export the whole study (every anatomy label) as one 3D object. OBJ keeps a
- * named group per structure (shared vertex list); STL is a merged triangle soup.
- */
 export function exportStudyMesh(series = state.manifest?.series?.[state.seriesIdx], fmt = 'stl', opts = {}) {
   const format = fmt === 'obj' ? 'obj' : 'stl';
   if (!series) return finishExport(exportOutcome(false, 'No loaded series available for mesh export.', { reason: 'no-series' }), opts);

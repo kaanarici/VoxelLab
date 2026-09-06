@@ -3,13 +3,11 @@ import json
 from pathlib import Path
 import subprocess
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("sync_public_repo", ROOT / "scripts" / "sync_public_repo.py")
 sync_public_repo = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(sync_public_repo)
-
 
 def test_public_export_sync_script_exclusions_stay_auditable():
     protected = {
@@ -33,7 +31,6 @@ def test_public_export_sync_script_exclusions_stay_auditable():
 
     assert protected.issubset(export_contract)
     assert export_contract.isdisjoint(stale)
-
 
 def test_public_export_sanitizes_provider_config_and_sync_scripts(tmp_path):
     (tmp_path / "config.json").write_text(
@@ -98,7 +95,6 @@ def test_public_export_sanitizes_provider_config_and_sync_scripts(tmp_path):
     assert "check:py:types" not in package["scripts"]
     assert "check:py:types:boundaries" not in package["scripts"]
 
-
 def test_public_export_preserves_desktop_release_proof_files(tmp_path):
     export_dir = tmp_path / "public"
 
@@ -130,7 +126,6 @@ def test_public_export_preserves_desktop_release_proof_files(tmp_path):
     assert not (export_dir / "tests" / "documentation-check.test.mjs").exists()
     sync_public_repo.assert_public_export_clean(export_dir)
 
-
 def test_public_export_prunes_optional_source_demo_files(tmp_path):
     demo_sources = tmp_path / "demo_sources" / "ome_microscopy_samples"
     demo_sources.mkdir(parents=True)
@@ -151,7 +146,6 @@ def test_public_export_prunes_optional_source_demo_files(tmp_path):
     assert not (tmp_path / "lab-readiness-report.json").exists()
     assert not (tmp_path / "lab-readiness-report-public.json").exists()
     sync_public_repo.assert_public_export_clean(tmp_path)
-
 
 def test_public_export_clean_rejects_patient_data_or_nonanonymous_manifest(tmp_path):
     data_dir = tmp_path / "data"
@@ -175,7 +169,6 @@ def test_public_export_clean_rejects_patient_data_or_nonanonymous_manifest(tmp_p
         assert "manifest.json must stay anonymous" in str(exc)
     else:
         raise AssertionError("expected non-anonymous manifest to be rejected")
-
 
 def test_public_export_allows_only_digest_verified_synthetic_dicom_fixtures(tmp_path):
     data_dir = tmp_path / "data"
@@ -210,7 +203,6 @@ def test_public_export_allows_only_digest_verified_synthetic_dicom_fixtures(tmp_
         assert "tests/real-patient.dcm" in str(exc)
     else:
         raise AssertionError("expected non-allowlisted test DICOM to be rejected")
-
 
 def test_public_export_clean_rejects_private_runtime_paths(tmp_path):
     data_dir = tmp_path / "data"
@@ -268,7 +260,6 @@ def test_public_export_clean_rejects_private_runtime_paths(tmp_path):
     else:
         raise AssertionError("expected private runtime paths to be rejected")
 
-
 def test_public_checkout_must_match_remote_main(tmp_path, monkeypatch):
     calls = []
 
@@ -300,7 +291,6 @@ def test_public_checkout_must_match_remote_main(tmp_path, monkeypatch):
 
     assert (["git", "fetch", "origin", "main"], tmp_path, None) in calls
 
-
 def test_public_history_appends_a_normal_commit(tmp_path):
     _ = subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True)
     _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
@@ -317,7 +307,6 @@ def test_public_history_appends_a_normal_commit(tmp_path):
     assert subprocess.check_output(["git", "rev-parse", "HEAD^"], cwd=tmp_path, text=True).strip() == previous
     assert subprocess.check_output(["git", "log", "-1", "--format=%s"], cwd=tmp_path, text=True).strip() == "Explain the public change"
     assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True).strip() == ""
-
 
 def test_public_export_pr_uses_a_unique_source_bound_branch(tmp_path, monkeypatch):
     calls = []
@@ -351,7 +340,6 @@ def test_public_export_pr_uses_a_unique_source_bound_branch(tmp_path, monkeypatc
     assert ["git", "push", "--set-upstream", "origin", branch] in calls
     assert calls[-1] == ["git", "switch", "main"]
 
-
 def test_public_publish_requires_clean_source_checkout(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
@@ -370,7 +358,6 @@ def test_public_publish_requires_clean_source_checkout(tmp_path, monkeypatch):
         assert "dirty source checkout" in str(exc)
     else:
         raise AssertionError("expected dirty source checkout to block public publish")
-
 
 def test_public_publish_rechecks_export_after_public_check(tmp_path, monkeypatch):
     calls = []
@@ -400,7 +387,6 @@ def test_public_publish_rechecks_export_after_public_check(tmp_path, monkeypatch
 
     assert ["npm", "run", "check"] in calls
     assert ["npm", "run", "check:lab"] in calls
-
 
 def test_public_publish_rewrites_public_data_after_checks(tmp_path, monkeypatch):
     calls = []

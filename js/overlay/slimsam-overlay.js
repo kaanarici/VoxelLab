@@ -1,6 +1,3 @@
-/**
- * Draw a binary mask as a transparent colored overlay on a canvas 2D context.
- */
 export function overlayMask(ctx, result, opts = {}) {
   if (!ctx || !result || !result.mask) return;
   const { mask, width, height } = result;

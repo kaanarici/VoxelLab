@@ -1,8 +1,3 @@
-// Resource limits for local DICOM ingestion. These cover the browser-owned
-// data that remains live while the shared viewer stack is assembled. They are
-// deliberately constants rather than caller options: an untrusted import must
-// not be able to widen its own acquisition budget.
-
 export const DICOM_IMPORT_LIMITS = Object.freeze({
   maxFiles: 8_192,
   maxFileBytes: 256 * 1024 * 1024,
@@ -65,8 +60,7 @@ function viewByteLength(value) {
   if (value instanceof ArrayBuffer) return value.byteLength;
   if (ArrayBuffer.isView(value)) return value.byteLength;
   if (!(value?.charCodeAt instanceof Function)) return 0;
-  // This is deliberately conservative and does not validate Base64. The
-  // actual decoder still validates it before pixels are used.
+
   return safeMultiply(Math.ceil(value.length / 4), 3, 'inline binary byte count');
 }
 
@@ -180,10 +174,6 @@ export function assertDICOMSeriesWorkingSet(datasets) {
     retainedInputBytes = safeAdd(retainedInputBytes, itemSourceByteLength(item), 'retained source byte count');
   }
 
-  // The worker can briefly retain its parsed input while the structured clone
-  // reaches the renderer. Construction then keeps one Float32 volume, one
-  // grayscale display byte per voxel, and one decoded native plane. This is
-  // assessed before either full-volume output allocation.
   const rawVolumeBytes = safeMultiply(totalVoxels, Float32Array.BYTES_PER_ELEMENT, 'normalized raw byte count');
   const displayBytes = totalVoxels;
   const decodedPlaneBytes = safeMultiply(dimensions.voxelsPerSlice, 2, 'decoded plane byte count');

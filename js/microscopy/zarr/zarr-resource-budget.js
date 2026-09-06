@@ -1,7 +1,3 @@
-// OME-Zarr import materializes every selected C×Z×T plane as Float32 pixels and
-// RGBA display data before the series can enter the viewer. Keep those eager
-// allocations bounded before creating plane arrays or scheduling chunk reads.
-
 export const DEFAULT_MAX_OME_ZARR_PLANE_PIXELS = 4_000_000;
 export const MAX_OME_ZARR_ALLOCATED_PLANE_BYTES = 128 * 1024 * 1024;
 export const MAX_OME_ZARR_CHUNKS_PER_PLANE = 4_096;

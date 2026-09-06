@@ -14,12 +14,10 @@ from pipeline_paths import candidate_dicom_files, load_manifest
 
 pytestmark = pytest.mark.filterwarnings("ignore:.*write_like_original.*:DeprecationWarning")
 
-
 def test_resolve_source_prefers_cli_path(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("MRI_VIEWER_DICOM_ROOT", "/definitely/missing")
 
     assert resolve_source(str(tmp_path)) == tmp_path.resolve()
-
 
 def test_candidate_files_ignore_sidecars(tmp_path: Path) -> None:
     _ = (tmp_path / "0000.png").write_bytes(b"not dicom")
@@ -31,14 +29,12 @@ def test_candidate_files_ignore_sidecars(tmp_path: Path) -> None:
 
     assert source_dicom_files(tmp_path)
 
-
 def test_candidate_files_include_nested_dicom(tmp_path: Path) -> None:
     nested = tmp_path / "study" / "series"
     nested.mkdir(parents=True)
     _ = (nested / "IM0001").write_bytes(b"dicom-ish")
 
     assert source_dicom_files(tmp_path)
-
 
 def test_flat_candidate_dicom_files_use_shared_hidden_filter(tmp_path: Path) -> None:
     _ = (tmp_path / "IM0001").write_bytes(b"dicom-ish")
@@ -47,11 +43,9 @@ def test_flat_candidate_dicom_files_use_shared_hidden_filter(tmp_path: Path) -> 
 
     assert [path.name for path in candidate_dicom_files(tmp_path)] == ["IM0001"]
 
-
 def test_load_manifest_fails_closed_when_manifest_is_missing(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="manifest.json is missing"):
         _ = load_manifest(tmp_path)
-
 
 def test_load_manifest_allows_explicit_empty_bootstrap_state(tmp_path: Path) -> None:
     assert load_manifest(tmp_path, allow_empty=True) == {
@@ -60,14 +54,12 @@ def test_load_manifest_allows_explicit_empty_bootstrap_state(tmp_path: Path) -> 
         "series": [],
     }
 
-
 @pytest.mark.parametrize("contents", ["{not json", '{"series": {}}', "[]"])
 def test_load_manifest_fails_closed_on_malformed_or_invalid_data(tmp_path: Path, contents: str) -> None:
     _ = (tmp_path / "manifest.json").write_text(contents)
 
     with pytest.raises(RuntimeError, match="manifest.json (?:is malformed|has invalid series data)"):
         _ = load_manifest(tmp_path)
-
 
 def test_candidate_files_ignore_hidden_and_macosx_tree_entries(tmp_path: Path) -> None:
     macosx = tmp_path / "__MACOSX" / "study"
@@ -79,7 +71,6 @@ def test_candidate_files_ignore_hidden_and_macosx_tree_entries(tmp_path: Path) -
 
     assert not source_dicom_files(tmp_path)
 
-
 def test_parse_slugs_rejects_unknown_values() -> None:
     try:
         _ = parse_slugs(["unknown_slug"], ["known_slug"], ["known_slug"])
@@ -88,9 +79,8 @@ def test_parse_slugs_rejects_unknown_values() -> None:
     else:
         raise AssertionError("expected parse_slugs to reject unknown slug")
 
-
 def test_ct_preflight_reports_missing_source_folder(tmp_path: Path, monkeypatch) -> None:
-    # Provide a manifest with a CT series that has sourceFolder
+
     data = tmp_path / "data"
     data.mkdir()
     _ = (data / "manifest.json").write_text(
@@ -103,7 +93,6 @@ def test_ct_preflight_reports_missing_source_folder(tmp_path: Path, monkeypatch)
     errors = validate_ct_pipeline(tmp_path, ["ct_test"])
 
     assert any("ct_test: no candidate DICOM files" in error for error in errors)
-
 
 def test_ct_preflight_rejects_non_image_dicom_candidates(tmp_path: Path, monkeypatch) -> None:
     data = tmp_path / "data"
@@ -122,7 +111,6 @@ def test_ct_preflight_rejects_non_image_dicom_candidates(tmp_path: Path, monkeyp
 
     assert any("ct_test: invalid DICOM input" in error for error in errors)
 
-
 def test_synthseg_preflight_reports_missing_brain_stack(tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
@@ -132,13 +120,11 @@ def test_synthseg_preflight_reports_missing_brain_stack(tmp_path: Path) -> None:
 
     assert any("t2_tse: no brain PNG stack" in error for error in errors)
 
-
 def test_manifest_series_treats_invalid_json_as_missing(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     _ = manifest.write_text("{not json")
 
     assert manifest_series(manifest) == set()
-
 
 def write_image_dicom(path: Path, *, modality: str = "US", frames: int = 1) -> str:
     pydicom = pytest.importorskip("pydicom")
@@ -161,14 +147,12 @@ def write_image_dicom(path: Path, *, modality: str = "US", frames: int = 1) -> s
     dataset.save_as(path, enforce_file_format=True)
     return str(dataset.SeriesInstanceUID)
 
-
 def test_projection_preflight_requires_calibration_manifest(tmp_path: Path) -> None:
     _ = (tmp_path / "IM0001").write_bytes(b"dicom-ish")
 
     errors = preflight.validate_projection_source(tmp_path)
 
     assert any("missing calibration manifest" in error for error in errors)
-
 
 def test_projection_preflight_reports_malformed_calibration_manifest(tmp_path: Path) -> None:
     _ = (tmp_path / "IM0001").write_bytes(b"dicom-ish")
@@ -177,7 +161,6 @@ def test_projection_preflight_reports_malformed_calibration_manifest(tmp_path: P
     errors = preflight.validate_projection_source(tmp_path)
 
     assert any("invalid calibration manifest" in error for error in errors)
-
 
 def test_projection_preflight_reports_missing_rtk_runtime_for_cbct(tmp_path: Path, monkeypatch) -> None:
     series_uid = write_image_dicom(tmp_path / "IM0001", modality="XA")
@@ -201,7 +184,6 @@ def test_projection_preflight_reports_missing_rtk_runtime_for_cbct(tmp_path: Pat
 
     assert any("missing RTK runtime" in error for error in errors)
 
-
 def test_projection_preflight_rejects_non_image_dicom_candidates(tmp_path: Path) -> None:
     _ = (tmp_path / "IM0001").write_bytes(b"not a dicom image")
     _ = (tmp_path / "voxellab.source.json").write_text(json.dumps({
@@ -223,7 +205,6 @@ def test_projection_preflight_rejects_non_image_dicom_candidates(tmp_path: Path)
 
     assert any("invalid DICOM input" in error for error in errors)
 
-
 def test_projection_preflight_rejects_multiframe_projection_dicom(tmp_path: Path) -> None:
     series_uid = write_image_dicom(tmp_path / "IM0001", modality="XA", frames=2)
     _ = (tmp_path / "voxellab.source.json").write_text(json.dumps({
@@ -244,7 +225,6 @@ def test_projection_preflight_rejects_multiframe_projection_dicom(tmp_path: Path
     errors = preflight.validate_projection_source(tmp_path)
 
     assert any("multi-frame DICOM inputs are not supported" in error for error in errors)
-
 
 def test_ultrasound_preflight_counts_multiframe_inputs(tmp_path: Path) -> None:
     series_uid = write_image_dicom(tmp_path / "cine.dcm", frames=2)
@@ -273,7 +253,6 @@ def test_ultrasound_preflight_counts_multiframe_inputs(tmp_path: Path) -> None:
 
     assert errors == []
 
-
 def test_ultrasound_preflight_rejects_non_image_dicom_candidates(tmp_path: Path) -> None:
     _ = (tmp_path / "cine.dcm").write_bytes(b"not a dicom image")
     _ = (tmp_path / "voxellab.source.json").write_text(json.dumps({
@@ -299,7 +278,6 @@ def test_ultrasound_preflight_rejects_non_image_dicom_candidates(tmp_path: Path)
     errors = preflight.validate_ultrasound_source(tmp_path)
 
     assert any("invalid DICOM input" in error for error in errors)
-
 
 def test_pipeline_preflight_cli_validates_registration_sources(tmp_path: Path, monkeypatch) -> None:
     seen: list[Path] = []

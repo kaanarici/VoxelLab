@@ -7,17 +7,6 @@ import {
   isDICOMResourceLimit,
 } from '../dicom/dicom-import-resources.js';
 
-// Web Worker for heavy volume operations. Runs off the main thread so
-// fzstd decompression + uint16→float32 conversion don't freeze the UI.
-//
-// Messages:
-//   { type: 'decompress', id, buffer, compressed }
-//     → decompresses (if compressed), converts uint16 LE → float32 [0,1]
-//     → posts back { type: 'result', id, f32 } with f32 as transferable
-//
-// The worker is stateless — each message is independent. The main thread
-// manages caching, series identity, and GPU upload.
-
 let ZstdDecompress = null;
 let dcmjs = null;
 
@@ -92,7 +81,6 @@ self.onmessage = async (e) => {
     try {
       let buf = e.data.buffer;
 
-      // Decompress if the source is zstd-compressed
       if (e.data.compressed) {
         if (!ZstdDecompress) {
           ({ Decompress: ZstdDecompress } = await import(FZSTD_ESM_URL));
@@ -102,7 +90,6 @@ self.onmessage = async (e) => {
 
       const f32 = normalizeUint16RawVolume(buf, e.data.expectedVoxels);
 
-      // Transfer the Float32Array buffer back (zero-copy)
       self.postMessage({ type: 'result', id, f32 }, [f32.buffer]);
     } catch (err) {
       self.postMessage({ type: 'error', id, error: err.message });
@@ -117,7 +104,7 @@ self.onmessage = async (e) => {
       if (!Array.isArray(inputBitmaps) || inputBitmaps.length !== d) {
         throw new Error(`flatten-image-bitmaps: got ${inputBitmaps?.length} bitmaps, expected ${d}`);
       }
-      // Reuse one OffscreenCanvas across slices to avoid per-slice GC churn.
+
       const canvas = new OffscreenCanvas(w, h);
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       const out = new Uint8Array(w * h * d);
@@ -126,7 +113,7 @@ self.onmessage = async (e) => {
         ctx.clearRect(0, 0, w, h);
         ctx.drawImage(bmp, 0, 0, w, h);
         const rgba = ctx.getImageData(0, 0, w, h).data;
-        // Single channel from R; PNG slice writers store luminance.
+
         const base = z * w * h;
         for (let i = 0, p = 0; i < rgba.length; i += 4, p++) out[base + p] = rgba[i];
       }

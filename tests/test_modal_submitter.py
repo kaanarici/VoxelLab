@@ -25,7 +25,6 @@ from scripts.submit_modal_study import (
     validate_upload_url,
 )
 
-
 class ReadTrackingResponse:
     def __init__(self, payload: bytes):
         self.payload = io.BytesIO(payload)
@@ -41,18 +40,15 @@ class ReadTrackingResponse:
         self.read_sizes.append(size)
         return self.payload.read(size)
 
-
 def test_modal_endpoint_derives_function_urls_from_app_prefix() -> None:
     url = modal_endpoint("https://example-org--medical-imaging-pipeline", "get_upload_urls")
 
     assert url == "https://example-org--medical-imaging-pipeline-get-upload-urls.modal.run"
 
-
 def test_modal_endpoint_accepts_existing_function_url() -> None:
     base = "https://example-org--medical-imaging-pipeline-check-status.modal.run"
 
     assert modal_endpoint(base, "start_processing").endswith("-start-processing.modal.run")
-
 
 def test_candidate_files_skip_sidecars(tmp_path: Path) -> None:
     _ = (tmp_path / "1.dcm").write_bytes(b"x")
@@ -61,7 +57,6 @@ def test_candidate_files_skip_sidecars(tmp_path: Path) -> None:
     _ = (tmp_path / ".DS_Store").write_bytes(b"x")
 
     assert [path.name for path in candidate_files(tmp_path)] == ["1.dcm", "voxellab.source.json"]
-
 
 def test_candidate_files_include_nested_dicom_without_nested_manifests(tmp_path: Path) -> None:
     nested = tmp_path / "study" / "series"
@@ -74,7 +69,6 @@ def test_candidate_files_include_nested_dicom_without_nested_manifests(tmp_path:
         Path("study/series/IM0001"),
         Path("voxellab.source.json"),
     ]
-
 
 def test_candidate_files_skip_hidden_and_macosx_tree_entries(tmp_path: Path) -> None:
     visible = tmp_path / "study"
@@ -89,10 +83,8 @@ def test_candidate_files_skip_hidden_and_macosx_tree_entries(tmp_path: Path) -> 
 
     assert [path.relative_to(tmp_path) for path in candidate_files(tmp_path)] == [Path("study/IM0001")]
 
-
 def test_chunks_batches_values() -> None:
     assert chunks([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
-
 
 def test_upload_items_assign_unique_ids_for_duplicate_basenames() -> None:
     items = upload_items([Path("/a/IM0001"), Path("/b/IM0001")], start_index=7)
@@ -102,11 +94,9 @@ def test_upload_items_assign_unique_ids_for_duplicate_basenames() -> None:
         {"upload_id": "f000008", "filename": "IM0001", "path": Path("/b/IM0001")},
     ]
 
-
 def test_upload_content_type_matches_presign_contract() -> None:
     assert upload_content_type(Path("/tmp/scan.dcm")) == "application/dicom"
     assert upload_content_type(Path("/tmp/voxellab.source.json")) == "application/json"
-
 
 def test_post_json_caps_modal_response_body(monkeypatch) -> None:
     response = ReadTrackingResponse(b'{"status":"started"}')
@@ -126,7 +116,6 @@ def test_post_json_caps_modal_response_body(monkeypatch) -> None:
     assert seen == {"method": "POST", "timeout": 17, "content_type": "application/json"}
     assert response.read_sizes == [6]
 
-
 def test_get_json_caps_modal_response_body(monkeypatch) -> None:
     response = ReadTrackingResponse(b'{"status":"complete"}')
     monkeypatch.setattr("scripts.submit_modal_study.urllib.request.urlopen", lambda *_args, **_kwargs: response)
@@ -135,7 +124,6 @@ def test_get_json_caps_modal_response_body(monkeypatch) -> None:
         _ = get_json("https://modal.example/status", max_bytes=5)
 
     assert response.read_sizes == [6]
-
 
 def test_put_file_streams_body_with_content_length(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "scan.dcm"
@@ -175,7 +163,6 @@ def test_put_file_streams_body_with_content_length(monkeypatch, tmp_path: Path) 
         "closed_during_request": False,
     }
 
-
 def test_put_file_sends_streamed_body_to_http_server(tmp_path: Path) -> None:
     seen = {}
 
@@ -212,7 +199,6 @@ def test_put_file_sends_streamed_body_to_http_server(tmp_path: Path) -> None:
         "body": b"dicom-bytes",
     }
 
-
 def test_start_processing_payload_includes_projection_reconstruction_contract() -> None:
     assert start_processing_payload(
         "job123",
@@ -227,7 +213,6 @@ def test_start_processing_payload_includes_projection_reconstruction_contract() 
         "input_kind": "calibrated_projection_set",
         "total_upload_bytes": 4096,
     }
-
 
 def test_start_processing_payload_includes_ultrasound_scan_conversion_contract() -> None:
     assert start_processing_payload(
@@ -244,7 +229,6 @@ def test_start_processing_payload_includes_ultrasound_scan_conversion_contract()
         "total_upload_bytes": 2048,
     }
 
-
 def test_start_processing_payload_includes_registration_contract() -> None:
     assert start_processing_payload(
         "job123",
@@ -260,7 +244,6 @@ def test_start_processing_payload_includes_registration_contract() -> None:
         "total_upload_bytes": 8192,
     }
 
-
 def test_normalize_series_entry_backfills_public_urls() -> None:
     entry = normalize_series_entry({"slug": "cloud_job123", "hasRaw": True}, "https://r2.example")
 
@@ -272,18 +255,15 @@ def test_normalize_series_entry_backfills_public_urls() -> None:
     assert entry["sliceUrlBase"] == "https://r2.example/data/cloud_job123"
     assert entry["rawUrl"] == "https://r2.example/cloud_job123.raw.zst"
 
-
 def test_normalize_series_entry_backfills_region_urls() -> None:
     entry = normalize_series_entry({"slug": "cloud_job123", "hasRegions": True}, "https://r2.example")
 
     assert entry["regionUrlBase"] == "https://r2.example/data/cloud_job123_regions"
     assert entry["regionMetaUrl"] == "https://r2.example/data/cloud_job123_regions.json"
 
-
 def test_validate_upload_url_rejects_untrusted_origin() -> None:
     with pytest.raises(RuntimeError, match="trusted origins"):
         _ = validate_upload_url("https://evil.example/upload", ["https://r2.example"])
-
 
 def test_trusted_upload_origins_merge_r2_s3_endpoint_and_explicit_hosts() -> None:
     endpoint = "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com"
@@ -291,7 +271,6 @@ def test_trusted_upload_origins_merge_r2_s3_endpoint_and_explicit_hosts() -> Non
         endpoint,
         "https://upload.example",
     ]
-
 
 def test_submit_requires_modal_base_when_config_and_env_are_blank(monkeypatch, tmp_path: Path) -> None:
     config = tmp_path / "config.json"
@@ -321,7 +300,6 @@ def test_submit_requires_modal_base_when_config_and_env_are_blank(monkeypatch, t
     with pytest.raises(SystemExit, match="missing MODAL_WEBHOOK_BASE"):
         _ = submit(args)
 
-
 def test_submit_requires_modal_auth_token_when_base_exists(monkeypatch, tmp_path: Path) -> None:
     config = tmp_path / "config.json"
     _ = config.write_text('{"modalWebhookBase": "https://modal.example", "r2PublicUrl": ""}')
@@ -348,7 +326,6 @@ def test_submit_requires_modal_auth_token_when_base_exists(monkeypatch, tmp_path
     with pytest.raises(SystemExit, match="missing MODAL_AUTH_TOKEN"):
         _ = submit(args)
 
-
 def test_submit_preflight_errors_validate_projection_sources(tmp_path: Path) -> None:
     _ = (tmp_path / "IM0001").write_bytes(b"x")
 
@@ -356,10 +333,8 @@ def test_submit_preflight_errors_validate_projection_sources(tmp_path: Path) -> 
 
     assert any("missing calibration manifest" in error for error in errors)
 
-
 def test_submit_skips_advanced_preflight_when_skip_upload(tmp_path: Path) -> None:
     assert submit_preflight_errors(tmp_path, "projection_set_reconstruction", True) == []
-
 
 def test_submit_rejects_invalid_input_kind_before_network(monkeypatch, tmp_path: Path) -> None:
     config = tmp_path / "config.json"
@@ -385,7 +360,6 @@ def test_submit_rejects_invalid_input_kind_before_network(monkeypatch, tmp_path:
     monkeypatch.setattr("scripts.submit_modal_study.load_dotenv", lambda _path=None: {"MODAL_AUTH_TOKEN": "token"})
     with pytest.raises(SystemExit, match="projection_set_reconstruction requires --input-kind calibrated_projection_set"):
         _ = submit(args)
-
 
 def test_submit_requires_trusted_upload_origin_before_upload(monkeypatch, tmp_path: Path) -> None:
     config = tmp_path / "config.json"
@@ -422,7 +396,6 @@ def test_submit_requires_trusted_upload_origin_before_upload(monkeypatch, tmp_pa
     with pytest.raises(SystemExit, match="missing trusted R2 S3 upload origin"):
         _ = submit(args)
     assert network_calls == []
-
 
 def test_submit_caps_upload_batches_to_modal_contract(monkeypatch, tmp_path: Path) -> None:
     config = tmp_path / "config.json"
@@ -477,7 +450,6 @@ def test_submit_caps_upload_batches_to_modal_contract(monkeypatch, tmp_path: Pat
 
     assert upload_batch_lengths == [MAX_UPLOAD_ITEMS, 1]
     assert result["series_entry"]["sliceUrlBase"] == "https://r2.example/data/cloud_job123"
-
 
 def test_submit_rejects_invalid_runtime_knobs_before_network(monkeypatch, tmp_path: Path) -> None:
     config = tmp_path / "config.json"

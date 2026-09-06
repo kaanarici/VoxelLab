@@ -101,10 +101,6 @@ export function desktopMicroscopySidecarOnlyText(sidecars = []) {
   return `Sidecar files are not standalone images. Open the matching microscopy image first, then open the sidecar again.${selectedSidecarText(sidecars)}`;
 }
 
-export function desktopDerivedSidecarOnlyText(sidecars = []) {
-  return `DICOM SR files are derived objects, not standalone images. Open the matching source DICOM series first, then open the SR file again.${selectedSidecarText(sidecars)}`;
-}
-
 function folderReadFailures(payload = {}) {
   return (payload.warnings || []).filter(item => FOLDER_FAILURE_REASONS.has(String(item?.reason || '')));
 }
@@ -124,22 +120,13 @@ function unsupportedSampleText(item = {}) {
   return reason ? `${name} (${reason})` : name;
 }
 
-function unsupportedSamples(payload = {}, unsupported = []) {
-  return [
-    ...unsupportedFileRecords(unsupported).map(unsupportedSampleText).filter(Boolean),
-    ...(payload.folderSummary?.skippedUnsupportedSamples || [])
-      .map(unsupportedSampleText)
-      .filter(Boolean),
-  ];
-}
-
 function failedFileSamples(payload = {}) {
   return (payload.folderSummary?.failedFileSamples || [])
     .map(unsupportedSampleText)
     .filter(Boolean);
 }
 
-function desktopIntakeParts(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
+export function desktopIntakeToastText(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
   const summary = payload?.folderSummary || null;
   const parts = [];
   const scannedFiles = Number(summary?.scannedFiles || 0);
@@ -158,29 +145,6 @@ function desktopIntakeParts(payload = {}, openable = [], sidecars = [], converti
   if (failedFolderReads) parts.push(`${plural(failedFolderReads, 'folder read')} failed`);
   if (warningCount) parts.push(`${plural(warningCount, 'folder warning')}`);
   const silent = parts.length <= 1 && !sidecars.length && !unsupportedCount && !failedFiles && !failedFolderReads && !warningCount;
-  return { parts, silent, unsupportedCount, failedFiles, failedFolderReads, warningCount };
-}
-
-export function desktopIntakeNotice(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
-  const { parts, silent, unsupportedCount, failedFiles, failedFolderReads, warningCount } = desktopIntakeParts(
-    payload, openable, sidecars, convertible, unsupported,
-  );
-  if (silent) return '';
-  const samples = [
-    ...unsupportedSamples(payload, unsupported),
-    ...failedFileSamples(payload),
-    ...folderReadFailures(payload).map(desktopFolderWarningText).filter(Boolean),
-    ...otherFolderWarnings(payload).map(desktopFolderWarningText).filter(Boolean),
-  ].slice(0, 3);
-  const totalSamples = unsupportedCount + failedFiles + failedFolderReads + warningCount;
-  const sampleText = samples.length
-    ? ` (${samples.join(', ')}${hiddenSampleText(Math.max(0, totalSamples - samples.length))})`
-    : '';
-  return `Desktop intake: ${parts.join(', ')}${sampleText}.`;
-}
-
-export function desktopIntakeToastText(payload = {}, openable = [], sidecars = [], convertible = [], unsupported = []) {
-  const { parts, silent } = desktopIntakeParts(payload, openable, sidecars, convertible, unsupported);
   return silent ? '' : `Desktop intake: ${parts.join(', ')}.`;
 }
 

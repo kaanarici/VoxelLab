@@ -1,9 +1,3 @@
-// Microscopy sidecar intake for the upload modal: splitting picked/dropped files
-// into image files vs. VoxelLab ROI-results JSON, microscopy workflow-recipe JSON,
-// and ImageJ `.roi`/ZIP sidecars, then applying each recognized sidecar kind onto
-// the active microscopy series. Parser modules (imagej-roi, roi-results,
-// microscopy-workflow-recipe, hyperstack controls) load lazily only when matching
-// sidecars are present.
 import { state } from '../core/state.js';
 import { notify } from '../notify.js';
 import {
@@ -78,7 +72,7 @@ export async function splitMicroscopySidecars(files) {
           continue;
         }
       } catch {
-        // Keep malformed or unrelated JSON in the import set so the mixed-format guard rejects it.
+
       }
     }
     if ((isImageJRoiFile(file) || isImageJRoiZipFile(file)) && file.arrayBuffer instanceof Function) {

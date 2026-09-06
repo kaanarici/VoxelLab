@@ -1,8 +1,3 @@
-// ROI results data model: turns annotation-graph entries into calibrated
-// result rows, builds/validates/imports the JSON sidecar bundle, and resolves
-// which stack position a row lives at. No DOM, no file I/O — those live in
-// roi-results-table.js / roi-results-export.js.
-
 import { formatAreaFromMm2, formatLengthFromMm, lengthUnitToMm, preferredLengthUnit } from '../core/physical-units.js';
 import { seriesPersistenceKey } from '../core/series-identity.js';
 import { state } from '../core/state.js';
@@ -125,8 +120,6 @@ export function cleanPoints(points = []) {
     .map(([x, y]) => [x, y]);
 }
 
-// ROI geometry uses canvas edge coordinates: width/height are valid right/bottom
-// edges, and ROI stat sampling clamps to the last real pixel before indexing.
 function pointsFitImageBounds(points = [], series = {}) {
   const width = finiteNumber(series.width);
   const height = finiteNumber(series.height);

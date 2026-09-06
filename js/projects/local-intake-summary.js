@@ -102,12 +102,6 @@ function localIntakeSkippedItem(file, result) {
   };
 }
 
-// Distinct leaf folders (the immediate parent dir of each kept file) across a
-// selection. A study laid out as sibling "Series N" folders surfaces one entry
-// per folder, which is exactly the series boundary the user expects — so the
-// upload triage can promise "sub-folders import as separate series in one study"
-// before any DICOM tags are parsed. Files chosen without a folder (no relative
-// path) collapse to the root bucket and are ignored.
 export function intakeSeriesFolders(files = []) {
   const folders = [];
   const seen = new Set();

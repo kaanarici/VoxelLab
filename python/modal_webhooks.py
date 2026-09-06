@@ -27,7 +27,6 @@ _context = {
 }
 MAX_RESULT_JSON_BYTES = 1024 * 1024
 
-
 def configure_webhooks(
     *,
     upload_bucket: str,
@@ -45,25 +44,21 @@ def configure_webhooks(
     _context["upload_expiry_seconds"] = min(int(upload_expiry_seconds or 900), 900)
     _context["max_upload_bytes"] = max(int(max_upload_bytes or 0), 0)
 
-
 def _status_not_found(exc: Exception) -> bool:
     code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
     status = getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
     return isinstance(exc, KeyError) or code in {"404", "NoSuchKey", "NotFound"} or status == 404
-
 
 def _precondition_failed(exc: Exception) -> bool:
     code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
     status = getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
     return code in {"409", "412", "ConditionalRequestConflict", "PreconditionFailed"} or status in {409, 412}
 
-
 def _read_result_json(body, label: str) -> dict:
     raw = body.read(MAX_RESULT_JSON_BYTES + 1)
     if len(raw) > MAX_RESULT_JSON_BYTES:
         raise ValueError(f"{label} JSON exceeds {MAX_RESULT_JSON_BYTES} bytes")
     return json.loads(raw)
-
 
 def _existing_job_status(s3, key: str) -> tuple[dict, str]:
     resp = s3.get_object(Bucket=_context["results_bucket"], Key=key)
@@ -75,7 +70,6 @@ def _existing_job_status(s3, key: str) -> tuple[dict, str]:
         status = {"status": "unknown"}
     return status, str(resp.get("ETag", "") or "").strip('"')
 
-
 def _put_processing_claim(s3, key: str) -> str:
     response = s3.put_object(
         Bucket=_context["results_bucket"],
@@ -85,7 +79,6 @@ def _put_processing_claim(s3, key: str) -> str:
         IfNoneMatch="*",
     )
     return str((response or {}).get("ETag", "") or "").strip('"')
-
 
 def _mark_dispatch_unknown(s3, key: str, claim_etag: str, _detail: str) -> None:
     condition = {"IfMatch": claim_etag} if claim_etag else {}
@@ -100,7 +93,6 @@ def _mark_dispatch_unknown(s3, key: str, claim_etag: str, _detail: str) -> None:
         ContentType="application/json",
         **condition,
     )
-
 
 def start_processing(item: dict) -> dict:
     job_id = validate_job_id(item.get("job_id", ""))
@@ -180,7 +172,6 @@ def start_processing(item: dict) -> dict:
         return {"status": "error", "error": "dispatch_unknown", "detail": str(exc), "retryable": False}
     return {"status": "started", "job_id": job_id}
 
-
 def check_status(item: dict) -> dict:
     job_id = validate_job_id(item.get("job_id", ""))
     auth = auth_error(item.get("token", ""))
@@ -217,7 +208,6 @@ def check_status(item: dict) -> dict:
             return {"status": "processing"}
         traceback.print_exc()
         return {"status": "error", "error": "status_unavailable", "detail": str(exc)}
-
 
 def get_upload_urls(item: dict) -> dict:
     job_id = validate_job_id(item.get("job_id", ""))

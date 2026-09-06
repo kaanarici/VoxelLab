@@ -11,7 +11,6 @@ from projection_reconstruction import reconstruct_projection_volume
 from projection_rtk import configured_rtk_command
 from scripts import rtk_projection_wrapper
 
-
 class FakeProjection:
     def __init__(self, pixel_array, instance: int):
         self.pixel_array = pixel_array
@@ -19,7 +18,7 @@ class FakeProjection:
         self.StudyInstanceUID = "1.2.study"
         self.Modality = "XA"
         self.InstanceNumber = instance
-
+        self.ImagerPixelSpacing = [0.4, 0.6]
 
 def circular_manifest() -> dict:
     return {
@@ -39,11 +38,9 @@ def circular_manifest() -> dict:
         },
     }
 
-
 def fake_datasets() -> list[FakeProjection]:
     pixels = np.arange(16, dtype=np.float32).reshape(4, 4)
     return [FakeProjection(pixels, 1), FakeProjection(pixels + 1, 2)]
-
 
 def test_reconstruct_projection_volume_accepts_external_wrapper(tmp_path: Path) -> None:
     wrapper = tmp_path / "rtk_wrapper.py"
@@ -85,7 +82,6 @@ open(args.output_json, 'w').write(json.dumps(payload))
     assert result["report"]["geometryModel"] == "circular-cbct"
     assert result["report"]["validation"] == "reference-parity"
 
-
 def test_reconstruct_projection_volume_preserves_oriented_last_ipp_defaults(tmp_path: Path) -> None:
     wrapper = tmp_path / "rtk_wrapper_default_geometry.py"
     _ = wrapper.write_text(
@@ -114,7 +110,6 @@ open(args.output_json, 'w').write(json.dumps({'volumePath': volume_path}))
 
     assert result["geometry"]["lastIPP"] == [3.0, 0.0, 0.0]
 
-
 def test_reconstruct_projection_volume_reports_wrapper_failure(tmp_path: Path) -> None:
     wrapper = tmp_path / "rtk_wrapper_fail.py"
     _ = wrapper.write_text("import sys\nsys.stderr.write('wrapper boom')\nraise SystemExit(2)\n")
@@ -133,7 +128,6 @@ def test_reconstruct_projection_volume_reports_wrapper_failure(tmp_path: Path) -
             _ = os.environ.pop("MRI_VIEWER_RTK_COMMAND", None)
         else:
             os.environ["MRI_VIEWER_RTK_COMMAND"] = previous
-
 
 def test_reconstruct_projection_volume_clamps_invalid_wrapper_validation(tmp_path: Path) -> None:
     wrapper = tmp_path / "rtk_wrapper_bad_validation.py"
@@ -161,7 +155,6 @@ open(args.output_json, 'w').write(json.dumps({'volumePath': volume_path, 'report
 
     assert result["report"]["validation"] == "external-engine"
 
-
 def test_configured_rtk_command_defaults_to_bundled_wrapper(monkeypatch) -> None:
     try:
         _ = importlib.metadata.version("itk-rtk")
@@ -170,7 +163,6 @@ def test_configured_rtk_command_defaults_to_bundled_wrapper(monkeypatch) -> None
     monkeypatch.delenv("MRI_VIEWER_RTK_COMMAND", raising=False)
     command = configured_rtk_command()
     assert "scripts/rtk_projection_wrapper.py" in command
-
 
 def test_rtk_wrapper_rejects_limited_angle_tomography_before_fdk() -> None:
     manifest = circular_manifest()
@@ -182,3 +174,46 @@ def test_rtk_wrapper_rejects_limited_angle_tomography_before_fdk() -> None:
         assert "iterative reconstruction runtime" in str(exc)
     else:
         raise AssertionError("expected limited-angle tomo to reject FDK wrapper path")
+
+
+def test_projection_requires_real_detector_spacing(monkeypatch):
+    import pytest
+    from projection_rtk import _detector_spacing_mm
+
+    dataset = fake_datasets()[0]
+    for spacing in (None, [0, 1], [float("nan"), 1], [1]):
+        dataset.ImagerPixelSpacing = spacing
+        with pytest.raises(ValueError, match="spacing"):
+            _ = _detector_spacing_mm(dataset)
+    dataset.ImagerPixelSpacing = [0.4, 0.6]
+    dataset.PixelSpacing = [0.2, 0.3]
+    assert _detector_spacing_mm(dataset) == [0.4, 0.6]
+
+
+def test_wrapper_cannot_replace_requested_geometry_or_return_invalid_samples(tmp_path, monkeypatch):
+    import json
+    import pytest
+    import projection_rtk
+
+    monkeypatch.setattr(projection_rtk, "configured_rtk_command", lambda: "wrapper")
+    for volume, geometry, message in [
+        (np.ones((2, 8, 8)), {}, "requested grid"),
+        (np.full((3, 8, 8), np.nan), {}, "finite real"),
+        (np.ones((3, 8, 8)), {"pixelSpacing": [9, 9]}, "changed requested geometry"),
+        (np.ones((3, 8, 8)), {"pixelSpacing": [1, 2, 3]}, "changed requested geometry"),
+    ]:
+        def wrapper(command, manifest_path, projections_path, output_path):
+            volume_path = tmp_path / "result.npy"
+            np.save(volume_path, volume)
+            _ = output_path.write_text(json.dumps({"volumePath": str(volume_path), "geometry": geometry}))
+
+        monkeypatch.setattr(projection_rtk, "_run_wrapper", wrapper)
+        with pytest.raises(RuntimeError, match=message):
+            _ = reconstruct_projection_volume(fake_datasets(), circular_manifest(), np)
+
+
+def test_bundled_rtk_rejects_unspecified_projection_value_domain():
+    import pytest
+
+    with pytest.raises(ValueError, match="inputValueDomain=line-integral"):
+        _ = rtk_projection_wrapper.reconstruct(circular_manifest(), np.ones((2, 4, 4), dtype=np.float32))

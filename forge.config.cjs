@@ -82,9 +82,7 @@ module.exports = {
     icon: path.join(__dirname, 'electron/assets/icon'),
     appBundleId: 'com.voxellab.viewer',
     appCategoryType: 'public.app-category.medical',
-    // VoxelLab distributes unsigned binaries. Re-sign the macOS bundle ad hoc
-    // after packaging edits so users can still open it through Finder's
-    // right-click → Open flow; no Developer ID or notarization path exists.
+
     osxSign: {
       identity: '-',
       identityValidation: false,
@@ -125,14 +123,13 @@ module.exports = {
         },
       ],
     },
-    // The ignore allowlist copies only runtime browser assets; npm prune would restore full production dependency trees.
+
     prune: false,
     asar: {
       unpack: '**/*.{node,wasm,dll,dylib,so}',
     },
     download: {
-      // Trust the checksums shipped by the lockfile-pinned Electron package,
-      // rather than a mutable checksum document fetched during packaging.
+
       checksums: electronChecksums,
     },
     ignore: ignoreForDesktopPackage,
@@ -153,8 +150,7 @@ module.exports = {
         icon: path.join(__dirname, 'electron/assets/icon.icns'),
         background: path.join(__dirname, 'electron/assets/dmg-background.png'),
         iconSize: 120,
-        // Icon centres align with the artwork in dmg-background.png; window size
-        // matches the @1x background so the retina (@2x) sibling loads crisply.
+
         additionalDMGOptions: { window: { size: { width: 660, height: 400 } } },
         contents: opts => [
           { x: 484, y: 212, type: 'link', path: '/Applications' },

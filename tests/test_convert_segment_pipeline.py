@@ -13,16 +13,14 @@ from pydicom.uid import ExplicitVRLittleEndian, MRImageStorage, generate_uid
 import convert
 import segment
 
-
 def write_synthetic_nifti(path: Path) -> np.ndarray:
-    # Shape: synthetic xyz volume with smooth intensity ramps across a 16x16x4 MR stack.
+
     volume = np.zeros((16, 16, 4), dtype=np.float32)
     for z in range(volume.shape[2]):
         yy, xx = np.mgrid[:16, :16]
         volume[:, :, z] = 25 + z * 20 + xx * 4 + yy * 3
     nib.save(nib.Nifti1Image(volume, np.diag([1.0, 1.0, 1.5, 1.0])), str(path))
     return volume
-
 
 def write_mr_dicom_series(folder: Path, volume_xyz: np.ndarray) -> None:
     study_uid = generate_uid()
@@ -62,7 +60,6 @@ def write_mr_dicom_series(folder: Path, volume_xyz: np.ndarray) -> None:
         ds.PixelRepresentation = 0
         ds.PixelData = np.asarray(volume_xyz[:, :, z].T, dtype=np.uint16).tobytes()
         ds.save_as(folder / f"IM{z + 1:04d}.dcm", enforce_file_format=True)
-
 
 def test_convert_to_segment_pipeline_on_synthetic_nifti_source(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "dicom_source"

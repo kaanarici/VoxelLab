@@ -1,5 +1,3 @@
-// Shared DICOM SR helpers (UID + timestamp).
-
 export function uid() {
   const n = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/-/g, '');
   let dec = BigInt('0x' + n.slice(0, 32)).toString();

@@ -1,4 +1,3 @@
-/* global Buffer, Image, document */
 import { readFile, writeFile } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { expect, test } from '@playwright/test';

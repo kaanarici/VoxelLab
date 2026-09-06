@@ -1,4 +1,3 @@
-/* global Buffer, Request, Response */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -344,7 +343,7 @@ test('Electron main uses OS Trash for real converter sessions but not temporary 
   const readyBlock = mainSource.slice(readyStart, readyEnd);
   assert.match(readyBlock, /recentDocuments = await readRecentDocuments\(app\);/);
   assert.match(readyBlock, /savedImports = await readSavedImports\(app\);/);
-  assert.match(readyBlock, /\/\/ Converted data is session-scoped\.[\s\S]*?await converterJobs\.releaseStaleArtifacts\(\);/);
+  assert.match(readyBlock, /await converterJobs\.releaseStaleArtifacts\(\);[\s\S]*?createWindow\(\);/);
   assert.match(mainSource, /app\.on\('before-quit', \(event\) => \{\s*if \(converterArtifactsReleasedForQuit\) return;\s*event\.preventDefault\(\);\s*if \(releasingConverterArtifactsBeforeQuit\) return;\s*releasingConverterArtifactsBeforeQuit = true;\s*void converterJobs\.shutdown\(\)\s*\.then\(\(\) => converterJobs\.releaseTerminalArtifacts\(\)\)[\s\S]*?converterArtifactsReleasedForQuit = true;\s*app\.quit\(\);/s);
 });
 

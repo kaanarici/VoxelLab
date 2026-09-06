@@ -1,4 +1,3 @@
-/* global Buffer, Event, File, Image, document, innerHeight, innerWidth, requestAnimationFrame, window */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { TextDecoder } from 'node:util';

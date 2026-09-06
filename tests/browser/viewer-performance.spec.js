@@ -1,4 +1,3 @@
-/* global Buffer, Event, URL, WheelEvent, document, fetch, getComputedStyle, performance, requestAnimationFrame */
 import { expect, test } from '@playwright/test';
 import { VIEWER_PERF_BUDGET } from '../fixtures/performance-budget.mjs';
 import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
@@ -19,7 +18,7 @@ test('cold shell stays within the established module and byte budgets', async ({
   })));
   const scriptCount = resources.filter(entry => /\.(?:m?js)(?:\?|$)/.test(entry.name)).length;
   const decodedBytes = resources.reduce((sum, entry) => sum + entry.decodedBodySize, 0);
-  // Change detector for the no-bundler HTTP module graph, not a physics constant.
+
   expect(scriptCount, `cold shell loaded ${scriptCount} script modules`).toBeLessThanOrEqual(180);
   expect(decodedBytes, `cold shell decoded ${decodedBytes} bytes`).toBeLessThanOrEqual(1_500_000);
   expect(responses.length).toBeGreaterThan(0);
@@ -265,7 +264,7 @@ function roundMs(value) {
 }
 
 function budgetReport(metrics) {
-  // Shape: { selectSeries2dMs: { actualMs: 38.9, baselineMs: 38.9, maxMs: 500, deltaMs: 0 } }.
+
   return Object.fromEntries(
     Object.entries(metrics).map(([name, value]) => {
       const actualMs = roundMs(value);

@@ -1,4 +1,3 @@
-// Shape: adc stats sidecar with hr_lo_raw/hr_hi_raw plus DICOM rescale fields.
 export function adcDisplayFromNorm(adc, norm) {
   if (!adc) return null;
   const value = Number(norm);

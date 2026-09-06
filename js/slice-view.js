@@ -35,14 +35,13 @@ import {
 const VIEW_AWAITING_SLICE = 'view-awaiting-slice';
 const UI_FADE_SLICE = 'ui-fade-in';
 
-/** Call when starting a new series load — hides the empty canvas “card” until the first drawSlice paints. */
 export function markViewAwaitingSliceFade() {
   const el = $('view-xform');
   if (!el) return;
   el.classList.remove(UI_FADE_SLICE);
   el.classList.add(VIEW_AWAITING_SLICE);
   const canvas = $('view');
-  // visibility:hidden still occupies layout; collapse the leftover CSS box.
+
   if (canvas?.style) {
     canvas.style.width = '0px';
     canvas.style.height = '0px';
@@ -189,7 +188,7 @@ export function drawSlice() {
   const canvas = $('view');
   canvas.width = series.width;
   canvas.height = series.height;
-  // Shape: { width: 512, height: 768 } so 2D display keeps physical in-plane aspect.
+
   const displaySize = inPlaneDisplaySize(series);
   if (canvas.style) {
     canvas.style.width = `${displaySize.width}px`;

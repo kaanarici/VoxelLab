@@ -243,14 +243,3 @@ export function localIntakeToastText(intake) {
   }
   return `Local intake: ${summary} selected${afterChecking}${skippedText}${issueText}.`;
 }
-
-export function localIntakeNotice(counts, skipped, checkedFiles = 0, formatItems = {}, skippedCount = skipped.length) {
-  const totalSkipped = Number(skippedCount || 0);
-  const skippedText = totalSkipped
-    ? `; skipped ${totalSkipped} unsupported file${totalSkipped === 1 ? '' : 's'}${localIntakeSkippedSamplesText(skipped, totalSkipped)}`
-    : '';
-  const checkedText = checkedFiles ? `; checked ${checkedFiles} file${checkedFiles === 1 ? '' : 's'}` : '';
-  const converterAdvice = converterBackedAdvice(counts, formatItems);
-  const converterText = converterAdvice ? ` ${converterAdvice[0].toUpperCase()}${converterAdvice.slice(1)}.` : '';
-  return `Local intake: ${localIntakeSummaryText({ counts, formatItems })}${skippedText}${checkedText}.${converterText}`;
-}

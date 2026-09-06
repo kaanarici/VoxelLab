@@ -1,7 +1,3 @@
-// Replay path for microscopy workflow recipes: fail-closed validation against
-// the active series followed by a transactional apply with full rollback.
-// Shared series-shape and numeric primitives are imported from recipe-encode.js.
-
 import { lengthUnitToMm, normalizeLengthUnit } from '../core/physical-units.js';
 import { seriesIdentityKey, seriesPersistenceKey } from '../core/series-identity.js';
 import { state } from '../core/state.js';
@@ -312,7 +308,6 @@ function writeComposite(host, series, composite, writes) {
   return patchHostSeries(host, series, { microscopy: { composite } }, writes);
 }
 
-// Per-channel color + display-range snapshot used to roll back a partial apply.
 function channelStateSnapshot(series = {}, sizeC = channelCount(series)) {
   return Array.from({ length: sizeC }, (_, index) => {
     const channel = series.microscopyDataset?.channels?.find((item) => Number(item?.index) === index) || {};
@@ -539,7 +534,6 @@ export function validateMicroscopyWorkflowRecipe(recipe, host = state) {
   return { ok: true, code: '', message: '' };
 }
 
-// Fail-closed validation of the optional analysisOps log. Returns ok when absent/null.
 export function validateAnalysisOps(recipe, series, dims = null) {
   const ops = recipe?.analysisOps;
   if (ops == null) return { ok: true, code: '', message: '' };
@@ -772,7 +766,7 @@ export function applyMicroscopyWorkflowRecipe(recipe, host = state, writes) {
       const createsRoiEntries = descriptor?.op === 'analyze-particles';
       const expected = new Set(descriptor?.outputRoiObjectIds || []);
       const liveIds = new Set(roiResultRows(host, series).map((row) => row.objectId));
-      if (createsRoiEntries && expected.size > 0 && [...expected].every((id) => liveIds.has(id))) continue; // idempotent re-apply
+      if (createsRoiEntries && expected.size > 0 && [...expected].every((id) => liveIds.has(id))) continue;
       const res = replayAnalysisOp(host, series, descriptor, { writes });
       if (!res?.ok) throw new Error('analysis_op_replay_failed');
       if (createsRoiEntries) {

@@ -1,4 +1,3 @@
-// Sidebar-readout text for 3D transfer + clip sliders.
 import { state } from './core/state.js';
 import { $ } from './dom.js';
 import { syncPanelRangeFills } from './panel-range-fills.js';
@@ -9,7 +8,7 @@ export function updateClipReadouts() {
   $('readout-low').textContent = p(state.three.lowT) + '%';
   $('readout-high').textContent = p(state.three.highT) + '%';
   $('readout-gain').textContent = state.three.intensity.toFixed(2);
-  // Sync slider positions with state (e.g. after preset changes)
+
   const sLow = $('s-low'); if (sLow) sLow.value = state.three.lowT;
   const sHigh = $('s-high'); if (sHigh) sHigh.value = state.three.highT;
   const sGain = $('s-gain');

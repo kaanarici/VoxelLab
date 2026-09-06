@@ -1,10 +1,3 @@
-// Command palette (⌘K / Ctrl+K) — global action search.
-//
-// Commands are registered with { id, label, icon, section, shortcut, action }.
-// Sections group visually: "Tools", "Overlays", "View", "Display", "Export".
-// Filtering is case-insensitive substring match on label + section.
-// Keyboard: ↑↓ navigate, Enter execute, Escape close.
-
 import { $, escapeHtml, releaseFocus, trapFocus } from './dom.js';
 import {
   displayShortcutParts,
@@ -14,7 +7,6 @@ import {
   registerShortcutCommand,
 } from './keyboard-shortcuts.js';
 
-// { id, label, icon (href), section, shortcut?, keywords?, action() }
 const commands = [];
 
 export function registerCommand(cmd) {
@@ -53,7 +45,7 @@ export function openPalette() {
   activeIdx = 0;
   render();
   trapFocus(backdrop);
-  // Defer focus so the transition doesn't fight with the browser
+
   requestAnimationFrame(() => input.focus());
 }
 
@@ -76,7 +68,6 @@ function render() {
   const q = input.value.trim().toLowerCase();
   filtered = commands.filter(c => matchFilter(c, q));
 
-  // Group by section, preserving registration order
   const sections = [];
   const seen = new Set();
   for (const cmd of filtered) {
@@ -121,7 +112,6 @@ function execActive() {
   }
 }
 
-// Global ⌘K / Ctrl+K
 document.addEventListener('keydown', (e) => {
   if (matchCommandShortcutEvent(e, 'command-palette')) {
     e.preventDefault();
@@ -136,16 +126,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter')     { e.preventDefault(); execActive(); return; }
 }, true);
 
-// Type to filter
 input.addEventListener('input', () => { activeIdx = 0; render(); });
 
-// Click row
 list.addEventListener('click', (e) => {
   const row = e.target.closest('.cmdk-row');
   if (row) { activeIdx = +row.dataset.cmdkIdx; execActive(); }
 });
 
-// Mouse hover syncs active index
 list.addEventListener('mousemove', (e) => {
   const row = e.target.closest('.cmdk-row');
   if (row) {
@@ -154,11 +141,9 @@ list.addEventListener('mousemove', (e) => {
   }
 });
 
-// Backdrop click to close
 backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closePalette(); });
 dialog.addEventListener('click', (e) => e.stopPropagation());
 
-// Sidebar search button
 const sidebarBtn = $('btn-cmdk-open');
 if (sidebarBtn) sidebarBtn.addEventListener('click', openPalette);
 

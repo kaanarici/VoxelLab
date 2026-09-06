@@ -1,26 +1,3 @@
-"""
-High-precision volume exporter for the 3D renderer.
-
-The PNG-based pipeline in convert.py quantizes to 8 bits per voxel after a
-global window/level. That's fine for the 2D slice viewer (Canvas2D is 8-bit
-anyway), but it looks *banded* in the 3D volume render — you can see the
-quantization steps as soft contour lines on smooth intensity gradients.
-
-This script re-reads the original DICOMs at full precision and writes a
-binary little-endian uint16 volume file per series to data/<slug>.raw.
-The viewer loads it as an ArrayBuffer → THREE.Data3DTexture with
-UnsignedShortType, giving ~65k intensity levels instead of 256. The
-difference in 3D is obvious: gradients are smooth, lighting is cleaner,
-edges are sharper.
-
-Also writes data/<slug>_hr.json with:
-  - dims (W, H, D)
-  - voxel range (min, max)
-  - suggested window/level for 3D rendering (sequence-aware)
-
-Size: ~30 MB per 768x768x27 series. Acceptable.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -37,7 +14,6 @@ from pipeline_paths import ENV_DICOM_ROOT, candidate_dicom_files, resolve_dicom_
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 
-
 def load_dicom_volume(source: Path, src_folder: str) -> np.ndarray:
     folder = source / src_folder
     files = candidate_dicom_files(folder)
@@ -51,8 +27,7 @@ def load_dicom_volume(source: Path, src_folder: str) -> np.ndarray:
         mr.append(d)
     mr = sort_datasets_spatially(mr)
     arrs = [d.pixel_array for d in mr]
-    return np.stack(arrs)  # (D, H, W)
-
+    return np.stack(arrs)
 
 def process(series: dict, source: Path, sources: dict[str, str]) -> bool:
     slug = series["slug"]
@@ -63,7 +38,7 @@ def process(series: dict, source: Path, sources: dict[str, str]) -> bool:
 
     print(f"\n=== {slug} (from {src}) ===", flush=True)
     try:
-        vol = load_dicom_volume(source, src)   # (D, H, W)
+        vol = load_dicom_volume(source, src)
     except Exception as e:
         print(f"[{slug}] ERROR: {e}", file=sys.stderr)
         return False
@@ -74,9 +49,6 @@ def process(series: dict, source: Path, sources: dict[str, str]) -> bool:
         flush=True,
     )
 
-    # Clip to a robust percentile range to kill extreme outliers (e.g.
-    # a single hot pixel). Rescale to uint16 so the whole dynamic range
-    # is used — the viewer scales back to [0, 1] in the shader.
     nz = vol[vol > 0]
     if nz.size:
         lo, hi = np.percentile(nz, [0.1, 99.9])
@@ -87,8 +59,6 @@ def process(series: dict, source: Path, sources: dict[str, str]) -> bool:
     scaled = np.clip((vol.astype(np.float32) - lo) / max(hi - lo, 1e-6), 0, 1)
     u16 = (scaled * 65535).astype(np.uint16)
 
-    # Important: three.js Data3DTexture expects row-major with depth as the
-    # slowest axis — that's (D, H, W) in row-major, which is what we have.
     raw_path = DATA / f"{slug}.raw"
     _ = raw_path.write_bytes(u16.tobytes())
 
@@ -97,7 +67,7 @@ def process(series: dict, source: Path, sources: dict[str, str]) -> bool:
         "dims":   [W, H, D],
         "bits":   16,
         "dtype":  "uint16",
-        "layout": "DHW",             # slowest axis first
+        "layout": "DHW",
         "rescale": {"lo": lo, "hi": hi},
     }
     _ = (DATA / f"{slug}_hr.json").write_text(json.dumps(meta, indent=2))
@@ -105,7 +75,6 @@ def process(series: dict, source: Path, sources: dict[str, str]) -> bool:
     print(f"  wrote {raw_path.name} ({raw_path.stat().st_size / 1024 / 1024:.1f} MB)", flush=True)
     series["hasRaw"] = True
     return True
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser(description="Export uint16 .raw volumes for 3D mode.")
@@ -145,7 +114,6 @@ def main() -> bool:
     _ = update_manifest_series(path, updates)
     print("\nDone. Refresh the viewer.", flush=True)
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

@@ -6,8 +6,6 @@ const DATA_CACHE = `voxellab-data-${SERVICE_WORKER_VERSION}`;
 const MAX_INSTALL_PRECACHE_LOCAL_SLICES = 32;
 const MAX_DATA_CACHE_ENTRIES = 512;
 
-// Non-globbable shell roots (root URL + assets the generated manifest doesn't
-// glob). PRECACHE_LOCAL covers js/css/templates/index.html — see gen_sw_manifest.mjs.
 const CORE_SHELL = [
   './',
   './icons.svg',
@@ -158,7 +156,7 @@ async function trimRuntimeCache(cache, maxEntries, protectedRequest = null) {
     try {
       if (await cache.delete(key)) excess -= 1;
     } catch {
-      // Cache retention is best-effort; network responses must still succeed.
+
     }
   }
 }

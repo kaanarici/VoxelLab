@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Build the shipped lite MRI demo pack from public OpenNeuro source files."""
 
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ try:
     import nibabel as nib
     import numpy as np
     from PIL import Image
-except ImportError:  # pragma: no cover - maintainer-only build path
+except ImportError:
     nib = None
     np = None
     Image = None
@@ -81,11 +80,9 @@ SERIES_SPECS = [
     },
 ]
 
-
 def require_build_deps() -> None:
     if nib is None or np is None or Image is None:
         raise RuntimeError("build requires pipeline deps: install `.[pipeline]`")
-
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -94,11 +91,9 @@ def sha256_file(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
-
 def b0_index(bval_path: Path) -> int:
     values = [float(item) for item in bval_path.read_text(encoding="utf-8").split()]
     return min(range(len(values)), key=lambda idx: values[idx])
-
 
 def nifti_geometry(img) -> dict[str, Any]:
     affine = np.asarray(img.affine, dtype=np.float64)
@@ -126,7 +121,6 @@ def nifti_geometry(img) -> dict[str, Any]:
         "orientation": [round(value, 6) for value in [*row_dir, *col_dir]],
     }
 
-
 def write_png_stack(volume_xyz: Any, dest_dir: Path) -> tuple[float, float]:
     dest_dir.mkdir(parents=True, exist_ok=True)
     values = volume_xyz.astype(np.float32, copy=False)
@@ -140,7 +134,6 @@ def write_png_stack(volume_xyz: Any, dest_dir: Path) -> tuple[float, float]:
         Image.fromarray(out, mode="L").save(dest_dir / f"{index:04d}.png")
     return lo, hi
 
-
 def write_raw_u16(volume_xyz: Any, out_path: Path) -> None:
     values = volume_xyz.astype(np.float32, copy=False)
     lo = float(values.min())
@@ -149,7 +142,6 @@ def write_raw_u16(volume_xyz: Any, out_path: Path) -> None:
     normalized = np.clip((values - lo) / scale, 0, 1)
     stack_zyx = np.transpose(normalized, (2, 1, 0))
     (stack_zyx * 65535.0 + 0.5).astype(np.uint16).tofile(out_path)
-
 
 def load_volume(nifti_path: Path, b0_path: Path | None = None) -> tuple[Any, dict[str, Any]]:
     img = nib.load(str(nifti_path))
@@ -160,7 +152,6 @@ def load_volume(nifti_path: Path, b0_path: Path | None = None) -> tuple[Any, dic
     if data.ndim != 3:
         raise ValueError(f"{nifti_path.name}: expected 3D or 4D image")
     return data, nifti_geometry(img)
-
 
 def build_series(temp_data: Path, spec: dict[str, Any], download_dir: Path) -> dict[str, Any]:
     slug = spec["slug"]
@@ -197,7 +188,6 @@ def build_series(temp_data: Path, spec: dict[str, Any], download_dir: Path) -> d
     }
     return entry
 
-
 def write_manifest(temp_data: Path, entries: list[dict[str, Any]]) -> Path:
     manifest = {
         "patient": "openneuro_ds005752_sub_ON01802",
@@ -207,7 +197,6 @@ def write_manifest(temp_data: Path, entries: list[dict[str, Any]]) -> Path:
     path = temp_data / "manifest.json"
     _ = path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return path
-
 
 def build_pack(provider: str | None = None, model: str | None = None) -> Path:
     require_build_deps()
@@ -241,7 +230,6 @@ def build_pack(provider: str | None = None, model: str | None = None) -> Path:
     update_catalog_checksum(PACK_PATH, CATALOG_PATH)
     return PACK_PATH
 
-
 def update_catalog_checksum(pack_path: Path, catalog_path: Path) -> None:
     if not catalog_path.is_file():
         return
@@ -256,20 +244,17 @@ def update_catalog_checksum(pack_path: Path, catalog_path: Path) -> None:
             pack["checksum"] = checksum
     _ = catalog_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the shipped OpenNeuro MRI lite pack.")
     _ = parser.add_argument("--provider", choices=["claude", "codex"], help="Generate pregenerated analysis with this provider")
     _ = parser.add_argument("--model", default=None, help="AI model override")
     return parser.parse_args()
 
-
 def main() -> int:
     args = parse_args()
     path = build_pack(provider=args.provider, model=args.model)
     print(path)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

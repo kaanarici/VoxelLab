@@ -4,7 +4,6 @@ import { state } from '../core/state.js';
 import { OVERLAY_CACHE_BY_KIND } from './overlay-cache-keys.js';
 import { overlayAvailabilityForKind } from './overlay-kinds.js';
 
-// Shape: { available: true, enabled: false, ready: false, voxels: Uint8Array(...) }.
 function describeOverlayKind(cache, base = {}) {
   const kind = cache.kind;
   const imgs = state[cache.imgs];
@@ -61,8 +60,6 @@ function getHotLutColors() {
   return hotLutColors;
 }
 
-
-// Shape: { tissue: { available: true }, labels: { available: false } }.
 export function activeOverlayStateForSeries(series = state.manifest?.series?.[state.seriesIdx]) {
   const overlays = {};
   for (const cache of Object.values(OVERLAY_CACHE_BY_KIND)) {
@@ -73,7 +70,6 @@ export function activeOverlayStateForSeries(series = state.manifest?.series?.[st
   return overlays;
 }
 
-// Shape: { mode: 2, source: Uint8Array(...), colors: { 4: [255, 0, 0] } }.
 export function activeThreeLabelOverlay(series = state.manifest?.series?.[state.seriesIdx]) {
   const overlays = activeOverlayStateForSeries(series);
   if (overlays.labels.enabled && overlays.labels.voxels && overlays.labels.meta) {

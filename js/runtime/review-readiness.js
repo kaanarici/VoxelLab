@@ -6,7 +6,6 @@ function seriesVoxelCount(series) {
   return Number(series?.width || 0) * Number(series?.height || 0) * Number(series?.slices || 0);
 }
 
-// Shape: true when an image slot is fully decoded and paintable.
 export function isRenderableImage(img) {
   return !!(img && img.complete && img.naturalWidth > 0);
 }
@@ -61,7 +60,6 @@ function overlayStacksFromState() {
   return stacks;
 }
 
-// Shape: { tissue: { currentSliceReady: true, volumeReady: false }, ... }.
 export function overlaySessionForSeries(
   series = state.manifest?.series?.[state.seriesIdx],
   {

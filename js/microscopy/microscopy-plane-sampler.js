@@ -1,12 +1,3 @@
-// Pure single-channel intensity sampler shared by raw-domain microscopy ROI stats and
-// Analyze Particles. Reads one sample per pixel (`pixels[py*W+px]`) — NOT RGBA stride-4 —
-// so it works directly on retained raw scalar plane buffers.
-
-// plane:  { pixels: Float32Array|TypedArray, width, height }
-// inside: (cx, cy) => boolean, tested at pixel centers (px+0.5, py+0.5)
-// bbox:   { minX, maxX, minY, maxY } inclusive; clamped to the plane here.
-// Returns { n, sum, sum2, min, max } (min=+Inf, max=-Inf when n===0) — callers derive
-// mean = sum/n and variance = max(0, sum2/n - mean*mean).
 export function samplePlaneIntensity(plane, inside, bbox = {}) {
   const W = plane.width | 0;
   const H = plane.height | 0;

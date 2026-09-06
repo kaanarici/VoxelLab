@@ -1,4 +1,3 @@
-/* global Buffer, Event, Image, TextDecoder, document, getComputedStyle, innerWidth, requestAnimationFrame */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';

@@ -9,7 +9,6 @@ from series_contract import (
     validate_projection_set,
 )
 
-
 def fixture_manifest() -> dict:
     return {
         "patient": "fixture",
@@ -30,7 +29,6 @@ def fixture_manifest() -> dict:
             }
         ],
     }
-
 
 def modal_entry(**overrides) -> dict:
     entry = {
@@ -58,7 +56,6 @@ def modal_entry(**overrides) -> dict:
     entry.update(overrides)
     return entry
 
-
 def test_normalize_series_entry_backfills_urls_and_compare_group() -> None:
     entry = normalize_series_entry(
         {
@@ -80,7 +77,6 @@ def test_normalize_series_entry_backfills_urls_and_compare_group() -> None:
     assert entry["group"] == "for:1.2.for"
     assert entry["sourceJobId"] == "job12345"
 
-
 def test_validate_modal_series_entry_requires_cloud_urls() -> None:
     errors = validate_modal_series(
         {
@@ -100,7 +96,6 @@ def test_validate_modal_series_entry_requires_cloud_urls() -> None:
 
     assert "series: missing required field: rawUrl" in errors
     assert "series: missing required field: sliceUrlBase" in errors
-
 
 def test_merge_manifest_series_upserts_projection_registry() -> None:
     merged, action, index = merge_manifest_series(
@@ -132,7 +127,6 @@ def test_merge_manifest_series_upserts_projection_registry() -> None:
     assert index == 1
     assert merged["series"][1]["sourceJobId"] == "job12345"
     assert merged["projectionSets"][0]["id"] == "projection_set_1"
-
 
 def test_build_projection_set_entry_matches_projection_registry_contract() -> None:
     projection_entry = build_projection_set_entry(

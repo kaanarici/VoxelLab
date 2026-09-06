@@ -1,4 +1,3 @@
-/* global Buffer, URL, window */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -10,7 +9,7 @@ async function openUploadModal(page) {
   await page.locator('#upload-advanced-options > summary').click();
 }
 
-async function writeTinyDicom(path, { modality = 'CT', seriesUID, instanceNumber = 1 } = {}) {
+async function writeTinyDicom(path, { modality = 'CT', seriesUID, instanceNumber = 1, samplesPerPixel = 1, detectorSpacing = [0.5, 0.5] } = {}) {
   const { DicomDict, DicomMetaDictionary } = dcmjs.data;
   const uidRoot = `1.2.826.0.1.3680043.10.543.${modality === 'XA' ? '77' : modality === 'US' ? '99' : '88'}`;
   const dataset = {
@@ -30,8 +29,8 @@ async function writeTinyDicom(path, { modality = 'CT', seriesUID, instanceNumber
     SeriesDescription: modality === 'XA' ? 'Projection source' : modality === 'US' ? 'Ultrasound source' : 'Local DICOM CT',
     Rows: 2,
     Columns: 2,
-    SamplesPerPixel: 1,
-    PhotometricInterpretation: 'MONOCHROME2',
+    SamplesPerPixel: samplesPerPixel,
+    PhotometricInterpretation: samplesPerPixel === 1 ? 'MONOCHROME2' : 'RGB',
     BitsAllocated: 16,
     BitsStored: 16,
     HighBit: 15,
@@ -41,8 +40,10 @@ async function writeTinyDicom(path, { modality = 'CT', seriesUID, instanceNumber
     ImageOrientationPatient: [1, 0, 0, 0, 1, 0],
     ImagePositionPatient: [0, 0, 0],
     InstanceNumber: instanceNumber,
-    PixelData: new Uint16Array([1, 2, 3, 4]).buffer,
+    PixelData: Uint16Array.from({ length: 4 * samplesPerPixel }, (_, index) => index + 1).buffer,
   };
+  if (detectorSpacing) dataset.ImagerPixelSpacing = detectorSpacing;
+  if (samplesPerPixel > 1) dataset.PlanarConfiguration = 0;
   const dict = new DicomDict(DicomMetaDictionary.denaturalizeDataset(dataset._meta));
   dict.dict = DicomMetaDictionary.denaturalizeDataset(dataset);
   await mkdir(dirname(path), { recursive: true });
@@ -374,9 +375,11 @@ test('upload modal can start rigid registration as a cloud action', async ({ pag
 
 test('upload modal can start calibrated ultrasound scan conversion as a cloud action', async ({ page }, testInfo) => {
   const dicomPath = testInfo.outputPath('ultrasound-1.dcm');
+  const secondDicomPath = testInfo.outputPath('ultrasound-2.dcm');
   const sourcePath = testInfo.outputPath('voxellab.source.json');
   const seriesUID = '1.2.826.0.1.3680043.10.543.99.20';
   await writeTinyDicom(dicomPath, { modality: 'US', seriesUID });
+  await writeTinyDicom(secondDicomPath, { modality: 'US', seriesUID, instanceNumber: 2 });
   await writeFile(sourcePath, JSON.stringify(ultrasoundSourceManifest(seriesUID)));
 
   await acceleratePolling(page);
@@ -441,7 +444,7 @@ test('upload modal can start calibrated ultrasound scan conversion as a cloud ac
 
   await openUploadModal(page);
   const initialCount = await page.locator('#series-list li').count();
-  await page.locator('#upload-file-input').setInputFiles([dicomPath, sourcePath]);
+  await page.locator('#upload-file-input').setInputFiles([dicomPath, secondDicomPath, sourcePath]);
   await expect(page.locator('#upload-cloud-btn')).toHaveText('Scan-convert ultrasound on cloud GPU');
   await expect(page.locator('#upload-cloud-action-state')).toContainText('ultrasound scan conversion');
   await expect(page.locator('#upload-cloud-action-state')).toContainText('voxellab.source.json');
@@ -497,3 +500,33 @@ test('upload modal blocks ultrasound scan conversion before upload for malformed
   await expect(page.locator('#upload-cloud-action-state')).toContainText('thetaRangeDeg');
   expect(cloudCalls).toEqual([]);
 });
+
+
+for (const scenario of [
+  { name: 'color ultrasound', modality: 'US', samplesPerPixel: 3, reason: 'grayscale' },
+  { name: 'projection without detector calibration', modality: 'XA', samplesPerPixel: 1, reason: 'ImagerPixelSpacing' },
+]) {
+  test(`cloud preflight blocks ${scenario.name} before upload`, async ({ page }, testInfo) => {
+    const dicomPath = testInfo.outputPath('source.dcm');
+    const sourcePath = testInfo.outputPath('voxellab.source.json');
+    const seriesUID = '1.2.826.0.1.3680043.10.543.100.1';
+    await writeTinyDicom(dicomPath, { ...scenario, seriesUID, detectorSpacing: null });
+    const manifest = scenario.modality === 'US' ? ultrasoundSourceManifest(seriesUID) : projectionSourceManifest(seriesUID);
+    await writeFile(sourcePath, JSON.stringify(manifest));
+    await routeConfig(page, {
+      modalWebhookBase: '/api/cloud', r2PublicUrl: 'https://r2.example',
+      trustedUploadOrigins: ['https://upload.example'], localApiToken: 'local-token-123',
+      features: { cloudProcessing: true },
+    });
+    const cloudCalls = [];
+    await page.route('**/api/cloud/**', async route => {
+      cloudCalls.push(route.request().url());
+      await route.fulfill({ status: 500, body: 'unexpected cloud call' });
+    });
+    await openUploadModal(page);
+    await page.locator('#upload-file-input').setInputFiles([dicomPath, sourcePath]);
+    await expect(page.locator('#upload-cloud-btn')).toBeDisabled();
+    await expect(page.locator('#upload-cloud-action-state')).toContainText(scenario.reason);
+    expect(cloudCalls).toEqual([]);
+  });
+}

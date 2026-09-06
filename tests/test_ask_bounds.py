@@ -9,7 +9,6 @@ import pytest
 
 import ask
 
-
 def test_ask_accepts_current_slice_from_browser_local_import(monkeypatch) -> None:
     Image = pytest.importorskip("PIL.Image")
     buffer = io.BytesIO()
@@ -37,7 +36,6 @@ def test_ask_accepts_current_slice_from_browser_local_import(monkeypatch) -> Non
     assert "rest of the locally opened study was not transmitted" in calls[0][0]
     assert len(calls[0][1]["images"]) == 1
 
-
 def test_ask_rejects_coordinates_outside_series_bounds(monkeypatch, tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
@@ -54,7 +52,6 @@ def test_ask_rejects_coordinates_outside_series_bounds(monkeypatch, tmp_path: Pa
     with pytest.raises(ValueError, match="coordinates out of range"):
         _ = ask.ask("t2_tse", 0, "what is this?", x=5, y=1)
 
-
 def test_ask_rejects_invalid_slug_before_path_construction(monkeypatch, tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
@@ -63,7 +60,6 @@ def test_ask_rejects_invalid_slug_before_path_construction(monkeypatch, tmp_path
 
     with pytest.raises(ValueError, match="invalid slug"):
         _ = ask.ask("../etc", 0, "what is this?", x=0, y=0)
-
 
 def test_ask_cache_requires_matching_context_fingerprint() -> None:
     data = {
@@ -94,7 +90,6 @@ def test_ask_cache_requires_matching_context_fingerprint() -> None:
     assert ask._cached_ask(data, "0:0:0:abc", "ctx1")["answer"] == "context answer"
     assert ask._cached_ask(data, "0:0:0:abc", "ctx2") is None
 
-
 def test_build_ask_prompt_includes_approximate_point_context() -> None:
     prompt = ask.build_ask_prompt(
         crop_path=Path("data/sample_asks/crop.png"),
@@ -114,7 +109,6 @@ def test_build_ask_prompt_includes_approximate_point_context() -> None:
     assert "Do not diagnose" in prompt
     assert "Do not classify anatomy as normal or abnormal" in ask.ASK_SYSTEM
     assert "Do not classify the study as normal or abnormal" in ask.CONSULT_SYSTEM
-
 
 def test_build_ask_prompt_keeps_viewer_context_separate_from_question() -> None:
     context_text, fingerprint = ask._viewer_context_prompt("Viewer cloud/action context:\n- Cloud action ready.")
@@ -137,7 +131,6 @@ def test_build_ask_prompt_keeps_viewer_context_separate_from_question() -> None:
     assert "Viewer workflow context supplied by the app" in prompt
     assert "Cloud action ready" in prompt
     assert "not additional user-authored question text" in prompt
-
 
 def test_stream_ai_maps_codex_deltas(monkeypatch) -> None:
     def fake_stream(**kwargs):
@@ -167,7 +160,6 @@ def test_stream_ai_maps_codex_deltas(monkeypatch) -> None:
         {"type": "delta", "text": " hippocampus"},
         {"type": "tool_output", "id": "cmd-1", "text": "stdout"},
     ]
-
 
 def test_ask_bypasses_context_free_cache_when_valid_context_exists(monkeypatch, tmp_path: Path) -> None:
     Image = pytest.importorskip("PIL.Image")
@@ -235,7 +227,6 @@ def test_ask_bypasses_context_free_cache_when_valid_context_exists(monkeypatch, 
     manifest = json.loads((data / "manifest.json").read_text())
     assert manifest["series"][0]["hasAskHistory"] is True
 
-
 def test_ask_viewer_context_reaches_prompt_without_polluting_question(monkeypatch, tmp_path: Path) -> None:
     Image = pytest.importorskip("PIL.Image")
 
@@ -290,7 +281,6 @@ def test_ask_viewer_context_reaches_prompt_without_polluting_question(monkeypatc
     }]
     assert saved["actions"] == result["actions"]
 
-
 def test_ask_viewer_context_adds_cloud_results_action() -> None:
     actions = ask._ask_actions_for_viewer_context(
         "\n".join([
@@ -308,7 +298,6 @@ def test_ask_viewer_context_adds_cloud_results_action() -> None:
         "detail": "Active completed cloud action: Cloud CT/MR segmentation; series Cloud Segmentation Result; job job_fixture_cloud_123; status partial.",
     }
     assert actions[1]["id"] == "open-cloud-workflow"
-
 
 def test_ask_viewer_context_adds_registration_compare_action_before_workflow_action() -> None:
     actions = ask._ask_actions_for_viewer_context(

@@ -1,6 +1,3 @@
-// Sidebar tree rendering: project folders, study-type groups, pinned + loose
-// series rows, drag-and-drop, multi-select, and hover thumbnails.
-
 import { $, escapeHtml } from '../dom.js';
 import { imageUrlForStack } from '../series/series-image-stack.js';
 import { downsampleLocalByteSlice, localByteSliceData } from '../series/local-byte-slice.js';
@@ -105,7 +102,6 @@ export async function expandFolderForSeries(slug) {
   }
 }
 
-// { "CT": true, ... } — which study-type buckets are collapsed (study-type sort only)
 const STUDY_TYPE_COLLAPSED_KEY = 'mri-viewer/studyTypeCollapsed/v1';
 
 function studyTypeCollapsedMap() {
@@ -124,7 +120,7 @@ function persistStudyTypeCollapsed(groupKey, collapsed) {
   try {
     localStorage.setItem(STUDY_TYPE_COLLAPSED_KEY, JSON.stringify(m));
   } catch {
-    /* ignore quota */
+
   }
 }
 
@@ -136,7 +132,7 @@ function pruneStudyTypeCollapsed(liveKeys) {
   try {
     localStorage.setItem(STUDY_TYPE_COLLAPSED_KEY, JSON.stringify(m));
   } catch {
-    /* ignore quota */
+
   }
 }
 
@@ -173,13 +169,6 @@ function renderImmediateSeriesList(list, pinnedList, manifest, activeSlug) {
   wireSidebarOnce();
 }
 
-// Everything that affects the rendered tree *structure*, row classes, and row
-// text EXCEPT the active slug. When this is unchanged a selection click only
-// needs to move the `.active` highlight, not wipe and rebuild the whole tree
-// (which briefly flashed the flat list). The active slug is deliberately
-// excluded so a pure selection change collapses to the cheap in-place path
-// below. Row name/description ARE included so an in-place series update (e.g. a
-// re-uploaded cloud series with the same slug but a new name) still rebuilds.
 function computeStructureSignature(manifest, projects) {
   const folders = JSON.stringify(projects.map(p => [
     p.id,
@@ -197,10 +186,6 @@ function computeStructureSignature(manifest, projects) {
   ].join('#');
 }
 
-// In-place selection update: move `.active` to the newly selected row across
-// both the series and pinned lists, reveal/scroll it into view, and refresh
-// flatOrder so keyboard range-select stays correct. Returns false if the active
-// row isn't present (e.g. it lives in a collapsed folder), forcing a rebuild.
 function applyActiveSelectionInPlace(list, pinnedList, activeSlug) {
   const rows = [];
   list.querySelectorAll('li[data-series-slug]').forEach(li => rows.push(li));
@@ -240,15 +225,10 @@ export async function renderProjectsSidebar(manifest, currentSeriesIdx) {
   const seriesBySlug = new Map();
   for (const s of manifest.series) if (!seriesBySlug.has(s.slug)) seriesBySlug.set(s.slug, s);
 
-  // Drop in-memory state for slugs no longer in the manifest (e.g. study switch).
-  // Keyed by slug: thumbCache holds pre-loaded Images, multiSel holds multi-select.
   const liveSlugs = new Set(manifest.series.map(s => s.slug));
   for (const slug of thumbCache.keys()) if (!liveSlugs.has(slug)) thumbCache.delete(slug);
   for (const slug of multiSel) if (!liveSlugs.has(slug)) multiSel.delete(slug);
 
-  // Give a cold sidebar an honest, usable flat view while IndexedDB loads.
-  // The project tree replaces it once persistence resolves; no timeout may
-  // reinterpret a slow database as an empty one.
   if (!hadStudyRows) renderImmediateSeriesList(list, pinnedList, manifest, activeSlug);
 
   const projects = await getProjectsForRender();
@@ -259,9 +239,6 @@ export async function renderProjectsSidebar(manifest, currentSeriesIdx) {
   }
   const structureSig = computeStructureSignature(manifest, projects);
 
-  // Fast path: when only the active slug changed (a pure selection click), move
-  // the highlight in place instead of wiping + rebuilding the tree. Skips the
-  // flat-list flash and preserves expanded folders, DnD wiring, and thumbnails.
   if (
     hadStudyRows
     && sidebar.structureSig === structureSig

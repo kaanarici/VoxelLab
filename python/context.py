@@ -1,5 +1,3 @@
-"""Generate per-series spatial context sidecars for grounded AI prompts."""
-
 from __future__ import annotations
 
 import argparse
@@ -14,7 +12,7 @@ from spatial_context import TISSUE_LABELS, validate_context_payload, voxel_to_mm
 try:
     import numpy as np
     from PIL import Image
-except ImportError:  # pragma: no cover - exercised by users without pipeline extras
+except ImportError:
     np = None
     Image = None
 
@@ -25,19 +23,15 @@ def require_pipeline_deps() -> None:
     if np is None or Image is None:
         raise RuntimeError("context generation requires pipeline extras: run `python3 -m pip install -e '.[pipeline]'`")
 
-
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text())
-
 
 def png_path(folder: Path, index: int) -> Path:
     return folder / f"{index:04d}.png"
 
-
 def load_gray(path: Path):
     assert Image is not None
     return np.array(Image.open(path).convert("L"))
-
 
 def load_optional_stack_slice(data_dir: Path, slug: str, suffix: str, index: int, shape: tuple[int, int]):
     folder = data_dir / f"{slug}{suffix}"
@@ -49,7 +43,6 @@ def load_optional_stack_slice(data_dir: Path, slug: str, suffix: str, index: int
         raise ValueError(f"{path}: dimensions {arr.shape[::-1]} do not match base {shape[::-1]}")
     return arr
 
-
 def numeric_summary(values) -> dict[str, float]:
     vals = np.asarray(values, dtype=np.float32)
     if vals.size == 0:
@@ -60,7 +53,6 @@ def numeric_summary(values) -> dict[str, float]:
         "p5": round(float(np.percentile(vals, 5)), 4),
         "p95": round(float(np.percentile(vals, 95)), 4),
     }
-
 
 def raw_volume(data_dir: Path, slug: str, series: dict[str, Any], stats: dict[str, Any] | None):
     raw_path = data_dir / f"{slug}.raw"
@@ -96,10 +88,8 @@ def raw_volume(data_dir: Path, slug: str, series: dict[str, Any], stats: dict[st
         }
     return None, None
 
-
 def intensity(values, source: str, units: str) -> dict[str, Any]:
     return {"source": source, "units": units, **numeric_summary(values)}
-
 
 def tissue_summary(seg) -> dict[str, Any] | None:
     if seg is None:
@@ -118,7 +108,6 @@ def tissue_summary(seg) -> dict[str, Any] | None:
         "fractionsOfNonBackground": fractions,
     }
 
-
 def region_name(region_meta: dict[str, Any], label: int) -> str:
     regions = region_meta.get("regions") if isinstance(region_meta.get("regions"), dict) else {}
     item = regions.get(str(label)) if isinstance(regions, dict) else None
@@ -127,7 +116,6 @@ def region_name(region_meta: dict[str, Any], label: int) -> str:
     legend = region_meta.get("legend") if isinstance(region_meta.get("legend"), dict) else {}
     value = legend.get(str(label)) if isinstance(legend, dict) else None
     return value if isinstance(value, str) else f"label {label}"
-
 
 def region_summary(region_arr, base_values, spacing: list[float], region_meta: dict[str, Any], intensity_source: str, units: str) -> list[dict[str, Any]]:
     if region_arr is None:
@@ -149,7 +137,6 @@ def region_summary(region_arr, base_values, spacing: list[float], region_meta: d
         })
     return out
 
-
 def symmetry_summary(stats: dict[str, Any] | None, index: int) -> dict[str, Any] | None:
     scores = (stats or {}).get("symmetryScores")
     if not isinstance(scores, list) or index >= len(scores):
@@ -165,7 +152,6 @@ def symmetry_summary(stats: dict[str, Any] | None, index: int) -> dict[str, Any]
         "rankWithinSeries": round(rank, 6),
         "meaning": "image-math asymmetry rank, not disease probability",
     }
-
 
 def generate_series_context(data_dir: Path, series: dict[str, Any]) -> dict[str, Any]:
     require_pipeline_deps()
@@ -225,12 +211,10 @@ def generate_series_context(data_dir: Path, series: dict[str, Any]) -> dict[str,
         raise ValueError(f"{slug}: invalid generated context: {errors[0]}")
     return payload
 
-
 def write_context(data_dir: Path, payload: dict[str, Any]) -> Path:
     path = data_dir / f"{payload['slug']}_context.json"
     atomic_write_json(path, payload, sort_keys=True)
     return path
-
 
 def set_has_context(manifest_path: Path, slugs: set[str]) -> None:
     def mark_context(manifest: dict) -> dict:
@@ -241,10 +225,8 @@ def set_has_context(manifest_path: Path, slugs: set[str]) -> None:
 
     _ = update_json(manifest_path, mark_context)
 
-
 def series_by_slug(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {series["slug"]: series for series in manifest.get("series", []) if isinstance(series, dict) and isinstance(series.get("slug"), str)}
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate VoxelLab spatial context sidecars.")
@@ -252,7 +234,6 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--data-dir", type=Path, default=DATA, help="Data directory. Default: ./data")
     _ = parser.add_argument("--no-manifest-update", action="store_true", help="Do not set hasContext in manifest.json.")
     return parser.parse_args()
-
 
 def main() -> bool:
     args = parse_args()
@@ -279,7 +260,6 @@ def main() -> bool:
     if wrote and not args.no_manifest_update:
         set_has_context(manifest_path, wrote)
     return ok
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

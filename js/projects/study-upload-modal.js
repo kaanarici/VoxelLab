@@ -1,4 +1,3 @@
-// "Open a study" modal: local DICOM/NIfTI parse or cloud pipeline.
 import { state } from '../core/state.js';
 import { HAS_LOCAL_BACKEND } from '../core/local-backend.js';
 import { $, escapeHtml, openModal, closeModal } from '../dom.js';
@@ -41,11 +40,6 @@ import {
   readCloudSourceManifest,
 } from './cloud-action-preflight.js';
 
-// Render the structured intake triage as a scannable list. The visual is a
-// row-per-outcome list, but the accessible name stays the complete sentence
-// localIntakeStatusText() produces so screen readers hear one summary. When
-// nothing is actionable the triage shows only red Skipped/failure rows, so we
-// append the supported-format guidance the old run-on status used to carry.
 export function renderIntakeTriage(statusEl, intake, tone) {
   const html = intakeTriageHtml(intake);
   if (!html) {
@@ -220,9 +214,7 @@ function cloudFilesForUpload(localFiles = [], rawFiles = []) {
 }
 
 export async function showStudyUploadModal(selectSeries, options = {}) {
-  // A cloud operation owns its visible upload session until the user stops
-  // waiting. Do not rebuild the modal underneath it: callers such as desktop
-  // open can arrive again while the request is still polling.
+
   const openUploadModal = $('upload-modal');
   if (openUploadModal?.classList.contains('visible') && openUploadModal.dataset.closeBlocked === 'true') {
     openUploadModal.dispatchEvent(new CustomEvent('voxellab:modal-close-blocked', { bubbles: true }));
@@ -239,11 +231,7 @@ export async function showStudyUploadModal(selectSeries, options = {}) {
   const isModalSessionActive = () => isModalSessionCurrent() && modal.classList.contains('visible');
 
   const desktop = globalThis.voxellabDesktop;
-  // The primary click opens a folder. Desktop swaps the web directory picker
-  // for the native dialog, which can multi-select sibling series folders and
-  // reads slices by range instead of buffering every file in memory. The
-  // payload returns through the desktop bridge's onOpenPaths → handleLocalImport,
-  // so the import path stays shared.
+
   const isDesktopHost = desktop?.openFolder instanceof Function;
   const cloudSettingsWritable = HAS_LOCAL_BACKEND || !!(desktop?.getCloudSettings && desktop?.saveCloudSettings);
   const cloudStatus = cloudRuntimeStatus();

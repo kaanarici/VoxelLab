@@ -1,5 +1,3 @@
-// Unified MPR toolbar + orthogonal/oblique canvas interactions (wired from wire-controls.js).
-
 import { $ } from './dom.js';
 import { initHorizontalScrollFades } from './shell/horizontal-scroll-fades.js';
 import { isMprActive } from './core/mode-flags.js';
@@ -36,7 +34,6 @@ function paneForCanvas(canvas) {
   }[canvas?.id] || '';
 }
 
-// Interaction-only pan flags. Not part of the serializable mpr viewport document.
 let activePan = null;
 
 function ensureMprViewport(canvas) {
@@ -83,7 +80,6 @@ function stepMprViewport(canvas, factor) {
   applyMprViewport(canvas);
 }
 
-// Shape: HTMLCanvasElement | null — the MPR pane that last received interaction.
 let _focusedCanvas = null;
 
 function setMprFocus(canvas) {
@@ -95,7 +91,6 @@ function setMprFocus(canvas) {
   syncMprZoomLabel();
 }
 
-// Shape: "100%" — zoom percentage of whichever pane is currently focused.
 function syncMprZoomLabel() {
   const label = $('mpr-zoom-val');
   if (!label) return;
@@ -104,10 +99,6 @@ function syncMprZoomLabel() {
   label.textContent = `${Math.round(view.zoom * 100)}%`;
 }
 
-/**
- * @param {object} deps
- * @param {() => void} deps.hideHover
- */
 export function wireMprPanel(deps) {
   const { hideHover } = deps;
   const gpuToggle = $('mpr-gpu-toggle');
@@ -118,7 +109,6 @@ export function wireMprPanel(deps) {
   };
   syncGpuUi();
 
-  // --- Oblique angle controls ---
   const setOb = (source = 'slider') => {
     const isNumber = source.endsWith('-number');
     const yawSource = source === 'yaw-number' ? $('ob-yaw-val') : $('ob-yaw');
@@ -146,7 +136,6 @@ export function wireMprPanel(deps) {
     setOb('reset');
   };
 
-  // --- Projection mode + slab thickness ---
   const projBtns = document.querySelectorAll('.mpr-proj-btn');
   const slabSlider = $('mpr-slab');
   const slabVal = $('mpr-slab-val');
@@ -176,7 +165,6 @@ export function wireMprPanel(deps) {
     });
   }
 
-  // --- Zoom controls (apply to focused pane, default to axial) ---
   $('mpr-zoom-in').addEventListener('click', () => {
     const c = _focusedCanvas || $('mpr-ax');
     stepMprViewport(c, 1.2);
@@ -193,7 +181,6 @@ export function wireMprPanel(deps) {
     syncMprZoomLabel();
   });
 
-  // --- GPU toggle ---
   gpuToggle.addEventListener('change', () => {
     if (!canUseGpuMpr()) { syncGpuUi(); return; }
     setMprGpuEnabled(gpuToggle.checked);
@@ -204,7 +191,6 @@ export function wireMprPanel(deps) {
   syncMprZoomLabel();
   initHorizontalScrollFades($('mpr-toolbar-wrap'), $('mpr-toolbar'));
 
-  // --- Pan management (shared across all MPR canvases) ---
   window.addEventListener('mouseup', () => {
     if (!activePan) return;
     const { canvas, moved } = activePan;
@@ -230,7 +216,6 @@ export function wireMprPanel(deps) {
     applyMprViewport(canvas);
   });
 
-  // --- Orthogonal canvas interactions ---
   for (const [id, axis] of [['mpr-ax', 'ax'], ['mpr-co', 'co'], ['mpr-sa', 'sa']]) {
     const c = $(id);
     c.addEventListener('click', (e) => {
@@ -277,7 +262,6 @@ export function wireMprPanel(deps) {
     }, { passive: false });
   }
 
-  // --- Oblique canvas interactions (same zoom/pan as orthogonal panes) ---
   const obCanvas = $('mpr-ob');
   if (obCanvas) {
     obCanvas.addEventListener('mousedown', (e) => {

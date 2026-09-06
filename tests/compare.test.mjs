@@ -1,4 +1,3 @@
-/* global queueMicrotask */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { URL } from 'node:url';
@@ -590,6 +589,7 @@ test('registration quality parser reads current registration sidecar shape', () 
 
   assert.deepEqual(quality, {
     mm: 1.09,
+    measurement: '',
     grade: 'fair',
     dice: 0.899039129506268,
     rotationDeg: 0.26,
@@ -727,7 +727,7 @@ test('drawCompare adds registration verdicts to peer labels when sidecar data is
 
   assert.equal(rendered, 2);
   assert.equal(cells[0].label.textContent, 'Primary');
-  assert.equal(cells[1].label.textContent, 'Peer · slightly off · 3.25 mm');
+  assert.equal(cells[1].label.textContent, 'Peer · slightly off · reported displacement 3.25 mm');
 
   globalThis.fetch = async () => ({
     ok: true,

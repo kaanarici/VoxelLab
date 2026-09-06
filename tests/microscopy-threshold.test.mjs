@@ -3,7 +3,6 @@ import { test } from 'node:test';
 
 const { computeThreshold, applyThreshold } = await import('../js/microscopy/microscopy-threshold.js');
 
-// Bimodal raw plane: half background (100), half signal (5000). 16 pixels.
 const bimodal = {
   width: 4, height: 4,
   pixels: new Float32Array([

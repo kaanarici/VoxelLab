@@ -1,24 +1,3 @@
-// Runtime configuration. Reads from a config.json at the site root
-// (optional — falls back to sensible defaults). This is how open-source
-// users configure their own Modal/R2/auth without modifying JS code.
-//
-// config.json format:
-// {
-//   "modalWebhookBase": "https://youruser--medical-imaging-pipeline",
-//   "r2PublicUrl": "https://pub-xxx.r2.dev",
-//   "trustedUploadOrigins": ["https://<account-id>.r2.cloudflarestorage.com"],
-//   "localAiAvailable": true,
-//   "ai": { "enabled": true, "provider": "codex", "ready": true, "issues": [] },
-//   "siteName": "VoxelLab",
-//   "disclaimer": "Not for clinical use.",
-//   "features": {
-//     "cloudProcessing": true,
-//     "aiAnalysis": false
-//   }
-// }
-//
-// All fields are optional. Missing fields use defaults.
-
 import { HAS_LOCAL_BACKEND } from './core/local-backend.js';
 
 let _config = null;
@@ -151,7 +130,6 @@ export function localApiHeaders(headers = {}) {
   return token ? { ...headers, 'X-VoxelLab-Local-Token': token } : { ...headers };
 }
 
-// Shape: flags for Ask/Consult/Analyze — gated by config + local backend presence.
 export function buildAiUiFlags({ hasLocalBackend = true } = {}) {
   const cfg = getConfig();
   const analysisEnabled = cfg.features?.aiAnalysis !== false && cfg.ai?.enabled !== false;
@@ -167,7 +145,6 @@ export function buildAiUiFlags({ hasLocalBackend = true } = {}) {
   };
 }
 
-/** AI UI flags for browser and desktop viewer surfaces. */
 export function viewerAiFlags() {
   const hasLocalApi = HAS_LOCAL_BACKEND || (hasDesktopBridge() && !!getConfig().localApiToken);
   return buildAiUiFlags({ hasLocalBackend: hasLocalApi });

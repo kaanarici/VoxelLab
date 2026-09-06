@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Report SAM embedding sidecars and local embed preflight status."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Any, Callable
-
 
 REQUIRED_MODULES = [
     ("numpy", "numpy"),
@@ -25,10 +23,8 @@ SIDECAR_SUFFIXES = {
     "zst": "_sam_embed.bin.zst",
 }
 
-
 def module_exists(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
-
 
 def load_manifest(path: Path) -> dict[str, Any]:
     try:
@@ -41,7 +37,6 @@ def load_manifest(path: Path) -> dict[str, Any]:
         raise ValueError(f"{path}: expected manifest object with series list")
     return data
 
-
 def selected_series(manifest: dict[str, Any], slugs: set[str]) -> tuple[list[dict[str, Any]], list[str]]:
     series = [item for item in manifest["series"] if isinstance(item, dict)]
     if not slugs:
@@ -49,21 +44,17 @@ def selected_series(manifest: dict[str, Any], slugs: set[str]) -> tuple[list[dic
     known = {str(item.get("slug")) for item in series}
     return [item for item in series if item.get("slug") in slugs], sorted(slugs - known)
 
-
 def positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
-
 def sidecar_paths(data_dir: Path, slug: str) -> dict[str, Path]:
     return {kind: data_dir / f"{slug}{suffix}" for kind, suffix in SIDECAR_SUFFIXES.items()}
-
 
 def expected_embed_bytes(meta: dict[str, Any]) -> int | None:
     keys = ("slices", "embed_dim", "embed_h", "embed_w")
     if meta.get("dtype") != "float16" or not all(positive_int(meta.get(key)) for key in keys):
         return None
     return int(meta["slices"] * meta["embed_dim"] * meta["embed_h"] * meta["embed_w"] * 2)
-
 
 def validate_meta(meta: Any, series: dict[str, Any]) -> tuple[list[str], int | None]:
     if not isinstance(meta, dict):
@@ -86,7 +77,6 @@ def validate_meta(meta: Any, series: dict[str, Any]) -> tuple[list[str], int | N
 
     return errors, expected_bytes
 
-
 def read_meta(path: Path) -> tuple[Any | None, str | None]:
     try:
         return json.loads(path.read_text()), None
@@ -94,7 +84,6 @@ def read_meta(path: Path) -> tuple[Any | None, str | None]:
         return None, None
     except json.JSONDecodeError as exc:
         return None, f"invalid meta JSON: {exc}"
-
 
 def series_report(data_dir: Path, series: dict[str, Any]) -> dict[str, Any]:
     slug = str(series.get("slug", ""))
@@ -128,10 +117,8 @@ def series_report(data_dir: Path, series: dict[str, Any]) -> dict[str, Any]:
     report["needs_embedding"] = not report["complete"]
     return report
 
-
 def dependency_errors(exists: Callable[[str], bool] = module_exists) -> list[str]:
     return [f"missing Python module: {package}" for package, module in REQUIRED_MODULES if not exists(module)]
-
 
 def build_report(
     manifest_path: Path,
@@ -155,7 +142,6 @@ def build_report(
         "zstd": shutil.which("zstd") is not None,
         "series": reports,
     }
-
 
 def print_text_report(report: dict[str, Any]) -> None:
     print("SAM embedding preflight")
@@ -187,7 +173,6 @@ def print_text_report(report: dict[str, Any]) -> None:
     if blocked:
         print(f"blocked: local PNG stack missing for {' '.join(blocked)}")
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Report SAM embedding sidecars and local prerequisites.")
     _ = parser.add_argument("--root", type=Path, default=Path.cwd(), help="Repo root. Default: current directory.")
@@ -196,7 +181,6 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--slug", action="append", dest="slugs", help="Limit report to one series slug. Repeatable.")
     _ = parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -214,7 +198,6 @@ def main() -> int:
     else:
         print_text_report(report)
     return 0 if report["ready_to_run"] else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

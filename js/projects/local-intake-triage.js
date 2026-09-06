@@ -1,8 +1,3 @@
-// Presentation model for the mixed-folder intake summary. Turns the structured
-// triage data summarizeLocalIntake() already produces into an ordered list of
-// outcome rows so the Upload modal can render a scannable triage panel instead
-// of one run-on muted sentence. This is presentation only: it does not classify
-// intake, only reshapes counts/samples that local-intake-text.js also consumes.
 import { desktopFolderWarningText } from '../desktop-intake-text.js';
 import { escapeHtml } from '../dom.js';
 import { intakeFormatLabel } from '../intake-format-summary.js';
@@ -47,8 +42,7 @@ function folderReadFailures(warnings = []) {
 function seriesFoldersRow(intake) {
   const folders = intake?.seriesFolders || [];
   const count = Number(intake?.seriesFolderCount ?? folders.length);
-  // Only worth surfacing when the selection actually spans sibling folders; a
-  // single folder or loose files import as one series with no grouping to explain.
+
   if (count < 2) return null;
   const { samples, more } = sampleRows(folders, count, folder => ({
     name: String(folder || '').split('/').filter(Boolean).pop() || String(folder || ''),
@@ -198,8 +192,6 @@ function folderWarningRow(intake) {
   };
 }
 
-// Ordered triage rows; zero-count categories are omitted so a clean import
-// shows only the Opened row. Each row: { kind, tone, count, label, samples:[{name,reason}], more, note }.
 export function localIntakeTriageModel(intake = {}) {
   return [
     seriesFoldersRow(intake),
@@ -232,9 +224,6 @@ function triageRowMarkup(row) {
   </li>`;
 }
 
-// Shared triage markup: the full <ul class="upload-triage-list"> string, or ''
-// when the model is empty. Single source for the browser Upload modal and the
-// desktop "nothing opened" dialog so both render identical tone-coded rows.
 export function intakeTriageHtml(intake = {}) {
   const rows = localIntakeTriageModel(intake);
   if (!rows.length) return '';

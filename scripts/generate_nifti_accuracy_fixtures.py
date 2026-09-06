@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Generate synthetic NIfTI fixtures and nibabel goldens for the accuracy ledger."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from typing import Any
 import nibabel as nib
 import numpy as np
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "accuracy" / "nifti"
 RAS_TO_LPS = np.diag([-1.0, -1.0, 1.0, 1.0])
@@ -19,7 +17,6 @@ UNIT_TO_MM = {
     "mm": 1.0,
     "micron": 0.001,
 }
-
 
 def rotation_z(degrees: float) -> np.ndarray:
     radians = np.deg2rad(degrees)
@@ -33,7 +30,6 @@ def rotation_z(degrees: float) -> np.ndarray:
         ],
         dtype=np.float64,
     )
-
 
 def case_data() -> list[dict[str, Any]]:
     oblique = np.eye(4, dtype=np.float64)
@@ -81,7 +77,6 @@ def case_data() -> list[dict[str, Any]]:
         },
     ]
 
-
 def voxel_points(shape: tuple[int, int, int]) -> list[list[int]]:
     return [
         [0, 0, 0],
@@ -89,15 +84,12 @@ def voxel_points(shape: tuple[int, int, int]) -> list[list[int]]:
         [shape[0] - 1, shape[1] - 1, shape[2] - 1],
     ]
 
-
 def apply_affine(affine: np.ndarray, voxel: list[int]) -> list[float]:
     point = affine @ np.array([voxel[0], voxel[1], voxel[2], 1.0], dtype=np.float64)
     return [float(value) for value in point[:3]]
 
-
 def matrix_json(matrix: np.ndarray) -> list[list[float]]:
     return [[float(value) for value in row] for row in matrix.tolist()]
-
 
 def write_case(item: dict[str, Any]) -> None:
     case_id = item["id"]
@@ -169,12 +161,10 @@ def write_case(item: dict[str, Any]) -> None:
         encoding="utf-8",
     )
 
-
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     for item in case_data():
         write_case(item)
-
 
 if __name__ == "__main__":
     main()

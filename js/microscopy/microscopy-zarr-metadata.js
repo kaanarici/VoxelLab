@@ -70,7 +70,7 @@ function validateAxisNames(axes, errors) {
 }
 
 function validateAxisLayout(axes, errors, warnings) {
-  // https://ngff.openmicroscopy.org/0.5/index.html#2-4-multiscales-metadata
+
   if (axes.length < 2 || axes.length > 5) errors.push('axes_length_out_of_range');
 
   const spaceCount = axes.filter((axis) => axis.type === 'space').length;
@@ -147,7 +147,7 @@ function normalizeTransformList(rawTransforms, axisCount, label, errors, warning
     }
 
     if (scaleSeen === 0) {
-      // https://ngff.openmicroscopy.org/0.5/index.html#2-4-multiscales-metadata
+
       errors.push(`${label}_translation_before_scale`);
     }
 
@@ -155,7 +155,7 @@ function normalizeTransformList(rawTransforms, axisCount, label, errors, warning
   }
 
   if (requireScale && scaleSeen !== 1) {
-    // https://ngff.openmicroscopy.org/0.5/index.html#2-4-multiscales-metadata
+
     errors.push(`${label}_scale_count_invalid`);
   }
   if (translationSeen > 1) errors.push(`${label}_translation_count_invalid`);
@@ -229,7 +229,7 @@ function normalizeChannels(omero, expectedCount, errors, warnings) {
   }
 
   if (!Array.isArray(omero.channels)) {
-    // https://ngff.openmicroscopy.org/0.5/index.html#2-5-omero-metadata-transitional
+
     errors.push('omero_channels_missing');
     return Array.from({ length: fallbackCount }, (_, index) => ({
       index,
@@ -261,12 +261,10 @@ function normalizeChannels(omero, expectedCount, errors, warnings) {
 
     const window = isZarrMetadataRecord(rawChannel.window) ? rawChannel.window : null;
     if (!window) {
-      // https://ngff.openmicroscopy.org/0.5/index.html#2-5-omero-metadata-transitional
+
       errors.push(`omero_channel_${index}_window_missing`);
     }
 
-    // OME-Zarr 0.5 OMERO metadata defines min/max as data bounds and start/end
-    // as the rendering window: https://ngff.openmicroscopy.org/0.5/#2-5-omero-metadata-transitional
     const dataRange = finiteWindowPair(window, ['min', 'max']);
     const displayRange = finiteWindowPair(window, ['start', 'end']) || dataRange;
     if (window && !dataRange) errors.push(`omero_channel_${index}_window_minmax_invalid`);
@@ -429,14 +427,14 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
     : null;
 
   if (levelZeroDimensions && levelZeroDimensions.length !== axes.length) {
-    // https://ngff.openmicroscopy.org/0.5/index.html#2-1-axes-metadata
+
     errors.push('axes_dimension_count_mismatch');
   }
 
   if (levelZeroDimensionNames && levelZeroDimensionNames.length === axes.length) {
     for (let i = 0; i < axes.length; i += 1) {
       if (levelZeroDimensionNames[i] && levelZeroDimensionNames[i] !== axes[i].name) {
-        // https://ngff.openmicroscopy.org/0.5/index.html#2-1-axes-metadata
+
         errors.push(`axes_dimension_name_mismatch_${axes[i].name}`);
       }
     }
@@ -462,7 +460,7 @@ export function normalizeOmeZarrMetadata(input = {}, { arrayMetadataByPath = nul
   const channelAxis = axes.find((axis) => axis.type === 'channel');
   const channelCount = channelAxis ? Math.max(1, Math.floor(channelAxis.size || 1)) : 1;
   if (channelAxis && channelAxis.scale === 0) {
-    // Channel-axis scale is commonly unitless; zero here means unresolved transform scale.
+
     channelAxis.known = false;
   }
 

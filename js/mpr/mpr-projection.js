@@ -26,7 +26,6 @@ function positiveSpacing(spacing) {
   };
 }
 
-// Shape: { origin: [0, 0, 12], axisU: [255, 0, 0], axisV: [0, 255, 0] } in voxel coordinates.
 export function planeForAxis(axis, outW, outH, series, crosshair, mprVoxelForPixel) {
   const tl = mprVoxelForPixel(axis, 0, 0, outW, outH, series, crosshair);
   const tr = mprVoxelForPixel(axis, Math.max(1, outW - 1), 0, outW, outH, series, crosshair);
@@ -52,7 +51,6 @@ export function planeForOblique(outW, outH, center, du, dv) {
   };
 }
 
-// Shape: { mode: "mip", slabThicknessMm: 12, sampleCount: 13, slabStep: [0, 0, 1] }.
 export function createMprProjection(
   { mode = 'thin', slabThicknessMm = 0 } = {},
   spacing = { row: 1, col: 1, slice: 1 },

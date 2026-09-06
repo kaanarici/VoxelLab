@@ -12,8 +12,6 @@ export function formatNumber(value, digits = 2) {
   return n.toFixed(digits);
 }
 
-// Intensity ROI sources whose integrated-density columns are derived from mean × area/pixels
-// when not explicitly supplied: the 8-bit display domain and retained raw scalar domains (D1b).
 export function isIntensityValueSource(valueSource) {
   return valueSource === 'display_8bit' || valueSource === 'raw_16bit' || valueSource === 'raw_scalar';
 }

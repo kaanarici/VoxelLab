@@ -13,7 +13,7 @@ const GOLDEN = JSON.parse(readFileSync(
   fileURLToPath(new URL('./fixtures/zarr/idr0062A-6001240-L0-c0z0.golden.json', import.meta.url)),
   'utf8',
 ));
-// The fixture chunk is one full CZYX plane: shape [1,1,275,271], chunks [1,1,275,271].
+
 const PLANE_WIDTH = 271;
 const PLANE_HEIGHT = 275;
 
@@ -28,8 +28,6 @@ const CZYX_AXES = [
   { name: 'x', type: 'space', unit: 'micrometer' },
 ];
 
-// Three pyramid levels; the coarsest (level 2) is the committed fixture plane and is the only
-// array whose chunk is ever fetched, so the test stays hermetic on one real decoded chunk.
 function arrayMeta({ width, height, 'shape': dimensions = [1, 1, height, width], compressor = BLOSC_COMPRESSOR, dtype = '<u2' } = {}) {
   return {
     zarr_format: 2,
@@ -113,9 +111,6 @@ function routeFetch(routes) {
   return async (url) => routes.get(url) || notFound();
 }
 
-// Mock fetchImpl: serves synthetic multiscale metadata + the one committed fixture chunk.
-// Level 0/1 .zarray are large (won't be selected); level 2 is the fixture plane. Only the
-// chosen level's chunk (2/0/0/0/0) is ever fetched.
 function mockFetch({ scaleLevel2 = [1, 1, 2, 2], coarsestDimensions, coarsestCompressor = BLOSC_COMPRESSOR, calls = [], version = '0.4' } = {}) {
   const routes = new Map([
     [`${BASE_URL}/.zattrs`, () => jsonResponse(rootAttrs(scaleLevel2, version))],
@@ -165,7 +160,6 @@ test('streams the coarsest fitting level, builds a real plane, and returns a val
       onProgress: (stage, detail) => stages.push(`${stage}:${detail}`),
     });
 
-    // Level selection: coarsest of 3 levels within the 4M pixel budget = level 2 (downsample x4).
     assert.equal(selection.level, 2);
     assert.equal(selection.path, '2');
     assert.equal(selection.width, PLANE_WIDTH);
@@ -173,7 +167,6 @@ test('streams the coarsest fitting level, builds a real plane, and returns a val
     assert.equal(selection.downsample, 4);
     assert.equal(levels.length, 3);
 
-    // Only the chosen level's chunk is fetched; coarse levels open without touching full res.
     assert.ok(calls.includes(`${BASE_URL}/2/0/0/0/0`));
     assert.ok(!calls.some((url) => url.startsWith(`${BASE_URL}/0/0`)));
     assert.ok(!calls.some((url) => url.startsWith(`${BASE_URL}/1/0`)));
@@ -189,7 +182,6 @@ test('streams the coarsest fitting level, builds a real plane, and returns a val
     assert.equal(entry.slices, 1);
     assert.equal(entry.microscopy.format, 'OME-Zarr');
 
-    // Plane pixels decode bit-exactly from the real fixture chunk.
     const rawPlane = result.rawPlanes['0|0'][0];
     assert.equal(rawPlane.width, PLANE_WIDTH);
     assert.equal(rawPlane.height, PLANE_HEIGHT);
@@ -207,14 +199,12 @@ test('streams the coarsest fitting level, builds a real plane, and returns a val
     assert.equal(max, GOLDEN.max);
     assert.equal(sum, GOLDEN.sum);
 
-    // Downsample-aware calibration: level 2 scale is 2.0 µm/px, NOT level 0's 0.5 µm/px.
     assert.equal(entry.microscopy.physicalSizeX, 2);
     assert.equal(entry.microscopy.physicalSizeY, 2);
     assert.equal(entry.physicalUnit, 'µm');
     assert.ok(Math.abs(entry.pixelSpacing[0] - 0.002) < 1e-9, `row spacing mm ${entry.pixelSpacing[0]}`);
     assert.ok(Math.abs(entry.pixelSpacing[1] - 0.002) < 1e-9, `col spacing mm ${entry.pixelSpacing[1]}`);
 
-    // Provenance labels the streamed level/downsample and codec.
     assert.match(codec, /blosc\(lz4, byte-shuffle\)/);
     assert.equal(provenance, entry.microscopy.streamProvenance);
     assert.match(provenance, /OME-Zarr v2 streamed · level 3\/3 · ×4 downsample · blosc\(lz4, byte-shuffle\)/);
@@ -516,7 +506,7 @@ test('streamOmeZarrFromUrl aborts in-flight streaming when its signal aborts', a
   const restore = installCanvasStub();
   const base = mockFetch();
   const controller = new AbortController();
-  // Abort the moment the chosen level's chunk is requested (mid-stream).
+
   const fetchImpl = async (url, opts) => {
     if (/\/2\/0\/0\/0\/0$/.test(url)) controller.abort();
     return base(url, opts);

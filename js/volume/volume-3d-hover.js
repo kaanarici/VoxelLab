@@ -1,4 +1,3 @@
-
 import { $ } from '../dom.js';
 import { renderInspectionReadout, resolveVoxelInspection } from '../inspection-readout.js';
 import { state } from '../core/state.js';
@@ -17,9 +16,6 @@ const _hoverRay = new THREE.Raycaster();
 const _hoverNDC = new THREE.Vector2();
 const _hoverInvMat = new THREE.Matrix4();
 
-/**
- * CPU ray march for 3D hover tooltip: intensity, mm coords, region, tissue.
- */
 export function show3DHover(ev, renderer, camera) {
   const three = getThreeRuntime();
   if (!three.mesh) { _hideHover(); return; }

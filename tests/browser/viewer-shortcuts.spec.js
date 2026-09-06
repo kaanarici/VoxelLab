@@ -1,4 +1,3 @@
-/* global document, localStorage */
 import { expect, test } from '@playwright/test';
 
 test('page metadata and Help describe the experimental local-first build', async ({ page }) => {

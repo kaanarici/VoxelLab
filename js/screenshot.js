@@ -1,4 +1,3 @@
-// Capture 2D / MPR / compare / 3D views as downloadable rendered images.
 import { state } from './core/state.js';
 import { $ } from './dom.js';
 import { lengthUnitToMm, normalizeLengthUnit } from './core/physical-units.js';

@@ -18,13 +18,13 @@ test('3D hover honors axis and arbitrary-plane clipping', () => {
 
 test('3D hover honors isolated label visibility', () => {
   const labels = new Uint8Array([0, 2, 3]);
-  const lut = new Uint8Array(256 * 4);
-  lut[2 * 4 + 3] = 255;
+  const hidden = new Int32Array(256);
+  hidden[3] = 1;
   const uniforms = {
     uLabelMode: { value: 1 },
     uIsolate: { value: 1 },
     uLabel: { value: { image: { data: labels } } },
-    uLabelLUT: { value: { image: { data: lut } } },
+    uHiddenLabels: { value: hidden },
   };
 
   assert.equal(volumeHoverPointVisible([0.5, 0.5, 0.5], 0, uniforms), false);

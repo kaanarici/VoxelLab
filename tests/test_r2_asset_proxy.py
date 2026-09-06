@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 from asset_proxy import handle_proxy_asset_get
 
-
 class Headers:
     def __init__(self, length: str | None):
         self.length = length
@@ -15,7 +14,6 @@ class Headers:
 
     def get(self, name):
         return self.length if name == "Content-Length" else None
-
 
 class Response:
     def __init__(self, payload: bytes, length: str | None):
@@ -30,7 +28,6 @@ class Response:
 
     def read(self, size=-1):
         return self.body.read(size)
-
 
 class Handler:
     def __init__(self):
@@ -51,7 +48,6 @@ class Handler:
     def end_headers(self):
         return None
 
-
 def run_proxy(response: Response, max_bytes: int) -> Handler:
     handler = Handler()
     handle_proxy_asset_get(
@@ -67,13 +63,11 @@ def run_proxy(response: Response, max_bytes: int) -> Handler:
     )
     return handler
 
-
 def test_r2_asset_proxy_rejects_oversized_declared_body_before_streaming() -> None:
     handler = run_proxy(Response(b"0123456789", "10"), max_bytes=8)
 
     assert handler.json == (413, {"error": "asset exceeds proxy limit (8 bytes)"})
     assert handler.wfile.getvalue() == b""
-
 
 def test_r2_asset_proxy_rejects_unbounded_body_without_content_length() -> None:
     handler = run_proxy(Response(b"0123456789", None), max_bytes=8)

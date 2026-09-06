@@ -3,7 +3,6 @@ import { test } from 'node:test';
 
 const { projectStack } = await import('../js/microscopy/microscopy-projection.js');
 
-// 2x1 plane stack, 3 Z planes. Per-pixel columns: x0 = [10, 40, 70], x1 = [0, 30000, 60000].
 const planes = [
   { width: 2, height: 1, pixels: new Float32Array([10, 0]) },
   { width: 2, height: 1, pixels: new Float32Array([40, 30000]) },
@@ -36,7 +35,7 @@ test('projectStack preserves uint32 values beyond Float32 precision in max and a
 
 test('projectStack sd is the sample standard deviation across Z', () => {
   const sd = projectStack(planes, { mode: 'sd' }).pixels;
-  // x0 = [10,40,70], mean 40, sample variance ((30^2+0+30^2)/2)=900 → sd 30.
+
   assert.ok(Math.abs(sd[0] - 30) < 1e-9);
 });
 

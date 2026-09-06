@@ -1,5 +1,3 @@
-// Cached overlay PNG pixel reads shared by 2D slice, compare, and overlay-volume builds.
-
 import { localByteSliceData } from '../series/local-byte-slice.js';
 
 const cache = new WeakMap();
@@ -18,7 +16,6 @@ function ensureCanvas(w, h) {
   return ctx;
 }
 
-/** Return cached RGBA pixel data for one overlay image at the requested dimensions. */
 export function readOverlayData(img, w, h) {
   if (!img || !img.complete || img.naturalWidth === 0) return null;
   const hit = cache.get(img);

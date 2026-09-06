@@ -18,7 +18,7 @@ test('splits items into left/right columns by the image center', () => {
 });
 
 test('resolves overlaps so no two pills in a column are closer than rowH', () => {
-  // All on the left, all wanting the same y -> must be spread out.
+
   const items = Array.from({ length: 6 }, (_, i) => ({ id: i, anchorX: 5, anchorY: 150 }));
   const placed = layoutAtlasLabels({ items, bounds, centerX: 50, rowH }).sort((p, q) => p.y - q.y);
   for (let i = 1; i < placed.length; i += 1) {
@@ -36,7 +36,7 @@ test('keeps every pill within the vertical bounds', () => {
 });
 
 test('rebalances overflow from a full column to the one with room', () => {
-  // 20 items all on the left, but only 10 rows fit -> overflow moves right.
+
   const items = Array.from({ length: 20 }, (_, i) => ({ id: i, anchorX: 49, anchorY: i * 5 }));
   const placed = layoutAtlasLabels({ items, bounds, centerX: 50, rowH });
   const right = placed.filter((p) => p.side === 'right');

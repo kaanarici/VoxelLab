@@ -44,7 +44,6 @@ const BASE_FIELDS = ['protocol', 'version', 'type'];
 const TOOL_KINDS = new Set(['read', 'inspect', 'measure', 'voxel', 'other']);
 const TOOL_STATES = new Set(['running', 'done', 'error']);
 
-/** Validate and normalize one versioned Ask transport event. */
 export function normalizeAskEvent(value) {
   const payload = objectValue(value);
   const protocol = stringField(payload, 'protocol');
@@ -124,7 +123,6 @@ function parseEvent(dataLines) {
   return normalizeAskEvent(event);
 }
 
-/** Decode JSON Server-Sent Events across arbitrary network chunk boundaries. */
 export async function* readAskEventStream(stream, { maxEventChars = 1_000_000 } = {}) {
   if (!stream?.getReader) throw new AskEventStreamError('missing_body');
   const reader = stream.getReader();
@@ -191,7 +189,7 @@ export async function* readAskEventStream(stream, { maxEventChars = 1_000_000 } 
     }
   } finally {
     if (!complete) {
-      try { await reader.cancel(); } catch { /* response may already be closed */ }
+      try { await reader.cancel(); } catch {                                      }
     }
     reader.releaseLock?.();
   }

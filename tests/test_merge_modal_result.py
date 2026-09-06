@@ -10,10 +10,8 @@ import pytest
 from scripts.merge_modal_result import companion_projection_source, infer_job_id, read_companion_projection, read_result_json, result_url, write_manifest
 from series_contract import merge_manifest_path
 
-
 def write_json(path: Path, data: dict) -> None:
     _ = path.write_text(json.dumps(data))
-
 
 def fixture_manifest() -> dict:
     return {
@@ -35,7 +33,6 @@ def fixture_manifest() -> dict:
             }
         ],
     }
-
 
 def modal_entry(**overrides) -> dict:
     entry = {
@@ -63,13 +60,11 @@ def modal_entry(**overrides) -> dict:
     entry.update(overrides)
     return entry
 
-
 def test_read_result_json_accepts_local_file(tmp_path: Path) -> None:
     path = tmp_path / "series.json"
     write_json(path, modal_entry())
 
     assert read_result_json(str(path))["slug"] == "cloud_job12345"
-
 
 def test_read_result_json_rejects_oversized_local_file(tmp_path: Path) -> None:
     path = tmp_path / "series.json"
@@ -77,7 +72,6 @@ def test_read_result_json_rejects_oversized_local_file(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="JSON exceeds 1 bytes"):
         _ = read_result_json(str(path), max_bytes=1)
-
 
 def test_read_result_json_caps_remote_read(monkeypatch) -> None:
     class Response:
@@ -103,13 +97,11 @@ def test_read_result_json_caps_remote_read(monkeypatch) -> None:
 
     assert response.read_sizes == [6]
 
-
 def test_result_url_and_job_id_inference_round_trip() -> None:
     url = result_url("https://r2.example/", "job/with space")
 
     assert url == "https://r2.example/results/job%2Fwith%20space/series.json"
     assert infer_job_id(url) == "job/with space"
-
 
 def test_companion_projection_is_optional_when_missing(tmp_path: Path) -> None:
     series_path = tmp_path / "series.json"
@@ -117,12 +109,10 @@ def test_companion_projection_is_optional_when_missing(tmp_path: Path) -> None:
 
     assert read_companion_projection(str(series_path)) is None
 
-
 def test_companion_projection_url_ignores_series_query() -> None:
     source = "https://r2.example/results/job123/series.json?cache=1"
 
     assert companion_projection_source(source) == "https://r2.example/results/job123/projection_set.json"
-
 
 def test_companion_projection_malformed_local_json_is_not_silenced(tmp_path: Path) -> None:
     series_path = tmp_path / "series.json"
@@ -132,7 +122,6 @@ def test_companion_projection_malformed_local_json_is_not_silenced(tmp_path: Pat
 
     with pytest.raises(json.JSONDecodeError):
         _ = read_companion_projection(str(series_path))
-
 
 def test_companion_projection_ignores_remote_404(monkeypatch) -> None:
     error = urllib.error.HTTPError(
@@ -149,7 +138,6 @@ def test_companion_projection_ignores_remote_404(monkeypatch) -> None:
     monkeypatch.setattr("scripts.merge_modal_result.urllib.request.urlopen", fake_urlopen)
 
     assert read_companion_projection("https://r2.example/results/job/series.json") is None
-
 
 def test_companion_projection_reraises_remote_non_404(monkeypatch) -> None:
     error = urllib.error.HTTPError(
@@ -168,7 +156,6 @@ def test_companion_projection_reraises_remote_non_404(monkeypatch) -> None:
     with pytest.raises(urllib.error.HTTPError):
         _ = read_companion_projection("https://r2.example/results/job/series.json")
 
-
 def test_merge_appends_without_dropping_existing_series(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     write_json(manifest_path, fixture_manifest())
@@ -179,7 +166,6 @@ def test_merge_appends_without_dropping_existing_series(tmp_path: Path) -> None:
     assert index == 1
     assert [series["slug"] for series in merged["series"]] == ["sample", "cloud_job12345"]
     assert merged["series"][1]["sourceJobId"] == "job12345"
-
 
 def test_merge_can_create_first_manifest_from_cloud_result(tmp_path: Path) -> None:
     manifest_path = tmp_path / "data" / "manifest.json"
@@ -192,7 +178,6 @@ def test_merge_can_create_first_manifest_from_cloud_result(tmp_path: Path) -> No
     assert manifest_path.is_file()
     assert merged["patient"] == "anonymous"
     assert merged["series"][0]["slug"] == "cloud_job12345"
-
 
 def test_merge_accepts_modal_result_with_explicit_volume_reconstruction_fields(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
@@ -228,7 +213,6 @@ def test_merge_accepts_modal_result_with_explicit_volume_reconstruction_fields(t
     assert merged["series"][1]["geometryKind"] == "derivedVolume"
     assert merged["series"][1]["renderability"]["canMpr3D"] is True
 
-
 def test_merge_updates_existing_series_by_slug(tmp_path: Path) -> None:
     manifest = fixture_manifest()
     manifest["series"].append(modal_entry(name="Old Name", sourceJobId="job12345"))
@@ -241,7 +225,6 @@ def test_merge_updates_existing_series_by_slug(tmp_path: Path) -> None:
     assert index == 1
     assert len(merged["series"]) == 2
     assert merged["series"][1]["name"] == "New Name"
-
 
 def test_merge_appends_new_series_when_only_source_series_uid_matches(tmp_path: Path) -> None:
     manifest = fixture_manifest()
@@ -260,7 +243,6 @@ def test_merge_appends_new_series_when_only_source_series_uid_matches(tmp_path: 
     assert [series["slug"] for series in merged["series"]] == ["sample", "cloud_old", "cloud_new"]
     assert merged["series"][2]["sourceJobId"] == "job99999"
 
-
 def test_merge_updates_existing_series_by_job_id(tmp_path: Path) -> None:
     manifest = fixture_manifest()
     manifest["series"].append(modal_entry(slug="cloud_old", sourceJobId="job12345"))
@@ -272,7 +254,6 @@ def test_merge_updates_existing_series_by_job_id(tmp_path: Path) -> None:
     assert action == "updated"
     assert index == 1
     assert [series["slug"] for series in merged["series"]] == ["sample", "cloud_new"]
-
 
 def test_merge_hydrates_region_urls_from_public_base(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
@@ -288,7 +269,6 @@ def test_merge_hydrates_region_urls_from_public_base(tmp_path: Path) -> None:
     assert action == "inserted"
     assert merged["series"][index]["regionUrlBase"] == "https://r2.example/data/cloud_job12345_regions"
     assert merged["series"][index]["regionMetaUrl"] == "https://r2.example/data/cloud_job12345_regions.json"
-
 
 def test_merge_backfills_canonical_compare_group_from_frame_of_reference(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
@@ -308,7 +288,6 @@ def test_merge_backfills_canonical_compare_group_from_frame_of_reference(tmp_pat
     assert action == "inserted"
     assert merged["series"][index]["group"] == "for:1.2.840.same"
 
-
 def test_merge_rejects_result_urls_outside_public_base(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     write_json(manifest_path, fixture_manifest())
@@ -319,7 +298,6 @@ def test_merge_rejects_result_urls_outside_public_base(tmp_path: Path) -> None:
             modal_entry(rawUrl="https://evil.example/cloud_job12345.raw.zst"),
             public_base="https://r2.example",
         )
-
 
 def test_merge_rejects_ambiguous_existing_matches(tmp_path: Path) -> None:
     manifest = fixture_manifest()
@@ -335,7 +313,6 @@ def test_merge_rejects_ambiguous_existing_matches(tmp_path: Path) -> None:
             job_id="job12345",
         )
 
-
 def test_merge_rejects_result_without_cloud_slice_urls(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     write_json(manifest_path, fixture_manifest())
@@ -344,7 +321,6 @@ def test_merge_rejects_result_without_cloud_slice_urls(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="missing required field: sliceUrlBase"):
         _ = merge_manifest_path(manifest_path, entry)
-
 
 def test_merge_rejects_projection_result_claiming_display_volume(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"

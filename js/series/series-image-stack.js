@@ -1,4 +1,3 @@
-// Load PNG stacks for select-series and similar.
 import { state } from '../core/state.js';
 import { HAS_LOCAL_BACKEND } from '../core/local-backend.js';
 import { cachedFetchResponse } from '../cached-fetch.js';
@@ -65,9 +64,7 @@ async function resolveImageSrc(url, priority) {
 
 function loadFreshImage(img, url, label, index, errorMode, priority, onFail) {
   return wrapLoader((async () => {
-    // Set the DOM hint for the direct-src fallback path. The cached path
-    // forwards `priority` into the underlying fetch() inside cachedFetchResponse,
-    // which is where it actually matters for an in-flight network request.
+
     if (priority === 'high' && 'fetchPriority' in img) {
       img.fetchPriority = 'high';
     }
@@ -239,9 +236,6 @@ function initialLoadIndexes(count, windowRadius, initialIndex) {
   ).filter(index => index >= 0 && index < count);
 }
 
-/**
- * @returns {{ imgs: HTMLImageElement[], loaders: Promise<void>[] }}
- */
 export function loadImageStack(
   dir,
   count,
@@ -272,9 +266,6 @@ export function loadImageStack(
   return { imgs, loaders };
 }
 
-// Loaders resolve to null rather than rejecting, so callers never see a rejection
-// to surface. Hard-mode stacks therefore have to raise the toast from here, or an
-// unloadable series renders an empty viewport with nothing but console output.
 const _stackUnavailableNotified = new Set();
 
 function allowStackUnavailableNotify(label) {

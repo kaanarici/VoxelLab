@@ -1,32 +1,3 @@
-"""
-Send key slices from each MRI series to the configured local AI provider and
-save descriptive findings.
-
-NOT A DIAGNOSIS. The configured AI provider is a general-purpose model, not a
-radiologist-certified medical AI. This script produces *descriptive*
-observations that should only be used as a starting point for a real
-radiologist reading. Do not act on findings from this script.
-
-Usage:
-    python3 analyze.py              # analyze all series (skips already-done)
-    python3 analyze.py t2_tse       # analyze one series
-    python3 analyze.py --slices 12 t2_tse
-    python3 analyze.py --force      # re-analyze even if JSON already exists
-    python3 analyze.py --provider codex t2_tse
-
-Idempotent: CLI runs cache slices in data/<slug>_analysis.json. Local viewer
-jobs use an opaque per-source-series result file so repeated display slugs do
-not share generated observations. JSON is written after *every* slice, so a crash or
-Ctrl-C mid-run loses at most one slice. This is deliberate — the DICOM pixel
-data does not change, and re-sending the same slices to the AI provider just burns
-tokens.
-
-Writes:
-    data/<slug>_analysis.json    (CLI/precomputed sidecar, written incrementally)
-    data/analysis-v2-<identity>.json (local viewer job, written incrementally)
-    + sets hasAnalysis: true in manifest.json once the series is complete
-"""
-
 import argparse
 import json
 import re
@@ -53,7 +24,6 @@ For each slice image you Read, report only directly visible image content:
 - The sequence label supplied by VoxelLab and the limits of what this image alone can establish
 
 Do not classify anatomy as normal or abnormal. Do not rule disease in or out, claim that pathology is absent, infer restricted diffusion, recommend treatment, or state diagnostic certainty. Use severity "note" for descriptions and "attention" only for image-quality limitations that materially affect interpretation."""
-
 
 FINDING_SCHEMA = {
     "type": "object",
@@ -84,12 +54,10 @@ def call_ai(prompt: str, schema: dict, model: str | None, provider: str | None, 
         timeout=timeout,
     )
 
-
 def _validate_slug(slug: str) -> str:
     if not isinstance(slug, str) or not SLUG_RE.fullmatch(slug):
         raise ValueError(f"invalid slug: {slug!r}")
     return slug
-
 
 def _validate_analysis_key(analysis_key: str | None) -> str | None:
     if analysis_key is None:
@@ -98,14 +66,12 @@ def _validate_analysis_key(analysis_key: str | None) -> str | None:
         raise ValueError(f"invalid analysis key: {analysis_key!r}")
     return analysis_key
 
-
 def analysis_output_path(slug: str, analysis_key: str | None = None) -> Path:
     slug = _validate_slug(slug)
     analysis_key = _validate_analysis_key(analysis_key)
     if analysis_key is None:
         return DATA / f"{slug}_analysis.json"
     return DATA / f"analysis-{analysis_key.replace(':', '-')}.json"
-
 
 def build_analysis_prompt(series_meta: dict, slice_idx: int, slice_context: dict | None) -> tuple[str, set[int], str | None]:
     context_text, allowed_regions, fingerprint = format_analysis_context(slice_context, int(series_meta.get("slices", 0) or 0))
@@ -124,7 +90,6 @@ def build_analysis_prompt(series_meta: dict, slice_idx: int, slice_context: dict
     )
     return prompt, allowed_regions, fingerprint
 
-
 def filter_region_references(raw_labels, allowed_regions: set[int]) -> list[int]:
     if not isinstance(raw_labels, list) or not allowed_regions:
         return []
@@ -135,7 +100,6 @@ def filter_region_references(raw_labels, allowed_regions: set[int]) -> list[int]
             seen.add(label)
             labels.append(label)
     return labels
-
 
 def analyze_slice(
     series_name: str,
@@ -158,9 +122,8 @@ def analyze_slice(
         finding["contextFingerprint"] = fingerprint
     return finding
 
-
 def representative_slice_ids(total: int, sample_count: int = DEFAULT_SAMPLE_COUNT) -> list[int]:
-    """Return evenly spaced zero-based slices for a bounded overview pass."""
+
     if total <= 0 or sample_count <= 0:
         return []
     if total <= sample_count:
@@ -169,9 +132,8 @@ def representative_slice_ids(total: int, sample_count: int = DEFAULT_SAMPLE_COUN
         return [total // 2]
     return sorted({round(i * (total - 1) / (sample_count - 1)) for i in range(sample_count)})
 
-
 def parse_slice_spec(spec: str, total: int) -> list[int]:
-    """Parse zero-based slice ids/ranges like "0,12,20-22"."""
+
     selected: set[int] = set()
     for raw_part in spec.split(","):
         part = raw_part.strip()
@@ -193,7 +155,6 @@ def parse_slice_spec(spec: str, total: int) -> list[int]:
         raise ValueError("no slices selected")
     return sorted(selected)
 
-
 def summarize(slug: str, series_name: str, findings: list, model: str | None, provider: str | None = None) -> str:
     grounded = sum(1 for finding in findings if finding.get("contextFingerprint"))
     bullets = "\n".join(f"- slice {f['slice']}: {f['text']}" for f in findings)
@@ -213,7 +174,6 @@ def summarize(slug: str, series_name: str, findings: list, model: str | None, pr
     out = call_ai(prompt, SUMMARY_SCHEMA, model, provider)
     return out.get("summary", "")
 
-
 def _process_locked(
     slug: str,
     series_meta: dict,
@@ -231,8 +191,6 @@ def _process_locked(
     folder = DATA / slug
     out_path = analysis_output_path(slug, analysis_key)
 
-    # Load any previously-written analysis so we can resume instead of
-    # re-sending slices we've already paid for.
     existing = {}
     if out_path.exists():
         try:
@@ -267,7 +225,7 @@ def _process_locked(
     }
     if analysis_key is not None:
         out["analysisKey"] = analysis_key
-    # Write immediately so a later abort doesn't blow away prior runs' data.
+
     atomic_write_json(out_path, out)
 
     slice_ids = selected_slices if selected_slices is not None else representative_slice_ids(total, sample_count)
@@ -296,12 +254,10 @@ def _process_locked(
         except Exception as e:
             print(f"  slice {i:3d}  ERROR: {e}", flush=True)
             raise RuntimeError(f"slice {i} failed: {e}") from e
-        # Flush to disk after every slice — this is the whole point of the
-        # idempotent rewrite. No Ctrl-C = wasted tokens.
+
         out["findings"] = sorted(cached.values(), key=lambda f: f["slice"])
         atomic_write_json(out_path, out)
 
-    # Generate summary only if we actually did new work (or none exists yet)
     if need or not out.get("summary"):
         try:
             out["summary"] = summarize(slug, name, out["findings"], model, provider=provider)
@@ -321,7 +277,6 @@ def _process_locked(
     atomic_write_json(out_path, out)
     print(f"  wrote {out_path.name} ({len(out['findings'])} findings)", flush=True)
     return out["coverage"]["isComplete"]
-
 
 def process(
     slug: str,
@@ -349,7 +304,6 @@ def process(
             analysis_key=analysis_key,
         )
 
-
 def update_manifest(slugs):
     path = DATA / "manifest.json"
     wanted = {_validate_slug(slug) for slug in slugs}
@@ -364,7 +318,6 @@ def update_manifest(slugs):
         return manifest
 
     _ = update_json(path, mark_analyzed)
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser()
@@ -426,7 +379,6 @@ def main() -> bool:
     if ok:
         print("\nDone. Refresh the viewer.", flush=True)
     return ok
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

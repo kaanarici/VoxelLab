@@ -20,7 +20,6 @@ function baseIntensityAt(series, vi) {
   return 0;
 }
 
-// Shape: { intensity: 143, voxel: [12, 30, 8], lpsText: "12.0L 4.0P 30.0S", regionName: "Thalamus" }.
 export function resolveVoxelInspection(
   series,
   vx,
@@ -53,9 +52,7 @@ export function resolveVoxelInspection(
   if (series.modality === 'CT' && state.hrVoxels?.length === series.width * series.height * series.slices) {
     const n = state.hrVoxels[vi];
     ctHu = Math.round(n * CT_HU_RANGE + CT_HU_LO);
-    // hrVoxels is clamped to the [-1024, 2048] HU band, so metal/dense contrast
-    // above it (or anything below air) reads flat at the edge — flag when the
-    // true value may exceed the readout rather than implying it is exact.
+
     ctHuClipped = n >= 0.999 ? 'high' : n <= 0.001 ? 'low' : false;
   }
   let adcDisplay = null;

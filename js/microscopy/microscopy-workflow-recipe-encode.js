@@ -1,8 +1,3 @@
-// Capture path for microscopy workflow recipes: snapshots the active series'
-// view, stack position, channel display state, and embedded measurement/ROI
-// bundles into a portable recipe. Also hosts the shared series-shape and
-// numeric primitives consumed by the replay path (recipe-replay.js).
-
 import { state } from '../core/state.js';
 import {
   drawingEntriesForSeries,

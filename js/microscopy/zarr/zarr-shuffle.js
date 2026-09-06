@@ -22,9 +22,3 @@ export function byteUnshuffle(buf, typesize) {
   }
   return dest;
 }
-
-export function bitUnshuffle(_buf, _typesize) {
-  const error = new Error('Blosc bitshuffle is unsupported.');
-  error.unsupportedReason = 'Blosc shuffle=2';
-  throw error;
-}

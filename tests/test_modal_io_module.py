@@ -6,7 +6,6 @@ import sys
 
 from modal_io import compress_raw_volume, download_r2_objects, get_r2_client, iter_r2_object_keys, upload_r2_files
 
-
 def test_modal_io_explicit_empty_environment_does_not_fall_back_to_process_env(monkeypatch) -> None:
     monkeypatch.setenv("R2_ENDPOINT", "https://account.r2.cloudflarestorage.com")
     monkeypatch.setenv("R2_ACCESS_KEY_ID", "process-access")
@@ -18,7 +17,6 @@ def test_modal_io_explicit_empty_environment_does_not_fall_back_to_process_env(m
         assert "R2_ENDPOINT" in str(error)
     else:
         raise AssertionError("expected explicit empty environment to fail closed")
-
 
 def test_modal_io_iter_and_transfer_helpers(tmp_path: Path):
     class FakeS3:
@@ -76,7 +74,6 @@ def test_modal_io_iter_and_transfer_helpers(tmp_path: Path):
     )
     assert s3.uploads == [("a.dcm", "scan-data", "data/cloud_job/0001.png", "image/png")]
 
-
 def test_modal_io_rejects_r2_prefix_before_download_when_actual_limits_are_exceeded(tmp_path: Path):
     class FakeS3:
         def __init__(self, objects):
@@ -124,7 +121,6 @@ def test_modal_io_rejects_r2_prefix_before_download_when_actual_limits_are_excee
         raise AssertionError("expected R2 byte limit rejection")
     assert too_large.downloads == 0
 
-
 def test_modal_io_stops_paginated_listing_at_file_limit(tmp_path: Path):
     class FakeS3:
         def __init__(self):
@@ -155,7 +151,6 @@ def test_modal_io_stops_paginated_listing_at_file_limit(tmp_path: Path):
         raise AssertionError("expected paginated R2 listing limit rejection")
     assert s3.pages == 3
 
-
 def test_modal_io_compresses_raw_volume_with_bounded_atomic_python_stream(monkeypatch, tmp_path: Path):
     source = tmp_path / "volume.raw"
     destination = tmp_path / "volume.raw.zst"
@@ -182,7 +177,6 @@ def test_modal_io_compresses_raw_volume_with_bounded_atomic_python_stream(monkey
         "stream": {"read_size": 1024 * 1024, "write_size": 1024 * 1024},
     }
     assert not (tmp_path / ".volume.raw.zst.part").exists()
-
 
 def test_modal_io_rejects_raw_volume_over_compression_limit_before_import(monkeypatch, tmp_path: Path):
     source = tmp_path / "volume.raw"

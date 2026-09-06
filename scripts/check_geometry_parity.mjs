@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Geometry contract guard for the JS/Python dual implementation.
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -52,6 +51,7 @@ const allowedJsOnly = new Map([
   ['volumeDisplayScale', 'browser 3D mesh unit-cube scale helper over geometryFromSeries'],
 ]);
 const allowedPyOnly = new Map([
+  ['geometry_from_grid', 'Python reconstruction grid adapter covered by anisotropic rotated-grid tests'],
   ['float_list', 'Python DICOM value coercion helper'],
   ['slice_sort_key', 'legacy Python sorting helper retained for callers'],
   ['frame_of_reference_summary', 'Python helper internal to geometry_from_slices'],

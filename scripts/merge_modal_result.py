@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Merge one Modal/R2 processed series result into data/manifest.json."""
 
 from __future__ import annotations
 
@@ -18,11 +17,9 @@ from series_contract import merge_manifest_path, merge_manifest_series
 
 MAX_RESULT_JSON_BYTES = 1024 * 1024
 
-
 def result_url(r2_public_url: str, job_id: str) -> str:
     base = r2_public_url.rstrip("/")
     return f"{base}/results/{urllib.parse.quote(job_id, safe='')}/series.json"
-
 
 def infer_public_base(source: str) -> str:
     parsed = urllib.parse.urlparse(source)
@@ -33,7 +30,6 @@ def infer_public_base(source: str) -> str:
             return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, base_path, "", "", "")).rstrip("/")
     return ""
 
-
 def infer_job_id(source: str) -> str | None:
     parsed = urllib.parse.urlparse(source)
     parts = [urllib.parse.unquote(part) for part in parsed.path.split("/") if part]
@@ -41,7 +37,6 @@ def infer_job_id(source: str) -> str | None:
         if part == "results" and index + 2 < len(parts) and parts[index + 2] == "series.json":
             return parts[index + 1]
     return None
-
 
 def read_result_json(source: str, timeout: int = 30, max_bytes: int = MAX_RESULT_JSON_BYTES) -> dict[str, Any]:
     parsed = urllib.parse.urlparse(source)
@@ -60,7 +55,6 @@ def read_result_json(source: str, timeout: int = 30, max_bytes: int = MAX_RESULT
         raise ValueError("series result: expected JSON object")
     return data
 
-
 def companion_projection_source(source: str) -> str:
     parsed = urllib.parse.urlparse(source)
     if parsed.scheme in {"http", "https"} and parsed.path.endswith("/series.json"):
@@ -71,7 +65,6 @@ def companion_projection_source(source: str) -> str:
     if source.endswith("series.json"):
         return source[:-len("series.json")] + "projection_set.json"
     return ""
-
 
 def read_companion_projection(source: str, timeout: int = 30) -> dict[str, Any] | None:
     projection_source = companion_projection_source(source)
@@ -86,10 +79,8 @@ def read_companion_projection(source: str, timeout: int = 30) -> dict[str, Any] 
             return None
         raise
 
-
 def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
     atomic_write_json(path, manifest)
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -103,7 +94,6 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--timeout", type=int, default=30, help="Network fetch timeout in seconds.")
     _ = parser.add_argument("--dry-run", action="store_true", help="Validate and report the merge without writing.")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -149,7 +139,6 @@ def main() -> int:
     suffix = " (dry run)" if args.dry_run else ""
     print(f"{action} series[{index}] {slug} into {manifest_path}{suffix}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

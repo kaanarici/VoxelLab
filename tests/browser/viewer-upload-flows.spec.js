@@ -1,4 +1,3 @@
-/* global Buffer, DataTransfer, File, URL, document, localStorage, window */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -447,8 +446,6 @@ test('upload modal lists imported cloud results and can reopen one', async ({ pa
   await expect(page.locator('#upload-cloud-history')).toContainText('outputs tissue, stats');
   await expect(page.locator('#upload-cloud-history')).toContainText('provider modal · mode standard · input dicom_volume_stack');
 
-  // A result row must not be able to close a session owned by a running cloud
-  // operation, and another open request must leave that owned session intact.
   await page.locator('#upload-modal').evaluate((modal) => { modal.dataset.closeBlocked = 'true'; });
   await page.locator('[data-cloud-result-slug="cloud_seg"]').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
@@ -558,7 +555,7 @@ async function waitForCanvasPaint(page, selector) {
 }
 
 async function waitForThreeSurface(page) {
-  // Shape: { active: true, mounted: true, width: 448, height: 630, clientWidth: 448, clientHeight: 630 }
+
   await expect.poll(async () => {
     return await page.evaluate(() => {
       const container = document.getElementById('three-container');
@@ -794,7 +791,7 @@ test('upload modal summarizes mixed folder triage before import action', async (
 
   const status = page.locator('#upload-status');
   await expect(status).toHaveClass(/is-active/);
-  // Triage list rows replace the old run-on status sentence.
+
   await expect(status).toContainText('Opened (NIfTI)');
   await expect(status).toContainText('Converter-backed (CZI)');
   await expect(status).toContainText('Needs configured local readers or an OME-TIFF converter; open separately.');
@@ -804,7 +801,7 @@ test('upload modal summarizes mixed folder triage before import action', async (
   await expect(status).toContainText('cells.czi');
   await expect(status).toContainText('metadata.json (unrecognized JSON sidecar)');
   await expect(status).toContainText('broken.json (invalid JSON sidecar)');
-  // Checked-count and full sentence stay in the SR-accessible name and the toast.
+
   await expect(status).toHaveAttribute('aria-label', /after checking 6 files/);
   await expect(status).toHaveAttribute('aria-label', /1 openable file \(NIfTI\), 1 converter-backed file \(CZI\) and 1 sidecar \(Workflow recipe\) selected/);
   await expect(page.locator('#notify-container .notify-text')).toContainText('Local intake: 1 openable file (NIfTI), 1 converter-backed file (CZI) and 1 sidecar (Workflow recipe) selected');
@@ -872,7 +869,7 @@ test('upload modal separates browser drag folder read failures from unsupported 
 
   const status = page.locator('#upload-status');
   await expect(status).toHaveClass(/is-active/);
-  // Triage rows separate the skip, file-read failure, and folder-read failure.
+
   await expect(status).toContainText('Opened (DICOM)');
   await expect(status).toContainText('Skipped (unsupported)');
   await expect(status).toContainText('study/notes.md');
@@ -931,12 +928,12 @@ test('upload modal names unsupported folder samples when nothing can open', asyn
 
   const status = page.locator('#upload-status');
   await expect(status).toHaveClass(/is-error/);
-  // Nothing actionable: red Skipped row plus the restored supported-format guidance.
+
   await expect(status).toContainText('Skipped (unsupported)');
   await expect(status).toContainText('unsupported-folder/');
   await expect(status).toContainText('+2 more files');
   await expect(status.locator('.upload-triage-advice')).toContainText('Try DICOM, NIfTI');
-  // Full "no supported files... after checking 7 files" sentence stays SR-accessible.
+
   await expect(status).toHaveAttribute('aria-label', /No supported image, sidecar, or converter-backed files selected/);
   await expect(status).toHaveAttribute('aria-label', /after checking 7 files/);
   await expect(page.locator('#upload-modal')).toBeVisible();
@@ -1298,7 +1295,7 @@ test('persisted SEG overlays hydrate on the first series selection after reload'
   });
   await routeTinyPngStack(page, 'ct_chest_1', 1);
   await page.addInitScript(() => {
-    // Shape: localStorage registry entry for a persisted SEG-derived labels overlay.
+
     localStorage.setItem('mri-viewer/derived-objects/v1', JSON.stringify({
       version: 1,
       entries: {

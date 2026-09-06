@@ -1,4 +1,3 @@
-// DOM event wiring: toolbar, canvas, MPR panels, keyboard shortcuts.
 import { state } from './core/state.js';
 import { $, escapeHtml, showDialog, initModals } from './dom.js';
 import { notify } from './notify.js';
@@ -106,7 +105,7 @@ export function wireControls(deps) {
   scrub.addEventListener('input', () => {
     _pendingSliceIdx = magnetizeSliceValue(+scrub.value);
     stopCine();
-    if (_scrubRAF) return;           // coalesce: one redraw per frame
+    if (_scrubRAF) return;
     _scrubRAF = requestAnimationFrame(() => {
       _scrubRAF = 0;
       setSliceIndex(_pendingSliceIdx);
@@ -179,7 +178,7 @@ export function wireControls(deps) {
   const toolRail = $('tool-rail');
   let openPopupContainer = null;
   let popupPlaceRaf = 0;
-  // Sample the 256-entry RGBA LUT at a few stops into a CSS gradient preview.
+
   const swatchGradient = (lut) => {
     const stops = [];
     for (let i = 0; i <= 6; i++) {
@@ -231,8 +230,7 @@ export function wireControls(deps) {
     }
   });
   document.addEventListener('click', closePopups);
-  // A fixed-position popup would slide out of alignment if the rail scrolled or
-  // the window resized under it, so just dismiss open popups on either.
+
   toolRail?.addEventListener('scroll', () => {
     if (!openPopupContainer?.classList.contains('open') || popupPlaceRaf) return;
     popupPlaceRaf = requestAnimationFrame(() => {
@@ -245,10 +243,6 @@ export function wireControls(deps) {
     if (e.key === 'Escape') closePopups();
   });
 
-  // Toolbar popups (toolbox flyouts + dropdowns) render position:fixed so they
-  // escape the horizontally-scrolling tool rail's overflow clip. Anchor each one
-  // above its trigger, centered, clamped to the viewport; the caret tracks the
-  // trigger centre. Works for any container holding a trigger + a panel.
   const EDGE = 8;
   const GAP = 8;
   const placePopup = (container) => {
@@ -256,7 +250,7 @@ export function wireControls(deps) {
     const trigger = container.querySelector('.toolbox-trigger, .dd-trigger, .icon-btn');
     const panel = container.querySelector('.toolbox-panel, .dd-menu');
     if (!trigger || !panel) return;
-    // Park off-screen first so measurement isn't skewed by a stale position.
+
     panel.style.left = '-9999px';
     panel.style.top = '0px';
     const t = trigger.getBoundingClientRect();
@@ -264,17 +258,13 @@ export function wireControls(deps) {
     const ph = panel.offsetHeight;
     let left = Math.round(t.left + t.width / 2 - pw / 2);
     left = Math.max(EDGE, Math.min(left, window.innerWidth - EDGE - pw));
-    // Always open above the bottom toolbar; clamp to the top edge so a tall menu
-    // stays fully on-screen rather than running off the bottom.
+
     const top = Math.max(EDGE, Math.round(t.top - ph - GAP));
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
     panel.style.setProperty('--toolbox-caret-x', `${Math.round(t.left + t.width / 2 - left)}px`);
   };
 
-  // Clear slice is only meaningful when the current slice actually has drawings,
-  // so it (and its divider) only appear in the Tools menu when there's something
-  // to clear. Re-checked each time the menu opens against the current slice.
   const syncClearSliceButton = () => {
     const btn = $('btn-clear');
     if (!btn) return;
@@ -285,7 +275,6 @@ export function wireControls(deps) {
     if (divider && divider.classList.contains('menu-divider')) divider.hidden = !has;
   };
 
-  // Toolbox triggers — click to toggle floating panel
   document.querySelectorAll('.toolbox-trigger').forEach((trigger) => {
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -301,15 +290,11 @@ export function wireControls(deps) {
       }
     });
   });
-  // Clicks inside a toolbox panel should not close it
+
   document.querySelectorAll('.toolbox-panel').forEach((panel) => {
     panel.addEventListener('click', (e) => e.stopPropagation());
   });
 
-  // Keep toolbox trigger dot badges in sync when panel tools gain/lose .active.
-  // Only .toolbox-panel .icon-btn count — avoids stray .icon-btn nodes and matches
-  // the “something in this flyout is on” intent. Skips mutations on triggers only
-  // (has-active toggles) to limit feedback loops.
   const syncToolboxBadges = () => {
     document.querySelectorAll('.toolbox').forEach((box) => {
       const trigger = box.querySelector('.toolbox-trigger');
@@ -361,7 +346,7 @@ export function wireControls(deps) {
   $('btn-zoomfit').onclick = fitActiveView;
   $('btn-zoom-in').onclick = () => zoomByFactor(1.15);
   $('btn-zoom-out').onclick = () => zoomByFactor(1 / 1.15);
-  // Toolbar W/L sliders — the visible counterpart to Shift+drag on the canvas.
+
   $('wl-window')?.addEventListener('input', (e) => setWindowLevel(+e.target.value, state.level));
   $('wl-level')?.addEventListener('input', (e) => setWindowLevel(state.window, +e.target.value));
   $('btn-clear').onclick = clearCurrentSliceDrawings;
@@ -519,8 +504,7 @@ export function wireControls(deps) {
   const rebuildCmpMenu = () => {
     buildCompareMenu(cmpMenu, {
       onSelectionChanged({ checked }) {
-        // Decide on the user's CHECKED count, not the auto-group fallback — so
-        // clearing below 2 cleanly exits compare instead of resurrecting the group.
+
         if (state.mode !== 'cmp') {
           if (checked.length >= 2) toggleCompare();
         } else if (checked.length < 2) {

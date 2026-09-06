@@ -6,22 +6,18 @@ from typing import Callable
 
 from r2_config import normalize_public_r2_url, upload_origins
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-
 
 def env_bool(value: str | None) -> bool | None:
     if value is None or value == "":
         return None
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
-
 def env_list(value: str | None) -> list[str] | None:
     if value is None or value == "":
         return None
     return [item.strip() for item in value.split(",") if item.strip()]
-
 
 def runtime_config(
     root: Path,

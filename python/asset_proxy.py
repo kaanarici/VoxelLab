@@ -9,15 +9,12 @@ from pathlib import Path
 from urllib import request as urlrequest
 from urllib.parse import parse_qs, urlparse
 
-
 try:
     import certifi
 except Exception:
     certifi = None
 
-
 MAX_PROXY_ASSET_BYTES = 512 * 1024 * 1024
-
 
 def https_origin(value: str | None) -> str:
     try:
@@ -27,7 +24,6 @@ def https_origin(value: str | None) -> str:
     if parsed.scheme == "https" and parsed.netloc:
         return f"{parsed.scheme}://{parsed.netloc}"
     return ""
-
 
 def manifest_proxy_origins(manifest_path: Path) -> set[str]:
     origins = set()
@@ -50,7 +46,6 @@ def manifest_proxy_origins(manifest_path: Path) -> set[str]:
                 origins.add(origin)
     return origins
 
-
 def configured_proxy_origins(config: dict | None, data_dir: Path, runtime_config) -> set[str]:
     cfg = config or runtime_config()
     origins = manifest_proxy_origins(data_dir / "manifest.json")
@@ -59,7 +54,6 @@ def configured_proxy_origins(config: dict | None, data_dir: Path, runtime_config
         if origin:
             origins.add(origin)
     return origins
-
 
 def private_proxy_host(hostname: str | None) -> bool:
     host = str(hostname or "").strip().strip("[]")
@@ -76,7 +70,6 @@ def private_proxy_host(hostname: str | None) -> bool:
         except OSError:
             return True
     return any(not address.is_global for address in addresses)
-
 
 def public_proxy_address(hostname: str | None) -> str:
     host = str(hostname or "").strip().strip("[]")
@@ -96,7 +89,6 @@ def public_proxy_address(hostname: str | None) -> str:
         return ""
     return str(addresses[0])
 
-
 class ValidatedProxyUrl(str):
     pinned_ip: str
 
@@ -104,7 +96,6 @@ class ValidatedProxyUrl(str):
         value = super().__new__(cls, url)
         value.pinned_ip = pinned_ip
         return value
-
 
 def allowed_proxy_asset_url(url: str, config: dict | None, configured_proxy_origins) -> str:
     try:
@@ -120,7 +111,6 @@ def allowed_proxy_asset_url(url: str, config: dict | None, configured_proxy_orig
         return ValidatedProxyUrl(url, pinned_ip) if pinned_ip else ""
     return ""
 
-
 def proxy_asset_request(url: str) -> urlrequest.Request:
     request = urlrequest.Request(
         url,
@@ -128,7 +118,6 @@ def proxy_asset_request(url: str) -> urlrequest.Request:
     )
     request.voxellab_pinned_ip = getattr(url, "pinned_ip", "")
     return request
-
 
 def proxy_asset_ssl_context():
     context = ssl.create_default_context()
@@ -142,11 +131,9 @@ def proxy_asset_ssl_context():
         context.load_verify_locations(cafile=cafile)
     return context
 
-
 class _NoRedirect(urlrequest.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise urlrequest.HTTPError(newurl, code, f"redirect blocked: {msg}", headers, fp)
-
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host, *, pinned_ip: str, **kwargs):
@@ -164,7 +151,6 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         server_hostname = self._tunnel_host or self.host
         self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
 
-
 class _PinnedHTTPSHandler(urlrequest.HTTPSHandler):
     def __init__(self, *, context, pinned_ip: str):
         super().__init__(context=context)
@@ -177,7 +163,6 @@ class _PinnedHTTPSHandler(urlrequest.HTTPSHandler):
             context=self._context,
         )
 
-
 def proxy_asset_urlopen(request, *, timeout, context):
     parsed = urlparse(request.full_url)
     pinned_ip = str(getattr(request, "voxellab_pinned_ip", "") or "")
@@ -189,7 +174,6 @@ def proxy_asset_urlopen(request, *, timeout, context):
         _PinnedHTTPSHandler(context=context, pinned_ip=pinned_ip),
     )
     return opener.open(request, timeout=timeout)
-
 
 def handle_proxy_asset_get(
     handler,

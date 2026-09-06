@@ -8,13 +8,11 @@ from pathlib import Path
 
 import ai_runtime
 
-
 class DummyCompleted:
     def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
-
 
 def test_public_ai_status_reports_disabled_state() -> None:
     status = ai_runtime.public_ai_status(False, provider="codex")
@@ -22,7 +20,6 @@ def test_public_ai_status_reports_disabled_state() -> None:
     assert status["enabled"] is False
     assert status["provider"] == "codex"
     assert status["status_source"] == "disabled"
-
 
 def test_codex_status_reports_config_error(monkeypatch) -> None:
     monkeypatch.setattr(ai_runtime.shutil, "which", lambda name, path=None: "/usr/bin/codex")
@@ -40,7 +37,6 @@ def test_codex_status_reports_config_error(monkeypatch) -> None:
     assert status["status_source"] == "config_error"
     assert "Error loading configuration" in status["issues"][0]
 
-
 def test_codex_status_reads_app_server_account(monkeypatch) -> None:
     monkeypatch.setattr(ai_runtime.shutil, "which", lambda name, path=None: "/usr/bin/codex")
     monkeypatch.setattr(
@@ -54,7 +50,6 @@ def test_codex_status_reads_app_server_account(monkeypatch) -> None:
     assert status["ready"] is True
     assert status["auth_mode"] == "chatgpt"
     assert status["status_source"] == "app_server_account"
-
 
 def test_run_structured_codex_uses_app_server_stream(monkeypatch, tmp_path: Path) -> None:
     calls: list[dict] = []
@@ -79,7 +74,6 @@ def test_run_structured_codex_uses_app_server_stream(monkeypatch, tmp_path: Path
     assert result == {"answer": "ok"}
     assert calls[0]["schema"] == schema
     assert calls[0]["images"] == [tmp_path / "slice.png"]
-
 
 def test_run_structured_claude_prefixes_image_reads(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ai_runtime, "require_provider_ready", lambda provider=None, env=None: {"provider": "claude", "ready": True})
@@ -106,7 +100,6 @@ def test_run_structured_claude_prefixes_image_reads(monkeypatch, tmp_path: Path)
     assert "Read these local image files before answering:" in observed["input"]
     assert str((tmp_path / "slice.png").resolve()) in observed["input"]
 
-
 def test_run_structured_claude_omits_forced_model_and_permission_bypass(monkeypatch) -> None:
     monkeypatch.setattr(ai_runtime, "require_provider_ready", lambda provider=None, env=None: {"provider": "claude", "ready": True})
     monkeypatch.setattr(ai_runtime, "resolve_model", lambda model=None, provider=None, env=None: "")
@@ -130,7 +123,6 @@ def test_run_structured_claude_omits_forced_model_and_permission_bypass(monkeypa
     assert "--model" not in observed["cmd"]
     assert "bypassPermissions" not in observed["cmd"]
 
-
 CLAUDE_HELP_FIXTURE = """
   --model <model>                       Model for the current session. Provide
                                         an alias for the latest model (e.g.
@@ -140,10 +132,8 @@ CLAUDE_HELP_FIXTURE = """
   -n, --name <name>                     Set a display name for this session
 """
 
-
 def test_parse_claude_help_model_aliases_reads_latest_family_aliases() -> None:
     assert ai_runtime.parse_claude_help_model_aliases(CLAUDE_HELP_FIXTURE) == ["fable", "opus", "sonnet"]
-
 
 def test_claude_picker_models_use_only_supported_help_output() -> None:
     assert ai_runtime._claude_picker_rows(CLAUDE_HELP_FIXTURE) == [
@@ -151,7 +141,6 @@ def test_claude_picker_models_use_only_supported_help_output() -> None:
         {"model": "opus", "label": "Opus"},
         {"model": "sonnet", "label": "Sonnet"},
     ]
-
 
 def test_parse_codex_model_catalog_keeps_usable_models_and_skips_internal() -> None:
     catalog = {
@@ -168,7 +157,6 @@ def test_parse_codex_model_catalog_keeps_usable_models_and_skips_internal() -> N
         {"model": "gpt-daybreak-blue-latest", "label": "Daybreak Blue", "default": True},
         {"model": "gpt-5.5", "label": "GPT-5.5", "default": False},
     ]
-
 
 def test_parse_codex_model_catalog_keeps_only_image_input_models() -> None:
     catalog = {
@@ -192,12 +180,10 @@ def test_parse_codex_model_catalog_keeps_only_image_input_models() -> None:
         {"model": "gpt-5.5", "label": "GPT-5.5", "default": False},
     ]
 
-
 def test_parse_codex_model_catalog_rejects_unsupported_debug_shape() -> None:
     assert ai_runtime.parse_codex_model_catalog({
         "models": [{"slug": "gpt-5.5", "display_name": "GPT-5.5"}],
     }) == []
-
 
 def test_codex_model_catalog_bounds_pagination() -> None:
     class FakeApp:
@@ -222,7 +208,6 @@ def test_codex_model_catalog_bounds_pagination() -> None:
     assert app.calls == ai_runtime._CODEX_MODEL_CATALOG_MAX_PAGES
     assert len(rows) == ai_runtime._CODEX_MODEL_CATALOG_MAX_PAGES
 
-
 def provider_result(provider: str, catalog_status: str = "ready") -> dict:
     return ai_runtime._catalog_provider_status(
         {"provider": provider, "ready": True, "issues": []},
@@ -230,7 +215,6 @@ def provider_result(provider: str, catalog_status: str = "ready") -> dict:
         source="claude_help" if provider == "claude" else "codex_app_server",
         model_count=1,
     )
-
 
 def test_list_cli_models_includes_ready_claude_and_codex_catalogs(monkeypatch) -> None:
     ai_runtime.clear_cli_models_cache()
@@ -262,7 +246,6 @@ def test_list_cli_models_includes_ready_claude_and_codex_catalogs(monkeypatch) -
     assert [item["catalog"]["status"] for item in payload["providers"]] == ["ready", "ready"]
     assert all(item["catalog"]["timeout_seconds"] == 8 for item in payload["providers"])
 
-
 def test_list_cli_models_caches_after_discovery_completion(monkeypatch) -> None:
     ai_runtime.clear_cli_models_cache()
     clock = {"now": 10.0}
@@ -279,7 +262,6 @@ def test_list_cli_models_caches_after_discovery_completion(monkeypatch) -> None:
 
     assert ai_runtime._cli_models_cache is not None
     assert ai_runtime._cli_models_cache[0] == 160.0
-
 
 def test_list_cli_models_deduplicates_concurrent_discovery(monkeypatch) -> None:
     ai_runtime.clear_cli_models_cache()
@@ -309,7 +291,6 @@ def test_list_cli_models_deduplicates_concurrent_discovery(monkeypatch) -> None:
 
     assert calls == {"claude": 1, "codex": 1}
 
-
 def test_claude_catalog_timeout_is_explicit_and_keeps_cli_default(monkeypatch) -> None:
     monkeypatch.setattr(
         ai_runtime,
@@ -335,7 +316,6 @@ def test_claude_catalog_timeout_is_explicit_and_keeps_cli_default(monkeypatch) -
         "group": "Claude Code",
     }]
 
-
 def test_claude_catalog_does_not_start_after_provider_deadline(monkeypatch) -> None:
     clock = iter((10.0, 18.0))
     monkeypatch.setattr(ai_runtime.time, "monotonic", lambda: next(clock))
@@ -354,7 +334,6 @@ def test_claude_catalog_does_not_start_after_provider_deadline(monkeypatch) -> N
 
     assert status["catalog"]["status"] == "timeout"
     assert models == [ai_runtime._default_cli_model("claude")]
-
 
 def test_codex_catalog_failure_is_explicit_and_keeps_cli_default(monkeypatch) -> None:
     class FakeAppServer:

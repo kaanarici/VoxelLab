@@ -266,7 +266,7 @@ async function validateOutputArtifact(outputKind, outputPath) {
           break;
         }
       } catch {
-        // Try the next recognized root metadata file.
+
       }
     }
     if (!validMetadata) throw new Error('Converter output is missing valid OME-Zarr root metadata');
@@ -331,8 +331,7 @@ export class ConverterJobManager extends EventEmitter {
     cancelGraceMs = DEFAULT_CANCEL_GRACE_MS,
     shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
     maxTerminalJobs = DEFAULT_MAX_TERMINAL_CONVERSION_JOBS,
-    // The Electron main process supplies shell.trashItem. Keeping this injected
-    // makes the lifecycle policy testable without permanently deleting files.
+
     releaseJobDir = async () => false,
     platform = process.platform,
     isProcessAlive = processIsAlive,
@@ -508,7 +507,7 @@ export class ConverterJobManager extends EventEmitter {
         try {
           this.signalChild(job.child, 'SIGKILL', this.platform);
         } catch {
-          // The timeout result below keeps a demonstrably live directory out of cleanup.
+
         }
       }
     }
@@ -631,8 +630,7 @@ export class ConverterJobManager extends EventEmitter {
     try {
       return (await this.releaseJobDir(jobDir)) !== false;
     } catch {
-      // Keep artifacts when the platform trash is unavailable. A later startup
-      // retries stale-session cleanup without risking permanent deletion.
+
       return false;
     }
   }

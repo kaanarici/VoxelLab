@@ -219,7 +219,7 @@ export async function convertVendorMicroscopyFile(file) {
       const err = await res.json();
       reason = String(err?.reason || '');
     } catch {
-      // The stable reason field is available only on JSON error responses.
+
     }
     if (splitNative && reason === 'optional_python_reader_missing') {
       throw new Error(`Could not convert ${file.name}: install the optional microscopy readers; native split-mode does not fall back to an external converter.`);

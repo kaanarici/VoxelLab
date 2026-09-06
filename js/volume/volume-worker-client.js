@@ -1,6 +1,3 @@
-// Main-thread bridge to js/volume-worker.js — fzstd decompress +
-// uint16→float32 offloaded so the UI stays responsive on large volumes.
-
 let _volumeWorker = null;
 let _workerIdCounter = 0;
 const _workerCallbacks = new Map();
@@ -13,14 +10,12 @@ function workerFailureError(event, fallback) {
 }
 
 function settleWorkerFailure(worker, error) {
-  // A worker failure invalidates every request sent to that worker. Clear the
-  // map before settling callbacks so rejection handlers can safely submit work
-  // to a freshly-created worker without being affected by this failure.
+
   if (_volumeWorker !== worker) return;
   _volumeWorker = null;
   const callbacks = [..._workerCallbacks.values()];
   _workerCallbacks.clear();
-  try { worker.terminate?.(); } catch { /* The worker is already gone. */ }
+  try { worker.terminate?.(); } catch {                                   }
   for (const cb of callbacks) {
     if (cb.reject) cb.reject(error);
     else cb.resolve?.(null);
@@ -62,10 +57,6 @@ function getVolumeWorker() {
   return _volumeWorker;
 }
 
-/**
- * Stop the shared worker and settle every request it owns. This is the only
- * supported termination path so callers never leave promises pending.
- */
 export function terminateVolumeWorker() {
   if (!_volumeWorker) return;
   settleWorkerFailure(_volumeWorker, new Error('Volume worker terminated'));
@@ -82,15 +73,6 @@ function postVolumeWorkerMessage(id, message, transfer, onError) {
   }
 }
 
-/**
- * Flatten slice ImageBitmaps into one Uint8Array (length === w * h * d) off the
- * main thread. Caller is responsible for
- * `createImageBitmap(<img>)` on the main thread; ownership of the bitmaps
- * is transferred to the worker. Throws if the worker is unavailable.
- *
- * @param {{ bitmaps: ImageBitmap[], w: number, h: number, d: number }} opts
- * @returns {Promise<Uint8Array>}
- */
 export function flattenImageBitmapsInWorker({ bitmaps, w, h, d }) {
   if (!(globalThis.Worker instanceof Function) || !(globalThis.OffscreenCanvas instanceof Function)) {
     return Promise.reject(new Error('flattenImageBitmapsInWorker: Worker/OffscreenCanvas unavailable'));

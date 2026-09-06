@@ -1,9 +1,3 @@
-// Shared mutable singletons and store-wrapping mutation actions for the
-// projects sidebar modules (tree-render, context-menus, rename-dialog) and the
-// projects-sidebar.js entrypoint. Kept DOM-free and dependency-leaf so the
-// split modules read/write the same state and trigger the same actions without
-// import cycles. Persistence: projects-store.js.
-
 import {
   assignSeriesSlugsToProject,
   createProjectRecord,
@@ -13,10 +7,8 @@ import {
 } from './projects-store.js';
 import { loadSidebarSort } from './projects-sidebar-sort.js';
 
-// Multi-selected series slugs (Cmd/Ctrl + Shift click). Keyed by slug.
 export const multiSel = new Set();
 
-// Pre-loaded hover-thumbnail Images, keyed by series slug.
 export const thumbCache = new Map();
 
 export const sidebar = {
@@ -24,13 +16,11 @@ export const sidebar = {
   selectSeries: () => {},
   refreshActiveView: () => {},
   lastClickedSlug: null,
-  // Flat top-to-bottom order of rendered series slugs, used for shift-range select.
+
   flatOrder: [],
   currentSort: loadSidebarSort(),
   manifest: null,
-  // Signature of the last-rendered tree structure (series set + folder
-  // membership/order/collapse + pins + sort + multi-select), excluding the
-  // active slug. Lets a pure selection change skip the full rebuild.
+
   structureSig: null,
 };
 

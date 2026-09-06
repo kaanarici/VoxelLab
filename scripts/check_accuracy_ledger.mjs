@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global console, process */
 
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -342,8 +341,6 @@ export async function buildAccuracyLedger() {
     ...await buildDicomRows(references),
   ];
 
-  // Synthetic fixtures can be stripped from sanitized exports. With no fixtures
-  // to verify, leave the committed ledger artifacts untouched.
   if (!rows.length) return null;
 
   const checkedCodePaths = Object.fromEntries(
@@ -369,9 +366,7 @@ export async function buildAccuracyLedger() {
     },
     rows,
   };
-  // Public exports intentionally omit the synthetic NIfTI binaries. Verify any
-  // available oracle rows, but never replace the complete committed ledger with
-  // a partial artifact assembled from the reduced public fixture corpus.
+
   if (matchesCommittedCorpus(rows)) writeArtifacts(ledger);
   return ledger;
 }

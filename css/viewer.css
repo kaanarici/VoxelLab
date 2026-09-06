@@ -1,7 +1,5 @@
-  /* main area */
   main { display: flex; flex-direction: column; min-width: 0; position: relative; }
 
-  /* Viewer header — thin strip matching sidebar headers for visual continuity */
   .viewer-header {
     display: flex; align-items: center;
     padding: 0 var(--chrome-header-pr) 0 var(--chrome-header-pl);
@@ -27,7 +25,7 @@
   .viewer-header-study:has(#series-desc:empty) .vh-study-divider {
     display: none;
   }
-  /* Same 1px rule as header action groups; vertically centered vs baseline name/desc */
+
   .viewer-header-study .vh-study-divider {
     align-self: center;
   }
@@ -51,14 +49,11 @@
     display: flex; align-items: center; gap: var(--space-2xs);
     flex-shrink: 0;
   }
-  /* When the right slot only holds hidden UI (show-panel is unused while the
-     right rail is open), omit the flex item so header gap does not sit after Help. */
+
   #viewer-header-right-actions:not(:has(> :not([hidden]))) {
     display: none;
   }
-  /* Theme + show-panel move into this slot when the right rail is collapsed; without
-     this, .viewer-header's 8px gap sits between Help (last in actions) and Theme and
-     reads as extra space vs the 2px gaps inside each action row. */
+
   .app.right-collapsed .viewer-header-right-actions {
     margin-left: calc(-1 * var(--space-2sm));
   }
@@ -82,9 +77,7 @@
     display: flex; align-items: center; justify-content: center;
     background: #050505;
   }
-  /* Viewport wrapper that owns pan/zoom transforms. The canvas lives inside
-     and inherits the transform via CSS, so the rendering pipeline is
-     unchanged — we're just scaling and translating the displayed bitmap. */
+
   .view-stage {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -97,7 +90,7 @@
     transform: translate(var(--tx, 0px), var(--ty, 0px)) scale(var(--zoom, 1));
     will-change: transform;
   }
-  /* Hidden until first successful drawSlice (slice-view.js). Default in HTML too so reload doesn’t flash a black canvas before JS. */
+
   .view-xform.view-awaiting-slice {
     opacity: 0;
     visibility: hidden;
@@ -120,7 +113,6 @@
   #three-container { position: absolute; inset: 0; display: none; }
   #three-container.active { display: block; }
 
-  /* Centered spinner for 3D / volume loading */
   .viewer-spinner {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -146,11 +138,6 @@
   }
   .canvas-wrap.threeD canvas#view { display: none; }
 
-  /* Pointer-event layering per mode: only the active mode's container
-     receives pointer events. Without this, view-stage (the 2D layer) is
-     always inset:0 with pointer-events:auto and it intercepts drags that
-     should reach three.js's OrbitControls — which is why rotating a 3D
-     model got "stuck" when the cursor crossed onto the sidebars. */
   .canvas-wrap .view-stage { pointer-events: auto; }
   .canvas-wrap #three-container { pointer-events: none; }
   .canvas-wrap.threeD .view-stage { pointer-events: none; }
@@ -158,7 +145,6 @@
   .canvas-wrap.mpr .view-stage { pointer-events: none; }
   .canvas-wrap.cmp .view-stage { pointer-events: none; }
 
-  /* Zoom badge (top-right of image area) */
   #zoom-badge {
     position: absolute; top: var(--space-sm); right: var(--space-sm);
     font: var(--fs-caption) var(--ff-mono);
@@ -216,22 +202,13 @@
       bottom: 84px !important;
     }
   }
-  /* SVG overlay for measurements, sitting on top of the canvas stage.
-     Lives inside the transform wrapper so it pans/zooms with the canvas.
-     Critical: the SVG container itself has pointer-events: none so it
-     never steals clicks from the canvas beneath. Individual shapes
-     (lines, dots, labels) explicitly re-enable pointer-events so they
-     can still be clicked for deletion. Before this, measure mode would
-     silently swallow the first click because the empty SVG box
-     intercepted it. */
+
   #overlay-svg {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     pointer-events: none;
     overflow: visible;
   }
-  /* Measurement lines themselves aren't clickable — only the explicit
-     delete button below is. This prevents accidental deletions when the
-     user is trying to do anything near an existing line. */
+
   .m-line   { stroke: #ffffff; stroke-width: 1.5; fill: none;
               pointer-events: none; vector-effect: non-scaling-stroke; }
   .m-dot    { fill: #ffffff; stroke: #000; stroke-width: 1;
@@ -243,7 +220,6 @@
     pointer-events: none;
   }
 
-  /* Delete-× button next to each measurement label */
   .m-del-bg { fill: rgba(0, 0, 0, 0.65); stroke: rgba(255, 255, 255, 0.4); stroke-width: 1; pointer-events: none; opacity: 0.92; transition: fill var(--dur-quick) var(--ease-swap); }
   .m-del-x  { stroke: #ffffff; stroke-width: 1.6; stroke-linecap: round; pointer-events: none; opacity: 0.92; transition: opacity var(--dur-quick) var(--ease-swap); }
   .m-del-hit { fill: rgba(0, 0, 0, 0.01); pointer-events: all; cursor: pointer; opacity: 1; }
@@ -260,7 +236,6 @@
     .angle-group:hover .m-del-x { opacity: 1; }
   }
 
-  /* Brief reveal of delete button on newly placed measurements */
   @keyframes m-del-hint {
     0%   { opacity: 0; }
     10%  { opacity: 0.4; }
@@ -270,7 +245,6 @@
   .m-group.m-new .m-del-bg,
   .m-group.m-new .m-del-x { animation: m-del-hint 2s ease-out forwards; }
 
-  /* ROI tool — ellipse/polygon shapes + stat labels */
   .roi-shape {
     stroke: #7ec8e3; stroke-width: 1.5;
     fill: rgba(126, 200, 227, 0.07);
@@ -295,7 +269,6 @@
   .roi-group:hover .roi-del-bg { fill: var(--abnormal-strong); }
   .view-xform.roi-mode canvas#view { cursor: crosshair; }
 
-  /* overlays — always dark, sit on black canvas regardless of theme */
   .ov { position: absolute; pointer-events: none; font-size: var(--fs-body);
         color: var(--overlay-muted); font-variant-numeric: tabular-nums;
         background: rgba(0, 0, 0, 0.6);
@@ -317,11 +290,9 @@
     text-transform: uppercase; letter-spacing: var(--tracking-caps-x); margin-top: var(--space-2xs);
   }
 
-  /* wl overlay */
   #wl-overlay { opacity: 0; transition: opacity var(--dur-quick) var(--ease-tip); }
   .canvas-wrap:hover #wl-overlay { opacity: 1; }
 
-  /* Hover readout badge floating near the cursor on the 2D canvas */
   #hover-readout {
     position: absolute; pointer-events: none; display: none;
     background: var(--overlay-surface);
@@ -381,13 +352,12 @@
     background: var(--hover);
   }
 
-  /* MPR / Compare modes share the same grid layout */
   .mpr-grid, .cmp-grid {
     position: absolute; inset: 0; display: none;
     grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr auto; gap: var(--space-2xs);
     padding: var(--space-xs); background: #000;
   }
-  /* Responsive: single column on narrow screens */
+
   @media (max-width: 900px) {
     .mpr-grid, .cmp-grid {
       grid-template-columns: 1fr;
@@ -404,13 +374,10 @@
   .canvas-wrap.cmp canvas#view { display: none; }
   .canvas-wrap.mpr #three-container,
   .canvas-wrap.cmp #three-container { display: none; }
-  /* Hide the on-canvas overlays (slice number + series name) in MPR
-     and Compare modes — these modes have their own per-cell badges
-     and showing the 2D overlay on top of the grid looks broken. */
+
   .canvas-wrap.mpr .ov,
   .canvas-wrap.cmp .ov { display: none; }
-  /* Also hide in 3D mode — the volume render fills the viewport and
-     the 2D slice counter is meaningless there. */
+
   .canvas-wrap.threeD .ov { display: none; }
 
   .mpr-cell,
@@ -421,7 +388,7 @@
     min-width: 0; min-height: 0;
   }
   .cmp-cell {
-    /* Drag = window/level (matches the 2D view's ew-resize). Pan only when zoomed in. */
+
     cursor: ew-resize; transition: border-color var(--dur-quick) var(--ease-swap);
   }
   .cmp-cell:hover { border-color: var(--dim); }
@@ -448,14 +415,13 @@
     left: 0; right: 0; top: var(--y); height: 1px;
     transform: translateY(-0.5px);
   }
-  /* Active pane focus — per-axis accent matching diagnostic workstation convention */
+
   .mpr-cell.mpr-focused { border-width: 1.5px; }
   .mpr-cell.mpr-focused[data-axis="ax"] { border-color: color-mix(in srgb, var(--axis-ax) 55%, transparent); }
   .mpr-cell.mpr-focused[data-axis="co"] { border-color: color-mix(in srgb, var(--axis-co) 55%, transparent); }
   .mpr-cell.mpr-focused[data-axis="sa"] { border-color: color-mix(in srgb, var(--axis-sa) 55%, transparent); }
   .mpr-cell.mpr-focused[data-axis="ob"] { border-color: color-mix(in srgb, var(--axis-ob) 55%, transparent); }
-  /* Axis-colored crosshairs: vertical line = intersecting sagittal plane,
-     horizontal line = intersecting coronal or axial plane */
+
   .mpr-cell[data-axis="ax"] .mpr-cross-x { background: color-mix(in srgb, var(--axis-sa) 50%, transparent); }
   .mpr-cell[data-axis="ax"] .mpr-cross-y { background: color-mix(in srgb, var(--axis-co) 50%, transparent); }
   .mpr-cell[data-axis="co"] .mpr-cross-x { background: color-mix(in srgb, var(--axis-sa) 50%, transparent); }
@@ -473,7 +439,7 @@
     font-variant-numeric: tabular-nums;
     text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   }
-  /* Patient orientation markers (L/R/A/P/S/I) per orthogonal MPR pane */
+
   .mpr-orient {
     position: absolute; pointer-events: none; z-index: calc(var(--z-canvas-overlay) + 2);
     font: var(--fw-semibold) var(--fs-body)/var(--lh-none) -apple-system, system-ui, sans-serif;
@@ -486,7 +452,6 @@
   .mpr-orient-t { top: 22px;   left: 50%; transform: translateX(-50%); }
   .mpr-orient-b { bottom: var(--space-2sm); left: 50%; transform: translateX(-50%); }
 
-  /* Unified MPR toolbar — spans full grid width below the 2×2 panes. */
   .mpr-toolbar-wrap {
     --mpr-tb-bg: #0a0a0a;
     --mpr-tb-surface: #171717;
@@ -619,7 +584,7 @@
   .mpr-tb-btn:hover { background: var(--hover); border-color: var(--dim); }
   .mpr-tb-btn:active { opacity: 0.7; }
   #mpr-zoom-out, #mpr-zoom-in { padding: 0; }
-  /* Segmented pill group — same 30px height and 11px type as the main controls row */
+
   .mpr-tb-pills {
     display: flex;
     flex-shrink: 0;
@@ -646,7 +611,7 @@
   .mpr-proj-btn:hover { color: var(--mpr-tb-text); background: var(--mpr-tb-surface); }
   .mpr-proj-btn:active { opacity: 0.7; }
   .mpr-proj-btn.active { color: var(--mpr-tb-text); background: rgba(255,255,255,0.07); }
-  /* GPU path toggle — custom switch (native checkbox hidden); MPR chrome stays dark-on-canvas */
+
   .mpr-tb-gpu.ui-switch {
     display: flex; align-items: center; gap: var(--space-2sm);
     height: var(--btn-toolbar);
@@ -700,7 +665,7 @@
     opacity: var(--opacity-disabled);
     cursor: default;
   }
-  /* Overlay status pills — small indicators when tissue/regions/sym/fusion active */
+
   .mpr-tb-overlays {
     display: flex; align-items: center; gap: var(--space-xs); margin-left: auto;
   }
@@ -725,10 +690,6 @@
   .cmp-cell.out-of-range .cmp-lbl { color: rgba(255, 214, 160, 0.95); }
   .cmp-cell.primary { border-color: rgba(255,255,255,0.45); border-width: var(--border-w); }
 
-  /* Empty state (no study loaded) */
-  /* Empty state: hidden by default, shown only when JS confirms no data.
-     This prevents the flash of "Open a study" on page load when data
-     is cached / already present in the manifest. */
   .empty-state {
     position: absolute; inset: 0;
     display: none; flex-direction: column;
@@ -738,7 +699,7 @@
     z-index: calc(var(--z-canvas-overlay) + 5); background: var(--bg);
   }
   .canvas-wrap.no-series .empty-state { display: flex; }
-  /* No black canvas “card” behind the empty state — viewport is hidden until a study loads */
+
   .canvas-wrap.no-series .view-stage,
   .canvas-wrap.no-series #three-container,
   .canvas-wrap.no-series #zoom-badge,
@@ -848,7 +809,6 @@
     margin-left: var(--space-xs);
   }
 
-  /* Upload zone */
   .upload-zone {
     display: flex; flex-direction: column; align-items: center; gap: var(--space-xs);
     padding: 28px 20px; cursor: pointer; text-align: center;
@@ -865,15 +825,11 @@
     animation: none;
   }
 
-  /* DICOM orientation markers — anchored to .view-xform (the rendered image rect)
-     so they hug the image, not the canvas-wrap edges. This keeps them close to
-     the slice regardless of viewport aspect ratio (especially important on
-     narrow widths / mobile where the image is pillarboxed inside a wide wrap). */
   .orient-marker {
     position: absolute; pointer-events: none;
     font: var(--fw-semibold) var(--fs-title)/var(--lh-none) -apple-system, system-ui, sans-serif;
     color: rgba(255, 255, 255, 0.7);
-    /* Above .viewer-spinner (z-index 3) so L/R/A/P/S/I stay visible during remote load */
+
     z-index: calc(var(--z-canvas-overlay) + 4);
     background: rgba(0, 0, 0, 0.6);
     padding: 3px var(--space-2sm);
@@ -883,14 +839,13 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    /* Reserve one-glyph + padding size before text is set so the pill does not grow during ui-fade-in */
+
     min-width: calc(1ch + 12px);
     min-height: calc(1em + 6px);
-    /* Counter the parent .view-xform transform's scale so markers keep a fixed pixel
-       size regardless of user zoom. --zoom is set on .view-xform; fallback to 1. */
+
     --orient-counter-scale: calc(1 / var(--zoom, 1));
   }
-  /* Before labels exist, hide the chrome so we do not flash empty pills */
+
   .orient-marker:empty {
     opacity: 0;
   }
@@ -898,13 +853,12 @@
   .orient-right  { right: var(--space-2sm);  top: 50%; transform: translateY(-50%) scale(var(--orient-counter-scale)); transform-origin: right center; }
   .orient-top    { top: var(--space-2sm);    left: 50%; transform: translateX(-50%) scale(var(--orient-counter-scale)); transform-origin: center top; }
   .orient-bottom { bottom: var(--space-2sm); left: 50%; transform: translateX(-50%) scale(var(--orient-counter-scale)); transform-origin: center bottom; }
-  /* Hide in non-2D modes (MPR/3D/Compare have their own indicators) */
+
   .canvas-wrap.mpr .orient-marker,
   .canvas-wrap.cmp .orient-marker,
   .canvas-wrap.threeD .orient-marker,
   .canvas-wrap.mpr3d .orient-marker { display: none; }
 
-  /* Symmetry sparkline — thin strip above the controls bar, full width */
   #sparkline {
     display: block; width: 100%; height: 16px;
     background: var(--bg);
@@ -925,14 +879,13 @@
     z-index: var(--z-header);
   }
 
-  /* 3D label list (per-structure visibility toggle) */
   .label-list {
     max-height: 260px; overflow-y: auto;
     display: flex; flex-direction: column; gap: 1px;
     margin-top: var(--space-2sm);
     padding: var(--space-xs) var(--space-2xs);
   }
-  /* Reset selections — only shown when a hide/solo selection exists. */
+
   .structures-actions { display: flex; justify-content: flex-end; padding: var(--space-2xs) var(--space-2xs) 0; }
   .structures-reset {
     background: none;
@@ -969,7 +922,6 @@
     width: 10px; height: 10px; border-radius: var(--radius-sm); flex-shrink: 0;
   }
 
-  /* Tri-state structure rows (shown / solo / hidden), a button per region. */
   .label-list .structure-row {
     display: flex; align-items: center; gap: var(--space-sm);
     width: 100%; padding: var(--space-xs) var(--space-2xs);
@@ -993,39 +945,26 @@
     .label-list .structure-row { transition: none; }
   }
 
-  /* dual MPR + 3D split view */
-  /* When both buttons are active the canvas-wrap becomes a horizontal
-     flexbox: 3D volume on the left (~60%), MPR grid on the right (~40%).
-     The 2D canvas, view-stage, and compare grid are hidden. */
-  /* align-items: stretch overrides the base .canvas-wrap `center` so both panes
-     fill the full height. Without it the MPR grid is content-sized, its 1fr rows
-     collapse onto the canvas, and drawObliqueCell's (cellHeight - 16) fit shrinks
-     the canvas -> rows -> cells a little on every redraw (the shrinking bug). */
   .canvas-wrap.mpr3d { display: flex; gap: var(--space-2xs); align-items: stretch; }
   .canvas-wrap.mpr3d canvas#view,
   .canvas-wrap.mpr3d .view-stage { display: none; }
   .canvas-wrap.mpr3d .ov { display: none; }
   .canvas-wrap.mpr3d #three-container {
     display: block;
-    position: relative;    /* override absolute inset:0 */
+    position: relative;
     flex: 3; min-width: 0; min-height: 0;
   }
   .canvas-wrap.mpr3d #three-container.active { pointer-events: auto; }
   .canvas-wrap.mpr3d .mpr-grid {
     display: grid;
-    position: relative;    /* override absolute inset:0 */
+    position: relative;
     flex: 2; min-width: 0; min-height: 0;
     padding: var(--space-2sm);
   }
 
-  /* Measurement hover state — show a pill with the mm value near the midpoint
-     and a small delete button on hover */
   .m-line:hover { stroke: var(--color-abnormal); stroke-width: 2; }
   .m-label:hover { fill: var(--color-abnormal); }
 
-  /* First-run interaction hint — one-time legend of the canvas gestures that are
-     otherwise invisible (window/level, zoom). Dismissal persists; the same
-     reference lives permanently in the Help (?) modal. */
   .interaction-hint {
     position: absolute;
     left: 50%;

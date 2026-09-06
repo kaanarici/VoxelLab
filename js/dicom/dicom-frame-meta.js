@@ -1,5 +1,3 @@
-// Shared multi-frame DICOM helpers (local import + DICOMweb).
-
 import { numberList } from '../core/geometry.js';
 
 function intValue(value, fallback = 0) {

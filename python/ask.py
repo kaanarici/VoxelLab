@@ -1,26 +1,3 @@
-"""
-Point-and-ask + consult endpoints for the viewer.
-
-Two modes:
-
-  ask:     The user selects a rectangle on a slice (or a point via CLI) and
-           types a question. We pass a crop of that region plus the full slice
-           to the configured AI provider.
-           Results are cached in data/<slug>_asks.json keyed by
-           (slice, x, y, question) so repeats don't pay for tokens.
-
-  consult: Send ALL per-slice findings + summaries from every series to
-           the configured AI provider and ask for a single consolidated read
-           of what to bring up with a radiologist.
-           Cached at data/consult.json; --force to regenerate.
-
-Invoked by serve.py via /api/ask and /api/consult. Also runnable directly:
-
-    python3 ask.py ask t2_tse 13 380 420 "what is this bright spot?"
-    python3 ask.py consult
-    python3 ask.py consult --force
-"""
-
 import argparse
 import base64
 import binascii
@@ -48,31 +25,24 @@ from spatial_context import format_point_context, get_slice_context, load_contex
 try:
     from PIL import Image
 except ImportError:
-    Image = None  # only needed for crop; consult mode works without PIL
+    Image = None
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-ASK_AGENT = ROOT / "python" / "ask_agent"  # holds voxel.py, exposed to the agent for real-voxel access
-DEFAULT_MODEL = None  # None → provider default model
+ASK_AGENT = ROOT / "python" / "ask_agent"
+DEFAULT_MODEL = None
 
-# Input-validation constants. These are the only untrusted values that flow
-# into the filesystem or the subprocess — everything else is derived from
-# the already-on-disk manifest. Keep these tight.
-MAX_QUESTION_LEN = 2000          # characters
-MAX_VIEWER_CONTEXT_LEN = 8000    # app-supplied workflow context, not user text
-MAX_SLICE_INDEX  = 10000         # defensive cap, real max per series is ≤56
+MAX_QUESTION_LEN = 2000
+MAX_VIEWER_CONTEXT_LEN = 8000
+MAX_SLICE_INDEX  = 10000
 MAX_COORD        = 10000
 
-# Shape: "t2_tse" or "cloud_job123" for manifest-backed series directories under DATA/.
 SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
-
-
 
 def _validate_slug(slug: str) -> str:
     if not isinstance(slug, str) or not SLUG_RE.fullmatch(slug):
         raise ValueError(f"invalid slug: {slug!r}")
     return slug
-
 
 def _resolve_under_data(path: Path, *, strict: bool) -> Path:
     resolved = path.resolve(strict=strict)
@@ -80,7 +50,6 @@ def _resolve_under_data(path: Path, *, strict: bool) -> Path:
     if resolved != data_root and data_root not in resolved.parents:
         raise ValueError(f"path escaped DATA: {path}")
     return resolved
-
 
 def _series_meta(slug: str) -> dict:
     slug = _validate_slug(slug)
@@ -104,18 +73,14 @@ CONSULT_SYSTEM = """Synthesize the supplied research-image descriptions into a s
 Do not classify the study as normal or abnormal, provide reassurance, rule pathology in or out, speculate about disease entities, or recommend treatment. This is not a radiological interpretation or diagnosis. Be explicit when the source observations are ungrounded or the available sequences cannot answer a question."""
 SliceEvent = Callable[[dict], None]
 
-
 _STRAY_TAG_RE = re.compile(
     r"</?(?:answer|invoke|function_calls?|parameter|thinking|tool_use|tool_call|output)\b[^>]*>",
     re.IGNORECASE,
 )
 
-
 def _clean_answer(text: object) -> str:
-    """Strip stray tool-call / answer XML fragments the model occasionally leaks
-    into the structured answer (e.g. a trailing </answer> or </invoke>)."""
-    return _STRAY_TAG_RE.sub("", str(text or "")).strip()
 
+    return _STRAY_TAG_RE.sub("", str(text or "")).strip()
 
 def _partial_json_answer(raw: str) -> str:
     try:
@@ -144,12 +109,11 @@ def _partial_json_answer(raw: str) -> str:
     except json.JSONDecodeError:
         return text.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
 
-
 def _describe_tool(name: str, tool_input: dict) -> dict[str, str]:
-    """Map a raw Claude tool call to a friendly chip {kind, label, detail}."""
+
     if name == "Read":
         path = str(tool_input.get("file_path") or tool_input.get("path") or "")
-        if "_asks/" in path:  # the scoped region/point crop handed to the agent
+        if "_asks/" in path:
             return {"kind": "read", "label": "Reading the selection", "detail": ""}
         m = re.search(r"/(\d{3,5})\.png$", path)
         if m:
@@ -166,20 +130,16 @@ def _describe_tool(name: str, tool_input: dict) -> dict[str, str]:
         return {"kind": "inspect", "label": "Running Python", "detail": cmd[:140]}
     return {"kind": "other", "label": name or "Tool", "detail": ""}
 
-
 def _stream_ai(prompt: str, system: str, schema: dict, *, model, provider, images, add_dirs, timeout, allow_agent_tools: bool = False, on_event: SliceEvent) -> dict:
-    """Streaming run (claude or codex) that forwards friendly tool chips to
-    on_event and returns the final structured output."""
+
     final: dict | None = None
-    shown: set = set()  # only surface real Read/Bash calls, not internal finalizers
+    shown: set = set()
     composing = False
     codex_message = ""
     codex_answer_len = 0
 
     def _mark_composing() -> None:
-        # The interleave-safe boundary between "working" and "thinking": the tool
-        # loop has ended and the model is composing the answer. Claude signals it
-        # with the StructuredOutput finalizer tool; codex with a {composing} event.
+
         nonlocal composing
         if not composing:
             composing = True
@@ -222,7 +182,6 @@ def _stream_ai(prompt: str, system: str, schema: dict, *, model, provider, image
         raise RuntimeError("ai stream produced no result")
     return final
 
-
 def _call_ai(
     prompt: str,
     system: str,
@@ -237,8 +196,7 @@ def _call_ai(
 ) -> dict:
     if schema is None:
         raise RuntimeError("schema is required for VoxelLab AI calls")
-    # Stream (claude or codex) whenever the caller wants live tool events; cache
-    # hits never reach here, so the blocking path is only the non-streaming endpoint.
+
     if on_event is not None:
         return _stream_ai(prompt, system, schema, model=model, provider=provider, images=images, add_dirs=add_dirs, timeout=timeout, allow_agent_tools=allow_agent_tools, on_event=on_event)
     return run_structured(
@@ -253,9 +211,8 @@ def _call_ai(
         add_dirs=add_dirs,
     )
 
-
 def _study_preamble(slug: str, meta: dict, slice_idx: int) -> str:
-    """Tell the agent which study it is on and that it may inspect slices itself."""
+
     n = int(meta.get("slices", 0) or 0)
     w = int(meta.get("width", 0) or 0)
     h = int(meta.get("height", 0) or 0)
@@ -283,12 +240,6 @@ def _study_preamble(slug: str, meta: dict, slice_idx: int) -> str:
         "- Start from the provided image; read additional slices only when the question needs them.\n\n"
     )
 
-
-# ASK
-
-# Kept simple/reliable: nested schemas make Claude's structured-output finalizer
-# ("StructuredOutput" tool) fail + retry during heavy tool runs. The tool chips
-# come from the live Read/Bash stream, not a self-reported field.
 ASK_SCHEMA = {
     "type": "object",
     "properties": {"answer": {"type": "string"}},
@@ -315,7 +266,6 @@ ASK_ACTION_DETAIL_MAX = 220
 def _ask_cache_path(slug: str) -> Path:
     return DATA / f"{slug}_asks.json"
 
-
 def _load_asks(slug: str) -> dict:
     p = _ask_cache_path(slug)
     if not p.exists():
@@ -325,7 +275,6 @@ def _load_asks(slug: str) -> dict:
     except Exception as exc:
         raise EnvelopeValidationError("ask-sidecar", "json_invalid") from exc
     return normalize_ask_sidecar(data)
-
 
 def _save_asks(slug: str, data: dict) -> None:
     entries = data.get("entries", [])
@@ -360,22 +309,19 @@ def _save_asks(slug: str, data: dict) -> None:
 
     _ = update_json(manifest_path, mark_history)
 
-
 def _ask_key(slice_idx: int, x: int, y: int, question: str) -> str:
-    # Round coords so two clicks 5 px apart count as the same question
+
     bx = x // 20
     by = y // 20
     h = hashlib.sha1(question.strip().lower().encode()).hexdigest()[:10]
     return f"{slice_idx}:{bx}:{by}:{h}"
 
-
 def _ask_region_key(slice_idx: int, x0: int, y0: int, x1: int, y1: int, question: str) -> str:
-    """Cache key for rectangular selection (coarse grid to merge near-identical drags)."""
+
     g = 16
     bx0, by0, bx1, by1 = x0 // g, y0 // g, x1 // g, y1 // g
     h = hashlib.sha1(question.strip().lower().encode()).hexdigest()[:10]
     return f"{slice_idx}:r:{bx0}:{by0}:{bx1}:{by1}:{h}"
-
 
 def _viewer_context_prompt(viewer_context: str | None) -> tuple[str, str | None]:
     text = str(viewer_context or "").strip()
@@ -393,7 +339,6 @@ def _viewer_context_prompt(viewer_context: str | None) -> tuple[str, str | None]
         prompt_text,
         f"viewer:{digest}",
     )
-
 
 def _ask_actions_for_viewer_context(viewer_context: str | None) -> list[dict[str, str]]:
     text = str(viewer_context or "")
@@ -441,17 +386,15 @@ def _ask_actions_for_viewer_context(viewer_context: str | None) -> list[dict[str
     actions.append(action)
     return actions
 
-
 def _merge_context_fingerprint(base: str | None, viewer: str | None) -> str | None:
     if base and viewer:
         return hashlib.sha1(f"{base}\n{viewer}".encode()).hexdigest()[:16]
     return base or viewer
 
-
 def _clamp_region(
     x0: int, y0: int, x1: int, y1: int, width: int, height: int,
 ) -> tuple[int, int, int, int]:
-    """Inclusive pixel bounds (l, t, r, b), clamped to the image, l<=r, t<=b."""
+
     lm, rm = min(x0, x1), max(x0, x1)
     tm, bm = min(y0, y1), max(y0, y1)
     l = max(0, min(lm, width - 1))
@@ -464,7 +407,6 @@ def _clamp_region(
         t, b = b, t
     return l, t, r, b
 
-
 def _downscale_max_side(im, max_side: int = 512):
     w, h = im.size
     if max(w, h) <= max_side:
@@ -474,12 +416,10 @@ def _downscale_max_side(im, max_side: int = 512):
     nh = max(1, int(h * scale))
     return im.resize((nw, nh), Image.Resampling.BILINEAR)
 
-
 def _region_mean_intensity(img, l: int, t: int, r: int, b: int) -> float:
     crop = img.crop((l, t, r + 1, b + 1))
     pixels = list(crop.getdata())
     return float(sum(pixels) / len(pixels)) if pixels else 0.0
-
 
 def _cached_ask(
     data: dict,
@@ -500,7 +440,6 @@ def _cached_ask(
         return normalize_ask_result(payload)
     return None
 
-
 def _pixel_label(slug: str, suffix: str, slice_idx: int, x: int, y: int, size: tuple[int, int]) -> int | None:
     if Image is None:
         return None
@@ -515,7 +454,6 @@ def _pixel_label(slug: str, suffix: str, slice_idx: int, x: int, y: int, size: t
         return None
     value = int(img.getpixel((x, y)))
     return value if value > 0 else None
-
 
 def build_ask_prompt(
     *,
@@ -565,7 +503,6 @@ def build_ask_prompt(
         f"Full-slice path: {slice_png}\n"
     )
 
-
 def _ask_study(
     slug: str,
     meta: dict,
@@ -577,8 +514,7 @@ def _ask_study(
     viewer_context: str | None = None,
     on_event: SliceEvent | None = None,
 ) -> dict:
-    """Study-scope ask: no region/point. The agent inspects slices itself; the
-    current slice is the starting image and doubles as the entry thumbnail."""
+
     data = _load_asks(slug)
     h = hashlib.sha1(question.strip().lower().encode()).hexdigest()[:10]
     key = f"{slice_idx}:study:{h}"
@@ -646,7 +582,6 @@ def _ask_study(
     data.setdefault("entries", []).append(entry)
     _save_asks(slug, data)
     return normalize_ask_result({"cached": False, **entry})
-
 
 def _ask_local_image(
     slug: str,
@@ -762,7 +697,6 @@ def _ask_local_image(
         entry["contextFingerprint"] = viewer_context_fingerprint
     return normalize_ask_result({"cached": False, **entry})
 
-
 def ask(
     slug: str,
     slice_idx: int,
@@ -777,10 +711,7 @@ def ask(
     local_image: dict | None = None,
     on_event: SliceEvent | None = None,
 ) -> dict:
-    """Ask about a slice: either a point (x, y) or an inclusive rectangular region.
 
-    Pass ``region=(x0,y0,x1,y1)`` for marquee selection; otherwise pass ``x`` and ``y`` for point mode.
-    """
     slug = _validate_slug(slug)
     if local_image is not None:
         return _ask_local_image(
@@ -798,8 +729,6 @@ def ask(
     if slice_idx < 0 or slice_idx > MAX_SLICE_INDEX or slice_idx >= int(meta.get("slices", 0) or 0):
         raise ValueError(f"slice out of range: {slice_idx}")
 
-    # No marked region or point → a question about the whole study; the agent
-    # reads slices itself to answer it.
     if region is None and x is None and y is None:
         return _ask_study(
             slug,
@@ -817,7 +746,7 @@ def ask(
             raise ValueError("pass either region= or (x, y), not both")
         rx0, ry0, rx1, ry1 = (int(region[0]), int(region[1]), int(region[2]), int(region[3]))
     elif x is not None and y is not None:
-        rx0 = ry0 = rx1 = ry1 = 0  # unused until point branch sets x,y
+        rx0 = ry0 = rx1 = ry1 = 0
     else:
         raise ValueError("expected region=(x0,y0,x1,y1) or x and y")
 
@@ -843,7 +772,7 @@ def ask(
         selection_mode = "point"
         region_bounds = None
         point_x, point_y = x, y
-        l = t = r = b = 0  # set in crop section for point mode
+        l = t = r = b = 0
 
     data = _load_asks(slug)
     context, context_warning = load_context(DATA, slug, meta)
@@ -965,9 +894,6 @@ def ask(
     _save_asks(slug, data)
     return normalize_ask_result({"cached": False, **entry})
 
-
-# CONSULT
-
 CONSULT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -978,7 +904,6 @@ CONSULT_SCHEMA = {
     "required": ["impression", "ask_radiologist", "limitations"],
     "additionalProperties": False,
 }
-
 
 def consult(model: str | None = DEFAULT_MODEL, provider: str | None = None, force: bool = False) -> dict:
     out_path = DATA / "consult.json"
@@ -1015,8 +940,6 @@ def consult(model: str | None = DEFAULT_MODEL, provider: str | None = None, forc
     if not sections:
         raise RuntimeError("no analysis data to consult on — run analyze.py first")
 
-    # Also pass symmetry peaks so the model knows which slices had the
-    # most visual asymmetry (we already computed these offline).
     peaks = []
     for s in manifest["series"]:
         sp = DATA / f"{s['slug']}_stats.json"
@@ -1054,9 +977,6 @@ def consult(model: str | None = DEFAULT_MODEL, provider: str | None = None, forc
     out = normalize_consult_document(out)
     atomic_write_json(out_path, out)
     return normalize_consult_result({"cached": False, **out})
-
-
-# CLI
 
 def main() -> bool:
     ap = argparse.ArgumentParser()
@@ -1096,7 +1016,6 @@ def main() -> bool:
         print(f"ERROR: {e}", file=sys.stderr)
         return False
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

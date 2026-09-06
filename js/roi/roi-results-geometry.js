@@ -26,8 +26,7 @@ export function roiPerimeterValues({
   series = {},
   stats = {},
 } = {}) {
-  // Traced particle outlines carry an authoritative ImageJ corner-corrected perimeter; a plain
-  // euclidean recompute of the staircase polygon would overstate it, so honor the stored value.
+
   if (stats.perimeterMethod === 'imagej-traced') {
     return { mm: finiteNumber(stats.perimeter_mm), px: finiteNumber(stats.perimeter_px) };
   }

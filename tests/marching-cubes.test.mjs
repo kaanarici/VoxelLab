@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { binaryMaskForLabel, marchingCubes } from '../js/mesh/marching-cubes.js';
 
 function edgeManifoldCheck(indices) {
-  // Each undirected edge must be shared by exactly two triangles (watertight).
+
   const counts = new Map();
   for (let t = 0; t + 2 < indices.length; t += 3) {
     const tri = [indices[t], indices[t + 1], indices[t + 2]];
@@ -42,8 +42,7 @@ function signedVolume(positions, indices) {
 }
 
 test('single isolated sample yields a closed, watertight, outward octahedron', () => {
-  // One set grid sample in a 3x3x3 field: marching cubes returns the dual
-  // octahedron (6 verts, 8 tris) centered on that sample.
+
   const W = 3, H = 3, D = 3;
   const mask = new Uint8Array(W * H * D);
   mask[(1 * H + 1) * W + 1] = 1;
@@ -51,13 +50,12 @@ test('single isolated sample yields a closed, watertight, outward octahedron', (
   assert.equal(positions.length / 3, 6);
   assert.equal(indices.length / 3, 8);
   assert.ok(edgeManifoldCheck(indices), 'every edge shared by exactly two triangles');
-  // Outward winding => positive signed volume (octahedron with radius-1 axes = 4/3·... = 1/6 here).
+
   assert.ok(Math.abs(signedVolume(positions, indices) - 1 / 6) < 1e-9, 'outward, correct dual volume');
 });
 
 test('loop order matches z*W*H + y*W + x layout (off-center sample placement)', () => {
-  // A sample at (x=2,y=1,z=0) must produce a surface centered there, proving the
-  // iteration indexes the mask as z*W*H + y*W + x.
+
   const W = 4, H = 3, D = 3;
   const mask = new Uint8Array(W * H * D);
   mask[0 * W * H + 1 * W + 2] = 1;

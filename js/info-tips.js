@@ -1,17 +1,3 @@
-/**
- * info-tips.js — Dynamic methodology tooltips for medical transparency.
- *
- * Exports updateInfoTips(series) — invoked from js/select-series.js on series change.
- * in viewer.js after the active series changes. It updates the data-info
- * attributes on tooltip elements whose content depends on the series
- * (e.g., anatomy source = SynthSeg vs TotalSegmentator).
- *
- * Integration (one-time, in viewer.js):
- *   import { updateInfoTips } from './js/info-tips.js';
- *   // inside selectSeries(), after `const s = manifest.series[i];`:
- *   updateInfoTips(s);
- */
-
 import { inPlanePixelSpacing } from './core/geometry.js';
 
 const ANATOMY_TIPS = {
@@ -32,19 +18,11 @@ const ANATOMY_TIPS = {
 };
 
 const VOLUME_LINE = {
-  synthseg: 'Volumes computed from voxel counts \u00d7 pixel spacing \u00d7 slice thickness. Model: SynthSeg.',
-  totalseg: 'Volumes computed from voxel counts \u00d7 pixel spacing \u00d7 slice thickness. Model: TotalSegmentator.',
-  default:  'Volumes computed from voxel counts \u00d7 pixel spacing \u00d7 slice thickness.',
+  synthseg: 'Volumes use voxel counts and calibrated voxel spacing. Model: SynthSeg.',
+  totalseg: 'Volumes use voxel counts and calibrated voxel spacing. Model: TotalSegmentator.',
+  default:  'Volumes use voxel counts and calibrated voxel spacing.',
 };
 
-/**
- * Update all dynamic info-tip tooltips for the given series object.
- * @param {Object} series — the current series entry from manifest.json
- */
-/**
- * Pins .info-tip--viewport tooltips with position:fixed via CSS variables so they are not
- * clipped by .right-panel-scroll overflow (absolute ::after stays inside the scroll box).
- */
 export function wirePanelInfoViewportTips() {
   document.querySelectorAll('.info-tip--viewport').forEach((el) => {
     if (el.dataset.viewportTipWired === '1') return;
@@ -121,27 +99,22 @@ export function updateInfoTips(series) {
 
   const src = series.anatomySource || 'default';
 
-  // Anatomy regions button tooltip
   const infoRegions = document.getElementById('info-regions');
   if (infoRegions) {
     infoRegions.setAttribute('data-info', ANATOMY_TIPS[src] || ANATOMY_TIPS.default);
   }
 
-  // Regional Volumes info line. renderVolumeTable owns this line when spacing is
-  // uncalibrated (it shows voxel counts with a caveat there) — don't clobber that
-  // honest message with the millilitre methodology line.
   const volLine = document.getElementById('volumes-info-line');
   if (volLine && inPlanePixelSpacing(series).known) {
     volLine.textContent = VOLUME_LINE[src] || VOLUME_LINE.default;
   }
 
-  // Regional Volumes tooltip on the section title
   const infoVolumes = document.getElementById('info-volumes');
   if (infoVolumes) {
     const model = src === 'synthseg' ? 'SynthSeg' : src === 'totalseg' ? 'TotalSegmentator' : 'unknown';
     infoVolumes.setAttribute(
       'data-info',
-      `Volumes computed from voxel counts \u00d7 pixel spacing \u00d7 slice thickness. Model: ${model}. Not for clinical diagnosis.`
+      `Volumes use voxel counts and calibrated voxel spacing. Model: ${model}. Not for clinical diagnosis.`
     );
   }
 }

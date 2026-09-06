@@ -1,5 +1,3 @@
-// DOM + button state when switching the active series (used by select-series.js).
-
 import { $, escapeHtml } from '../dom.js';
 import { notify } from '../notify.js';
 import { state } from '../core/state.js';
@@ -19,7 +17,7 @@ import {
   microscopyStorageProvenanceText,
   microscopyStreamProvenanceText,
 } from '../microscopy/microscopy-provenance-text.js';
-import { getRegistrationQuality, getRegistrationRecord } from '../metadata.js';
+import { registrationDisplacementText, getRegistrationQuality, getRegistrationRecord } from '../metadata.js';
 import { canUseMpr3D, capabilityBlockReason, capabilityLabel, geometryKindForSeries } from '../core/series-capabilities.js';
 import { OVERLAY_ENABLE_KINDS, overlayEnableFromSeriesFlags, overlayOutputLabel } from '../core/viewer-session-shape.js';
 import { OVERLAY_CACHE_BY_KIND } from '../runtime/overlay-cache-keys.js';
@@ -29,8 +27,6 @@ function isSeriesMetadataRecord(value) {
   return value != null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
 }
 
-// TR/TE only exist for MR; a CT/other series reports an em-dash rather than a
-// meaningless "0 ms", which metaRowHtml then dims as an empty value.
 function formatMs(value) {
   return Number(value) > 0 ? `${value} ms` : '—';
 }
@@ -79,8 +75,6 @@ export function sourceFileListText(files = [], { emptyText = '', pathSegments = 
   return `${names.length} files (${preview}${hidden > 0 ? `, plus ${hidden} more` : ''})`;
 }
 
-// Longest directory shared by every source path (filenames dropped), so a
-// many-slice series collapses to one readable folder instead of thousands of UIDs.
 function commonSourceDir(paths) {
   const dirs = paths.map(path => path.split('/').slice(0, -1));
   if (!dirs.length) return '';
@@ -94,10 +88,6 @@ function commonSourceDir(paths) {
   return shared.join('/');
 }
 
-// Full, untruncated path text for the hover tooltip. The metadata cell only shows
-// the compact last-segments form; this reveals what truncation hides. The singleton
-// tooltip is single-line, so a multi-slice series resolves to its full common folder
-// rather than an unbounded list of per-slice paths.
 export function sourceFilesTooltip(files = []) {
   const paths = (files || []).map(item => String(item || '').replaceAll('\\', '/')).filter(Boolean);
   if (!paths.length) return '';
@@ -108,11 +98,6 @@ export function sourceFilesTooltip(files = []) {
 
 const EMPTY_META_VALUE = '—';
 
-// Render one metadata row. A third tuple element may carry { tip, truncate }:
-// `tip` exposes the full value on the singleton data-tip tooltip, `truncate`
-// clamps the value to one ellipsised line (long file paths / DICOM UIDs), and a
-// tip turns the value into a click/Enter-to-copy target (data-copy + role button).
-// Missing values render as a dimmed em-dash instead of "0 ms"/blank noise.
 export function metaRowHtml([k, val, opts = {}]) {
   const raw = val == null ? '' : String(val).trim();
   const isEmpty = raw === '' || raw === EMPTY_META_VALUE;
@@ -120,8 +105,7 @@ export function metaRowHtml([k, val, opts = {}]) {
   const rowClass = opts.truncate ? 'meta-row meta-row--truncate' : 'meta-row';
   const mvClass = isEmpty ? 'mv mv-empty' : 'mv';
   let attrs = '';
-  // Only non-empty tip rows get the tooltip + copy affordance; an em-dash has
-  // nothing to reveal or copy.
+
   if (opts.tip && !isEmpty) {
     const tip = String(opts.tip);
     attrs = ` data-tip="${escapeHtml(tip)}" data-tip-pos="left"`
@@ -131,9 +115,6 @@ export function metaRowHtml([k, val, opts = {}]) {
   return `<div class="${rowClass}"><span class="mk">${escapeHtml(k)}</span><span class="${mvClass}"${attrs}>${escapeHtml(value)}</span></div>`;
 }
 
-// One delegated listener on the persistent #meta container survives innerHTML
-// re-renders on every series change. Clicking (or Enter/Space on) a [data-copy]
-// value writes the full path/UID to the clipboard.
 export function wireMetaCopy(meta) {
   if (meta.dataset.copyWired === '1') return;
   meta.dataset.copyWired = '1';
@@ -193,8 +174,7 @@ function dicomProvenanceRows(series = {}) {
   if (series.sourceStudyUID) sourceParts.push(`Study ${series.sourceStudyUID}`);
   if (series.sourceSeriesUID) sourceParts.push(`Series ${series.sourceSeriesUID}`);
   const sourceText = sourceParts.join(' · ');
-  // DICOM UIDs run 50–64 chars and overflow the narrow rail like raw paths, so the
-  // same clamp-plus-tooltip treatment keeps the full UID reachable on hover.
+
   const rows = sourceParts.length ? [['DICOM source', sourceText, { tip: sourceText, truncate: true }]] : [];
   if (series.frameOfReferenceUID) {
     rows.push(['Frame of reference', series.frameOfReferenceUID, { tip: series.frameOfReferenceUID, truncate: true }]);
@@ -242,7 +222,7 @@ function registrationProvenanceRows(series = {}) {
   const parts = [record?.source || 'data/registration.json'];
   if (quality.verdict) parts.push(quality.verdict);
   else if (quality.grade && quality.grade !== 'unknown') parts.push(quality.grade);
-  if (Number.isFinite(quality.mm)) parts.push(`displacement ${quality.mm.toFixed(quality.mm >= 10 ? 1 : 2)} mm`);
+  if (Number.isFinite(quality.mm)) parts.push(registrationDisplacementText(quality));
   if (Number.isFinite(quality.rotationDeg)) parts.push(`rotation ${quality.rotationDeg} deg`);
   if (Number.isFinite(quality.dice)) parts.push(`Dice ${quality.dice}`);
   const text = parts.join(' · ');
@@ -777,19 +757,17 @@ function wireCloudExports(meta, series) {
   });
 }
 
-/** Hide empty groups and clean up orphan separators in the toolbar. */
 export function cleanToolbarSeparators() {
   const controls = document.querySelector('.controls');
   if (!controls) return;
 
   controls.querySelectorAll('.tool-group, .toolbox').forEach((g) => {
     const btns = g.querySelectorAll('.icon-btn');
-    if (!btns.length) return; /* e.g. .tool-group--wl (presets + opacity only) */
+    if (!btns.length) return;
     const allHidden = [...btns].every((b) => b.classList.contains('hidden'));
     g.classList.toggle('hidden', allHidden);
   });
 
-  // Single pass: show a separator only between two visible non-sep items
   let pendingSep = null;
   let sawVisible = false;
   for (const el of controls.children) {
@@ -803,9 +781,6 @@ export function cleanToolbarSeparators() {
   }
 }
 
-/**
- * Updates sidebar highlight, series metadata panel, MPR indices, and overlay toggles.
- */
 export function applySelectSeriesDom(i, series, v) {
   const vhName = $('series-name') || $('vh-series-name');
   const vhDesc = $('series-desc') || $('vh-series-desc');
@@ -824,7 +799,7 @@ export function applySelectSeriesDom(i, series, v) {
 
   if (vhName) vhName.textContent = series.name;
   if (vhDesc) vhDesc.textContent = series.description;
-  // One fade for name + description together; only on first fill (no strip/re-run on series changes — avoids flash).
+
   if (headerStudy && titleWasEmpty) {
     headerStudy.classList.remove('ui-fade-in');
     headerStudy.style.opacity = '0';
@@ -884,9 +859,7 @@ export function applySelectSeriesDom(i, series, v) {
     provenanceRows.push(...niftiTemporalProvenanceRows(series));
     rows.splice(7, 0, ...provenanceRows);
   }
-  // Study context (appended so the splice indices above stay stable). Modality is
-  // always shown; body part + acquisition plane only when the data actually
-  // carries them — never assert a plane without a real patient frame.
+
   if (series.modality) rows.push(['Modality', series.modality]);
   if (!isMicroscopySeries(series)) {
     if (series._bodyPart) rows.push(['Body part', series._bodyPart]);
@@ -902,7 +875,6 @@ export function applySelectSeriesDom(i, series, v) {
 
   const show = (id, visible) => $(id).classList.toggle('hidden', !visible);
 
-  // Single-slice series: hide play/scrub/fps — no slices to scroll through
   const isSingle = series.slices <= 1;
   const scrubBlock = $('scrub').closest('.scrub-block');
   if (scrubBlock) scrubBlock.classList.toggle('hidden', isSingle);
@@ -922,7 +894,7 @@ export function applySelectSeriesDom(i, series, v) {
 
   const peers = getGroupPeers();
   const totalSeries = state.manifest.series.length;
-  // Show compare when auto-peers exist OR when there are 2+ series the user could pick
+
   const cmpVisible = peers.length >= 2 || totalSeries >= 2;
   show('cmp-dropdown', cmpVisible);
   show('btn-compare', cmpVisible);

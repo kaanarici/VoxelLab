@@ -1,6 +1,3 @@
-// Pure orthogonal MPR geometry. The volume is stored row-major as (z, y, x);
-// x is DICOM column, y is DICOM row, z is slice index.
-
 import { geometryFromSeries } from '../core/geometry.js';
 
 function positiveNumber(value, fallback = 1) {
@@ -16,7 +13,7 @@ export function mprPlaneSizes(series) {
   const D = series.slices;
   const W = series.width;
   const H = series.height;
-  // Use shared geometry contract for all spacing values.
+
   const geo = geometryFromSeries(series);
   const colSpacing = positiveNumber(geo.colSpacing, 1);
   const rowSpacing = positiveNumber(geo.rowSpacing, colSpacing);

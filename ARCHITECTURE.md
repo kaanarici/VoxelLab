@@ -219,3 +219,39 @@ node --test tests/*.test.mjs
 ```
 
 The geometry contract suite exists to keep browser and Python behavior aligned and to ensure unsupported source classes do not quietly claim volumetric capability.
+
+## Reconstruction coordinates and evidence
+
+Source manifests use `outputShape` and `outputSpacingMm` in X, Y, Z order.
+Derived DICOM-style `pixelSpacing` uses row, column order, or Y, X. `firstIPP`
+is the center of the first output voxel in LPS millimeters. The two
+`orientation` vectors describe increasing X and Y; their cross product defines Z.
+
+Tracked ultrasound `frameTransformsLps` map probe coordinates to LPS. The probe
+origin is the sector apex. Local X is lateral, local Y increases radially along
+the center beam, and local Z is normal to the scan plane. `radiusRangeMm[0]`
+is measured from that apex, not from the first scan-converted row. Stacked-sector
+manifests instead place the first scan-converted pixel at `firstIPP` and require
+one frame per output slice. Color ultrasound and non-spatial region formats are
+not supported by reconstruction.
+
+Projection detector spacing comes from `ImagerPixelSpacing` or the explicit
+`projection.detectorSpacingMm` pair in row, column order. The explicit pair
+applies to every input projection and overrides source metadata. Patient-plane
+`PixelSpacing` is not detector calibration. The bundled RTK engine expects
+calibrated geometry and `projection.inputValueDomain: "line-integral"`; it does not turn raw
+X-ray intensities into calibrated attenuation data.
+
+Registration translation is the ITK transform's translation at its rotation
+center. It is not mean anatomical displacement or an alignment error. Rotation,
+translation, and image-overlap metrics do not establish registration quality.
+
+Before v1.2.4, anisotropic reconstruction metadata could transpose X/Y spacing,
+and tracked ultrasound could omit the sector's minimum radius from frame
+placement. Reconstruct affected derived volumes from their original data and
+calibration. Existing derived records are not rewritten because their geometry
+cannot be repaired reliably without those inputs.
+
+Coordinate references: [DICOM Image Plane](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.6.2.html),
+[ITK coordinate ordering](https://docs.itk.org/en/latest/migration_guides/python_spatial_key_migration.html),
+and [RTK geometry](https://github.com/RTKConsortium/RTK/blob/main/documentation/docs/Geometry.md).

@@ -1,10 +1,3 @@
-// Three-point angle measurement tool. The user clicks three points on
-// a 2D slice: the two endpoints of the angle's arms and the vertex.
-// Rendered as SVG in the measurement overlay alongside rulers and ROIs.
-//
-// Persisted by selected-series fingerprint and slice, the same pattern as
-// linear measurements in measure.js.
-
 import { $, canvasScreenScale, clientToCanvasPx } from '../dom.js';
 import { inPlanePixelSpacing } from '../core/geometry.js';
 import { state } from '../core/state.js';
@@ -42,7 +35,7 @@ export function appendAngleMeasurement(key, measurement) {
   const { slug, sliceIdx } = parseSliceKey(key);
   const target = drawingTarget(slug);
   const list = angleEntriesForSlice(state, target, sliceIdx);
-  // Shape: { id: 2, p1: {x,y}, vertex: {x,y}, p3: {x,y}, deg: 42.1 }.
+
   const next = [...list, { ...measurement, id: measurement?.id ?? nextDrawingEntryId(list) }];
   return setAngleEntriesForSlice(state, target, sliceIdx, next);
 }
@@ -94,13 +87,13 @@ export function onAngleClick(ev) {
   const [x, y] = clientToCanvasPx($('view'), ev.clientX, ev.clientY);
 
   if (!state.anglePending) {
-    // First click = first arm endpoint
+
     setAnglePending([{ x, y }]);
   } else if (state.anglePending.length === 1) {
-    // Second click = vertex
+
     setAnglePending([...state.anglePending, { x, y }]);
   } else {
-    // Third click = second arm endpoint → finalize
+
     const [p1, vertex, p3] = [...state.anglePending, { x, y }];
     const series = state.manifest.series[state.seriesIdx];
     const a = computeAngle(p1, vertex, p3, series);
@@ -138,8 +131,6 @@ function computeAngle(p1, vertex, p3, series) {
   return Math.acos(cos) * (180 / Math.PI);
 }
 
-// Render angle measurements + in-progress preview into the shared SVG.
-// Called from drawMeasurements() so angles coexist with rulers and ROIs.
 export function drawAngles(svg) {
   const list = anglesHere().filter(angleVisibleInCurrentScope);
   const canvas = $('view');
@@ -153,7 +144,6 @@ export function drawAngles(svg) {
     const g = document.createElementNS(svgNS, 'g');
     g.setAttribute('class', 'angle-group');
 
-    // Two arm lines from vertex
     for (const ep of [m.p1, m.p3]) {
       const line = document.createElementNS(svgNS, 'line');
       line.setAttribute('x1', m.vertex.x); line.setAttribute('y1', m.vertex.y);
@@ -162,14 +152,12 @@ export function drawAngles(svg) {
       g.appendChild(line);
     }
 
-    // Vertex dot
     const dot = document.createElementNS(svgNS, 'ellipse');
     dot.setAttribute('cx', m.vertex.x); dot.setAttribute('cy', m.vertex.y);
     dot.setAttribute('rx', 3 / scaleX); dot.setAttribute('ry', 3 / scaleY);
     dot.setAttribute('class', 'm-dot');
     g.appendChild(dot);
 
-    // Arc indicator (small arc at vertex)
     const arcRadius = 20;
     const dx1 = (m.p1.x - m.vertex.x) * scaleX;
     const dy1 = (m.p1.y - m.vertex.y) * scaleY;
@@ -181,7 +169,7 @@ export function drawAngles(svg) {
     const sy = m.vertex.y + arcRadius * Math.sin(a1) / scaleY;
     const ex = m.vertex.x + arcRadius * Math.cos(a2) / scaleX;
     const ey = m.vertex.y + arcRadius * Math.sin(a2) / scaleY;
-    // Shape: -0.35 -> shortest signed arc from ray 1 to ray 2 in radians.
+
     const delta = Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1));
     const largeArc = Math.abs(delta) > Math.PI ? 1 : 0;
     const sweep = delta >= 0 ? 1 : 0;
@@ -192,7 +180,6 @@ export function drawAngles(svg) {
     arc.setAttribute('stroke-width', '1');
     g.appendChild(arc);
 
-    // Label
     const midAngle = a1 + delta / 2;
     const labelRadius = arcRadius + 11;
     const lx = m.vertex.x + labelRadius * Math.cos(midAngle) / scaleX;
@@ -206,7 +193,6 @@ export function drawAngles(svg) {
     label.setAttribute('transform', `translate(${lx} ${ly}) scale(${scaleY / scaleX} 1) translate(${-lx} ${-ly})`);
     g.appendChild(label);
 
-    // Delete button
     const dx = lx + (label.textContent.length * 3.2 + 10) / scaleX;
     const dy = ly - 4 / scaleY;
     const bg = document.createElementNS(svgNS, 'ellipse');
@@ -241,7 +227,6 @@ export function drawAngles(svg) {
     svg.appendChild(g);
   });
 
-  // In-progress preview
   if (state.anglePending && state.anglePending.length > 0) {
     for (const pt of state.anglePending) {
       const dot = document.createElementNS(svgNS, 'ellipse');
@@ -250,7 +235,7 @@ export function drawAngles(svg) {
       dot.setAttribute('class', 'm-dot');
       svg.appendChild(dot);
     }
-    // Draw arm lines from last point
+
     if (state.anglePending.length === 2) {
       const line = document.createElementNS(svgNS, 'line');
       line.setAttribute('x1', state.anglePending[0].x);
