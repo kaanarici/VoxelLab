@@ -1,4 +1,3 @@
-/* global Buffer */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -21,7 +20,7 @@ async function writeTiny4dNifti(path) {
   buffer.writeFloatLE(1, 76 + 12);
   buffer.writeFloatLE(2, 76 + 16);
   buffer.writeFloatLE(352, 108);
-  buffer.writeUInt8(10, 123); // millimeters + seconds
+  buffer.writeUInt8(10, 123);
   buffer.writeFloatLE(0.5, 136);
   for (let index = 0; index < 16; index += 1) buffer[352 + index] = index * 8;
   await mkdir(dirname(path), { recursive: true });

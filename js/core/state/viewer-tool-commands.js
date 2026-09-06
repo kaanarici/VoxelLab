@@ -49,9 +49,6 @@ function normalizeLabelSet(labels) {
   return out;
 }
 
-// Locked structures isolate the 3D/2D views to a persistent selection. REPLACE
-// the Set reference (don't mutate in place) so state subscribers fire, then
-// persist immediately so a lock made just before a refresh survives.
 export function setLockedLabels(locked) {
   state.lockedLabels = normalizeLabelSet(locked);
   rememberSeriesViewState();
@@ -66,12 +63,4 @@ export function toggleLockedLabel(id) {
   if (next.has(label)) next.delete(label);
   else next.add(label);
   return setLockedLabels(next);
-}
-
-// Transient hover preview: a single assignment so the proxy notifies; never
-// persisted.
-export function setPreviewLabel(id) {
-  const label = id == null ? null : Number(id);
-  state.previewLabel = Number.isFinite(label) ? label : null;
-  return state.previewLabel;
 }

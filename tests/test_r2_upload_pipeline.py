@@ -4,7 +4,6 @@ from pathlib import Path
 
 from upload_to_r2 import compressed_path_for_entry, patch_manifest_urls, public_object_url
 
-
 def test_r2_upload_index_paths_cannot_escape_compressed_root(tmp_path: Path) -> None:
     inside = compressed_path_for_entry(tmp_path, {"compressed": "nested/volume.raw.zst"})
     assert inside == (tmp_path / "nested" / "volume.raw.zst").resolve()
@@ -16,7 +15,6 @@ def test_r2_upload_index_paths_cannot_escape_compressed_root(tmp_path: Path) -> 
             assert "inside data_compressed" in str(error)
         else:
             raise AssertionError(f"expected path rejection for {value!r}")
-
 
 def test_r2_manifest_patch_publishes_only_objects_confirmed_available() -> None:
     manifest = {"series": [{"slug": "scan"}, {"slug": "other"}]}

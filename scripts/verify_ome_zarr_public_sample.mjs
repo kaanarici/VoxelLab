@@ -1,4 +1,3 @@
-/* global console, process, TextDecoder */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFile, rm, mkdtemp } from 'node:fs/promises';

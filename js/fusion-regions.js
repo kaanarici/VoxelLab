@@ -1,4 +1,3 @@
-// Fusion overlay peer picker + anatomical region legend (right sidebar).
 import { state } from './core/state.js';
 import { $, escapeHtml, colorSwatchSvg } from './dom.js';
 import { getGroupPeers } from './series/compare.js';

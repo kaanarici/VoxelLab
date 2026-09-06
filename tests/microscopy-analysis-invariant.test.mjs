@@ -1,9 +1,3 @@
-/* global URL */
-// Cross-consistency invariant: threshold → Analyze Particles → ROI rows → descriptor must
-// agree end to end. Proves (a) measurements are raw-domain (mean equals the painted pixel
-// value, impossible in the 8-bit display domain), (b) row circularity recomputed from the
-// stored polygon matches the particle's own contour circularity (full-contour, not bbox),
-// and (c) the operation descriptor's output ids exactly match the live table rows.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -50,8 +44,7 @@ const VALUE_BY_AREA = { 16: 40000, 12: 20000, 9: 30000, 1: 10000 };
 test('threshold → particles → rows → descriptor are mutually consistent', () => {
   const series = setupSeries();
   const plane = makeRectParticlePlane(PARTICLE_PLANE);
-  // Manual cut at 1 includes every painted region (otsu's count is fixture-dependent; this
-  // test isolates cross-stage consistency, not the chosen threshold).
+
   const thr = computeThreshold(plane, { method: 'manual', value: 1, darkBackground: true });
   const mask = applyThreshold(plane, thr);
   const { objects, summary } = analyzeParticles(mask, plane, {}, { rowMm: 0.001, colMm: 0.001, known: true });
@@ -71,8 +64,7 @@ test('threshold → particles → rows → descriptor are mutually consistent', 
     assert.equal(row.min, VALUE_BY_AREA[row.pixels]);
     assert.equal(row.max, VALUE_BY_AREA[row.pixels]);
     assert.equal(row.rawIntDen, row.mean * row.pixels, 'rawIntDen = mean × pixels');
-    // Row circularity is recomputed from the stored polygon; it must match the object's own
-    // contour-derived circularity → the stored polygon is the full boundary, not the bbox.
+
     assert.ok(Math.abs(row.circularity - object.circularity) < 1e-9, 'circularity is contour-consistent');
   }
 });

@@ -6,12 +6,10 @@ import secrets
 import tempfile
 import traceback
 
-
 MAX_CONVERT_BODY_BYTES = 256 * 1024 * 1024
 CONVERT_STREAM_CHUNK_BYTES = 1024 * 1024
 MAX_CONVERT_WARNING_COUNT = 16
 MAX_CONVERT_WARNING_CHARS = 512
-
 
 def _safe_conversion_error(reason: str, fallback: str) -> str:
     messages = {
@@ -29,7 +27,6 @@ def _safe_conversion_error(reason: str, fallback: str) -> str:
     }
     return messages.get(str(reason or ""), fallback)
 
-
 def _bounded_warnings(warnings) -> list[str]:
     return [
         str(item).strip()[:MAX_CONVERT_WARNING_CHARS]
@@ -37,10 +34,8 @@ def _bounded_warnings(warnings) -> list[str]:
         if str(item).strip()
     ][:MAX_CONVERT_WARNING_COUNT]
 
-
 def _warning_header(warnings) -> str:
     return json.dumps(_bounded_warnings(warnings), separators=(",", ":"))
-
 
 def _write_response_bytes(handler, data: bytes) -> bool:
     try:
@@ -48,7 +43,6 @@ def _write_response_bytes(handler, data: bytes) -> bool:
         return True
     except (BrokenPipeError, ConnectionResetError):
         return False
-
 
 def _stream_file(handler, path: str, chunk_bytes: int) -> bool:
     with open(path, "rb") as source:
@@ -58,7 +52,6 @@ def _stream_file(handler, path: str, chunk_bytes: int) -> bool:
                 return True
             if not _write_response_bytes(handler, chunk):
                 return False
-
 
 def _multipart_preamble(boundary: str, result) -> bytes:
     lines = [
@@ -72,14 +65,12 @@ def _multipart_preamble(boundary: str, result) -> bytes:
         lines.append(f"X-VoxelLab-Convert-Warnings: {_warning_header(warnings)}")
     return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii")
 
-
 def _multipart_content_length(results, boundary: str) -> int:
     closing_boundary = f"--{boundary}--\r\n".encode("ascii")
     return len(closing_boundary) + sum(
         len(_multipart_preamble(boundary, result)) + os.path.getsize(result.output_path) + 2
         for result in results
     )
-
 
 def _stream_multipart(handler, results, boundary: str, chunk_bytes: int) -> None:
     for result in results:
@@ -90,7 +81,6 @@ def _stream_multipart(handler, results, boundary: str, chunk_bytes: int) -> None
         if not _write_response_bytes(handler, b"\r\n"):
             return
     _ = _write_response_bytes(handler, f"--{boundary}--\r\n".encode("ascii"))
-
 
 def write_request_body_to_temp(handler, ext: str, length: int, chunk_bytes: int) -> str:
     temp_path = ""
@@ -109,7 +99,6 @@ def write_request_body_to_temp(handler, ext: str, length: int, chunk_bytes: int)
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
         raise
-
 
 def convert_microscopy_upload(
     handler,
@@ -191,7 +180,6 @@ def convert_microscopy_upload(
                     os.unlink(path)
                 except OSError:
                     pass
-
 
 def handle_convert_post(
     handler,

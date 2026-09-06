@@ -1,12 +1,6 @@
 import { COLORMAPS } from './colormap.js';
 import { SEG_PALETTE, TISSUE_LABEL_COUNT } from './core/constants.js';
 
-// Shape: { width: 512, height: 512, baseBytes: Uint8Array(262144), overlayBytes: { segBytes: null } }.
-//
-// Shared 2D/compare compositor. Overlay-heavy redraws use one lazy WebGL2
-// pass when available; the JS path stays as the correctness fallback for
-// browsers/tests that cannot allocate the compositor context.
-
 const REGION_LUT_SIZE = 256 * 4;
 let _canvas = null;
 let _gl = null;

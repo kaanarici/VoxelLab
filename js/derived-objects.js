@@ -1,6 +1,3 @@
-// SEG / RTSTRUCT / SR / … overlay binding: FoR UID + affine checks. Use this module
-// for validation instead of one-off checks.
-
 import { geometryFromSeries } from './core/geometry.js';
 import { DERIVED_KINDS } from './core/contracts.js';
 import { AFFINE_COMPATIBILITY_VALUES } from './series/series-contract.js';
@@ -10,7 +7,6 @@ const DERIVED_REGISTRY_KEY = 'mri-viewer/derived-objects/v1';
 const DERIVED_REGISTRY_VERSION = 1;
 const HYDRATABLE_AFFINE_COMPATIBILITY = new Set(['exact', 'within-tolerance']);
 
-// In-memory fallback when localStorage is unavailable (tests, workers).
 const MEMORY_STORAGE = new Map();
 
 function hasTrustworthyGeometry(series) {
@@ -56,9 +52,7 @@ export function validateDerivedObjectBinding(binding) {
   if (!DERIVED_KINDS.has(binding.derivedKind)) {
     errors.push(`derivedKind: expected one of ${[...DERIVED_KINDS].sort().join(', ')}`);
   }
-  // Empty is valid: a slug-bound local overlay (e.g. a SEG on a non-DICOM source
-  // series with no FrameOfReferenceUID) carries '' here. A non-empty value is
-  // compared against the source's FoR during hydration revalidation.
+
   if (Object.prototype.toString.call(binding.frameOfReferenceUID) !== '[object String]') {
     errors.push('frameOfReferenceUID: expected string');
   }
@@ -224,12 +218,6 @@ export function listDerivedRegistryEntriesForSeries(sourceSeries) {
   return listDerivedRegistryEntriesForSeriesWithSkipped(sourceSeries).entries;
 }
 
-// Revalidate a persisted binding against the current source before hydrating.
-// The goal is to skip only genuinely INCOMPATIBLE bindings (a real FoR or affine
-// mismatch), not to block a previously-valid overlay whose binding simply lacks
-// optional geometry. A slug-bound local overlay with no FrameOfReferenceUID and
-// no stored affine is legitimate and must hydrate; a binding whose stored affine
-// clearly disagrees with trustworthy current geometry is a real mismatch.
 export function assessDerivedRegistryEntryForSeries(entry, sourceSeries) {
   const errors = validateDerivedRegistryEntry(entry);
   if (errors.length) return { accepted: false, reason: 'derived_registry_entry_invalid', errors };
@@ -239,17 +227,12 @@ export function assessDerivedRegistryEntryForSeries(entry, sourceSeries) {
     || (sourceSeriesSlug && binding.sourceSeriesSlug === sourceSeriesSlug);
   if (!sourceMatches) return { accepted: false, reason: 'derived_binding_source_mismatch' };
 
-  // Reject only a real FoR conflict: both sides carry a FoR and they differ.
-  // A missing FoR on either side is a slug-bound (non-spatial) overlay.
   const sourceFrame = String(sourceSeries?.frameOfReferenceUID || '');
   const bindingFrame = String(binding.frameOfReferenceUID || '');
   if (sourceFrame && bindingFrame && sourceFrame !== bindingFrame) {
     return { accepted: false, reason: 'derived_binding_frame_mismatch' };
   }
 
-  // Reject only when a stored affine EXISTS, the current source geometry is
-  // trustworthy, and the two clearly disagree. A binding without a stored affine
-  // (or a current source we can't trust) is not treated as a mismatch.
   const storedAffine = binding.sourceGeometry?.affineLps;
   if (storedAffine) {
     const storedFrame = String(binding.sourceGeometry?.frameOfReferenceUID || '');

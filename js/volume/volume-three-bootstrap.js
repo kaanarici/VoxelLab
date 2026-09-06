@@ -10,9 +10,6 @@ import { TrackballControls } from './vendor-trackball-controls.js';
 import { setThreeDView } from './volume-3d-views.js';
 import { show3DHover } from './volume-3d-hover.js';
 
-// Callbacks invoked after every 3D frame is rendered, with { renderer, scene,
-// camera }. Used by the 3D atlas overlay to reproject its labels in lock-step
-// with the volume (so leader lines stay glued to structures while orbiting).
 const postRenderCallbacks = new Set();
 const ORTHOGRAPHIC_VIEW_HEIGHT = 2.4;
 const TURNTABLE_PERIOD_MS = 24_000;
@@ -37,16 +34,11 @@ export function stopThreeTurntable() {
   turntableController?.stop();
 }
 
-/** Register a post-render callback; returns an unsubscribe function. */
 export function onThreePostRender(cb) {
   postRenderCallbacks.add(cb);
   return () => postRenderCallbacks.delete(cb);
 }
 
-/**
- * Creates renderer, scene, camera, TrackballControls, render loop, resize,
- * pointer safety nets, and 3D canvas hover. Installs shell via setThreeRuntimeShell.
- */
 export function ensureThreeRenderer(deps) {
   const { is3dActive, hideHover } = deps;
   const three = getThreeRuntime();
@@ -82,8 +74,7 @@ export function ensureThreeRenderer(deps) {
   controls.rotateSpeed = 3.0;
   controls.zoomSpeed = 1.1;
   controls.panSpeed = 1.0;
-  // Slightly stiffer damping so zoom/orbit inertia settles quickly instead of
-  // drifting after the gesture ends (the lingering glide reads as "lag").
+
   controls.dynamicDampingFactor = 0.2;
   controls.noPan = false;
   controls.noZoom = false;
@@ -91,7 +82,6 @@ export function ensureThreeRenderer(deps) {
   controls.minZoom = 0.4;
   controls.maxZoom = 6;
 
-  // True between a TrackballControls 'start' and 'end'; gates the hover raymarch.
   let pointerInteracting = false;
   window.addEventListener('pointerup', (e) => {
     if (is3dActive() && renderer.domElement.isConnected) {
@@ -102,8 +92,7 @@ export function ensureThreeRenderer(deps) {
     }
   });
   window.addEventListener('blur', () => {
-    // The synthetic pointerup below uses a fixed mouse id, which won't release a
-    // tracked touch pointer; clear the flag directly so hover never stays off.
+
     pointerInteracting = false;
     if (is3dActive() && renderer.domElement.isConnected) {
       renderer.domElement.dispatchEvent(new PointerEvent('pointerup', {
@@ -170,7 +159,7 @@ export function ensureThreeRenderer(deps) {
     if (updateControls) controls.update();
     renderer.render(scene, camera);
     for (const cb of postRenderCallbacks) {
-      try { cb({ renderer, scene, camera }); } catch { /* a label overlay error must not kill the loop */ }
+      try { cb({ renderer, scene, camera }); } catch {                                                    }
     }
   }
   function renderFrame(timestamp) {
@@ -259,7 +248,7 @@ export function ensureThreeRenderer(deps) {
 
   let hoverThrottle = 0;
   renderer.domElement.addEventListener('mousemove', (e) => {
-    // Skip the CPU hover raymarch mid-drag — it competes with the render loop.
+
     if (pointerInteracting) return;
     const now = Date.now();
     if (now - hoverThrottle < 66) return;

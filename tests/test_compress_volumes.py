@@ -7,7 +7,6 @@ import pytest
 
 import compress_volumes
 
-
 class TrackingStream(io.BytesIO):
     def __init__(self, payload: bytes):
         super().__init__(payload)
@@ -16,7 +15,6 @@ class TrackingStream(io.BytesIO):
     def read(self, size: int | None = -1) -> bytes:
         self.read_sizes.append(size)
         return super().read(size)
-
 
 class FakeProcess:
     def __init__(self, payload: bytes, *, stderr: bytes = b"", returncode: int = 0):
@@ -37,7 +35,6 @@ class FakeProcess:
         self.killed = True
         self.returncode = -9
 
-
 def test_zstd_verify_streams_decompressed_output(monkeypatch, tmp_path: Path) -> None:
     src = tmp_path / "volume.raw"
     dst = tmp_path / "volume.raw.zst"
@@ -54,7 +51,6 @@ def test_zstd_verify_streams_decompressed_output(monkeypatch, tmp_path: Path) ->
     assert proc.stdout.read_sizes == [4, 4, 4, 4]
     assert proc.killed is False
 
-
 def test_zstd_verify_reports_first_streaming_diff(monkeypatch, tmp_path: Path) -> None:
     src = tmp_path / "volume.raw"
     dst = tmp_path / "volume.raw.zst"
@@ -69,7 +65,6 @@ def test_zstd_verify_reports_first_streaming_diff(monkeypatch, tmp_path: Path) -
         compress_volumes.zstd_verify(src, dst)
 
     assert proc.killed is True
-
 
 def test_zstd_verify_reports_decompress_failure(monkeypatch, tmp_path: Path) -> None:
     src = tmp_path / "volume.raw"

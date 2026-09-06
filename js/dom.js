@@ -1,12 +1,5 @@
-// Tiny DOM helpers shared across every viewer module, plus app-level modal
-// orchestration. Kept minimal — a `$('foo')` shortcut, an HTML-escaper, a
-// reusable focus-trap, a coordinate helper, and the modal open/close logic
-// that names concrete element ids (confirm-modal, *-modal, .ask-close/.hc-close).
-
-/** @param {string} id @returns {HTMLElement|null} */
 export const $ = (id) => (globalThis.document ? document.getElementById(id) : null);
 
-/** Escape a string for safe interpolation into innerHTML. */
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;',
@@ -17,7 +10,6 @@ export function escapeHtml(s) {
   }[c]));
 }
 
-/** Inline SVG swatch markup for a rounded RGB color chip. */
 export function colorSwatchSvg(className, rgb, size = 10) {
   const [r, g, b] = Array.isArray(rgb) && rgb.length === 3 ? rgb : [85, 85, 85];
   const radius = Math.max(2, Math.round(size / 5));
@@ -30,7 +22,6 @@ const _focusStack = [];
 const focusableIn = (el) =>
   [...el.querySelectorAll(FOCUSABLE)].filter((n) => !n.disabled && n.getClientRects().length > 0);
 
-/** Trap Tab focus within `el` and remember the previously-focused node. */
 export function trapFocus(el) {
   if (_focusStack[_focusStack.length - 1]?.el === el) return;
   const prev = document.activeElement;
@@ -57,12 +48,10 @@ export function trapFocus(el) {
   if (!el.contains(document.activeElement)) focusableIn(el)[0]?.focus();
 }
 
-/** The element of the topmost active focus trap, or null. */
 export function topTrappedElement() {
   return _focusStack[_focusStack.length - 1]?.el ?? null;
 }
 
-/** Release the focus trap for `el` and restore prior focus. */
 export function releaseFocus(el) {
   let idx = -1;
   for (let i = _focusStack.length - 1; i >= 0; i -= 1) {
@@ -77,9 +66,6 @@ export function releaseFocus(el) {
   if (trap.prev?.focus instanceof Function) trap.prev.focus();
 }
 
-// Convert a client (mouse) X/Y to canvas-internal pixel coords. The CSS
-// transform on the canvas wrapper is already baked into getBoundingClientRect,
-// so this works correctly even when the user has panned and zoomed the 2D view.
 export function clientToCanvasPx(canvas, clientX, clientY) {
   const r = canvas.getBoundingClientRect();
   return [
@@ -147,7 +133,6 @@ export function initModals() {
   });
 }
 
-// confirm-modal: returns a dismiss function.
 export function showDialog(title, bodyHTML) {
   $('confirm-title').textContent = title;
   $('confirm-body').innerHTML = bodyHTML;

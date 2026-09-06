@@ -1,10 +1,6 @@
 import { getThreeRuntime } from '../runtime/viewer-runtime.js';
 import * as THREE from './vendor-three.js';
 
-
-// All 6 cardinal views + oblique reset. Each positions the camera on a
-// face of the bounding sphere looking at the origin. TrackballControls'
-// internal state is fully reset so subsequent drags behave correctly.
 const VIEW_PRESETS = {
   axial:    { pos: [0, 0, 1],     up: [0, 1, 0] },
   bottom:   { pos: [0, 0, -1],    up: [0, -1, 0] },
@@ -15,10 +11,6 @@ const VIEW_PRESETS = {
   reset:    { pos: [0.55, 0.45, 0.55], up: [0, 1, 0] },
 };
 
-/**
- * Canonical 3D view presets. Called from the view-preset buttons in the
- * 3D tools panel and from the double-click handler on the renderer canvas.
- */
 export function setThreeDView(view) {
   const runtime = getThreeRuntime();
   const { camera, controls } = runtime;

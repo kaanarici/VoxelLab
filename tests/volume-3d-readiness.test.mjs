@@ -15,8 +15,6 @@ const { state } = await import('../js/core/state.js');
 const { beginViewerRuntimeSession } = await import('../js/runtime/viewer-session.js');
 const { syncThreeSurfaceState } = await import('../js/runtime/three-surface-state.js');
 
-// Flash-guard thresholds in js/spinner.js: show after 150ms, min visible 350ms.
-// Tests wait past those windows to observe the steady-state spinner visibility.
 const SPINNER_SETTLE_MS = 500;
 
 test('syncThreeSurfaceState hides the spinner once the 3D surface is already visible', async () => {

@@ -1,5 +1,3 @@
-// ONNX Runtime + SlimSAM mask decoder session and inference.
-
 import { ORT_MODULE_URL, ORT_WASM_BASE_URL } from '../core/dependencies.js';
 
 const DECODER_URL =
@@ -13,8 +11,7 @@ export function configureSlimSAMOrtRuntime(ort) {
   const wasm = ort?.env?.wasm;
   if (!wasm) throw new Error('ONNX Runtime WASM configuration is unavailable');
   wasm.wasmPaths = ORT_WASM_BASE_URL;
-  // Keep inference compatible with the app's strict same-origin worker policy.
-  // A single thread also avoids reserving multiple browser workers for a click tool.
+
   wasm.numThreads = 1;
   wasm.proxy = false;
 }
@@ -48,9 +45,6 @@ export async function slimsamEnsureDecoderSession() {
   return _sessionLoading;
 }
 
-/**
- * @returns {Promise<{mask: Uint8Array, width: number, height: number} | null>}
- */
 export async function slimsamRunDecoder(session, embedBuf, meta, sliceIdx, clickX, clickY) {
   const ort = _ort;
   if (!ort || !session) return null;

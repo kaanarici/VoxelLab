@@ -2,10 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ctWindowToWL, CT_WINDOWS } from '../js/core/constants.js';
 
-// The 2D base byte linearly encodes the [-1024, +2048] HU band (range 3072), so
-// a CT HU window maps to an 8-bit W/L: window = round(WW/3072*255),
-// level = round((WL+1024)/3072*255), clamped to the sliders' ranges.
-
 test('Full window is the default full-range 8-bit W/L', () => {
   assert.deepEqual(ctWindowToWL(CT_WINDOWS.full), { window: 255, level: 128 });
 });

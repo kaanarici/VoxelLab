@@ -78,7 +78,7 @@ export function patchShellLayout(patch) {
     if (Number.isFinite(next.scrubberWidth)) payload.scrubberWidth = next.scrubberWidth;
     localStorage.setItem(SHELL_LAYOUT_KEY, JSON.stringify(payload));
   } catch {
-    /* quota / private mode */
+
   }
   return next;
 }
@@ -129,9 +129,6 @@ export function initDesktopSidebarToggles() {
   root.removeAttribute('data-shell-left-collapsed');
   root.removeAttribute('data-shell-right-collapsed');
 
-  // ≤1100px the right panel is an off-screen slide-in overlay (see responsive.css +
-  // shell-mobile.js), so its in-panel header is hidden. The theme button must then
-  // live in the always-visible viewer header instead of being trapped in the overlay.
   const isMobileShell = () => window.matchMedia('(max-width: 1100px)').matches;
   const isDesktopShell = () => window.matchMedia(DESKTOP_MQ).matches;
 
@@ -143,8 +140,6 @@ export function initDesktopSidebarToggles() {
     });
   };
 
-  // Sidebar toggles are app-local layout changes. A synthetic window resize
-  // also wakes unrelated render listeners and can blank the 3D canvas mid-toggle.
   let relayoutPending = false;
   const scheduleViewerRefit = () => {
     if (relayoutPending) return;
@@ -155,11 +150,6 @@ export function initDesktopSidebarToggles() {
     });
   };
 
-  // Button hosts: { rightPanelActions, viewerHeaderRightActions }.
-  // Theme lives in the viewer header whenever the panel header isn't visible —
-  // i.e. on the mobile/tablet overlay, or on desktop when the panel is collapsed.
-  // Otherwise it sits in the panel's own header. Moves are idempotent so a resize
-  // re-sync doesn't thrash the DOM.
   const syncThemeButtonHost = () => {
     if (!btnTheme) return;
     const inHeader = isMobileShell() || app.classList.contains('right-collapsed');
@@ -167,14 +157,14 @@ export function initDesktopSidebarToggles() {
       if (viewerHeaderRightActions && btnTheme.parentElement !== viewerHeaderRightActions) {
         viewerHeaderRightActions.insertBefore(btnTheme, btnShowRight || null);
       }
-      // Default placement (centered below, viewport-clamped) keeps the tip readable without forcing it into a corner.
+
       delete btnTheme.dataset.tipPos;
       return;
     }
     if (rightPanelActions && btnTheme.parentElement !== rightPanelActions) {
       rightPanelActions.insertBefore(btnTheme, btnToggleRight || null);
     }
-    // Inside the right panel, keep the legacy left placement so the tooltip floats over the canvas.
+
     btnTheme.dataset.tipPos = 'left';
   };
 
@@ -211,9 +201,7 @@ export function initDesktopSidebarToggles() {
     persistLayout();
     scheduleViewerRefit();
   });
-  // On the overlay, the panel is toggled by shell-mobile.js via .mobile-open — the
-  // desktop right-collapsed grid state must stay untouched so the theme host and
-  // show/hide chrome don't desync (the bug where the header theme button vanished).
+
   btnToggleRight?.addEventListener('click', () => {
     if (isMobileShell()) return;
     app.classList.toggle('right-collapsed');
@@ -235,7 +223,7 @@ export function initDesktopSidebarToggles() {
     persistLayout();
     scheduleViewerRefit();
   });
-  // Crossing the overlay breakpoint changes where the theme button belongs.
+
   window.addEventListener('resize', syncShowButtons);
   syncShowButtons();
 

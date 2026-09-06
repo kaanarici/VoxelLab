@@ -7,7 +7,6 @@ const {
   localImportFailedContext,
   localImportFileContext,
   localImportIntakeContext,
-  localIntakeNotice,
   localIntakeStatusText,
   localIntakeToastText,
   microscopyConversionErrorText,
@@ -48,31 +47,16 @@ test('localIntakeToastText keeps counts and drops skipped-file samples', () => {
   );
 });
 
-test('localIntakeNotice preserves selected format labels and skipped samples', () => {
-  assert.equal(
-    localIntakeNotice(
-      { openable: 1, convertible: 1, sidecar: 1 },
-      [{ name: 'metadata.json', skipReason: 'unrecognized_json_sidecar' }],
-      4,
-      {
-        openable: [{ name: 'brain.nii' }],
-        convertible: [{ name: 'cells.czi' }],
-        sidecar: [{ name: 'workflow.json', formatLabel: 'Workflow recipe' }],
-      },
-    ),
-    'Local intake: 1 openable file (NIfTI), 1 converter-backed file (CZI) and 1 sidecar (Workflow recipe); skipped 1 unsupported file (metadata.json (unrecognized JSON sidecar)); checked 4 files. Converter-backed files need configured local readers or an OME-TIFF converter and should be opened separately: cells.czi.',
-  );
-});
-
 test('local intake text names schema-bearing unknown JSON sidecars', () => {
   assert.equal(
-    localIntakeNotice(
-      { openable: 1, convertible: 0, sidecar: 0 },
-      [{ name: 'metadata.json', skipReason: 'unrecognized_json_sidecar', schema: 'example.lab-metadata.v1' }],
-      2,
-      { openable: [{ name: 'cells.ome.tiff' }], convertible: [], sidecar: [] },
-    ),
-    'Local intake: 1 openable file (OME-TIFF); skipped 1 unsupported file (metadata.json (unrecognized JSON sidecar schema: example.lab-metadata.v1)); checked 2 files.',
+    localIntakeStatusText({
+      files: [{ name: 'cells.ome.tiff' }],
+      counts: { openable: 1, convertible: 0, sidecar: 0 },
+      skipped: [{ name: 'metadata.json', skipReason: 'unrecognized_json_sidecar', schema: 'example.lab-metadata.v1' }],
+      checkedFiles: 2,
+      formatItems: { openable: [{ name: 'cells.ome.tiff' }], convertible: [], sidecar: [] },
+    }),
+    '1 openable file (OME-TIFF) selected after checking 2 files; skipped 1 unsupported file (metadata.json (unrecognized JSON sidecar schema: example.lab-metadata.v1))',
   );
 });
 
@@ -235,38 +219,6 @@ test('local intake converter guidance caps converter-backed file samples', () =>
   assert.equal(
     status,
     '4 converter-backed files (CZI, ND2, LIF, OIB) selected after checking 4 files; converter-backed files need configured local readers or an OME-TIFF converter: a.czi, b.nd2, c.lif, plus 1 more file',
-  );
-});
-
-test('localIntakeNotice honors explicit skipped totals with bounded samples', () => {
-  assert.equal(
-    localIntakeNotice(
-      { openable: 1, convertible: 0, sidecar: 0 },
-      [
-        { name: 'notes.md', webkitRelativePath: 'study/notes.md' },
-        { name: 'results.csv', webkitRelativePath: 'study/results.csv' },
-      ],
-      8,
-      { openable: [{ name: 'scan.dcm' }], convertible: [], sidecar: [] },
-      7,
-    ),
-    'Local intake: 1 openable file (DICOM); skipped 7 unsupported files (study/notes.md, study/results.csv, plus 5 more files); checked 8 files.',
-  );
-});
-
-test('localIntakeNotice names hidden skipped sample counts', () => {
-  const skipped = Array.from({ length: 7 }, (_, index) => ({
-    name: `notes-${index}.md`,
-    webkitRelativePath: `study/notes-${index}.md`,
-  }));
-  assert.equal(
-    localIntakeNotice(
-      { openable: 1, convertible: 0, sidecar: 0 },
-      skipped,
-      8,
-      { openable: [{ name: 'scan.dcm' }], convertible: [], sidecar: [] },
-    ),
-    'Local intake: 1 openable file (DICOM); skipped 7 unsupported files (study/notes-0.md, study/notes-1.md, study/notes-2.md, study/notes-3.md, study/notes-4.md, plus 2 more files); checked 8 files.',
   );
 });
 

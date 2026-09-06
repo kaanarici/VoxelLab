@@ -6,11 +6,9 @@ from pathlib import Path
 
 from r2_config import normalize_r2_bucket, normalize_r2_endpoint
 
-
 DEFAULT_MAX_R2_UPLOAD_FILES = 10_000
 DEFAULT_MAX_R2_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_MAX_RAW_VOLUME_BYTES = 4 * 1024 * 1024 * 1024
-
 
 def _bounded_env_int(name: str, default: int, maximum: int) -> int:
     try:
@@ -18,7 +16,6 @@ def _bounded_env_int(name: str, default: int, maximum: int) -> int:
     except ValueError:
         value = default
     return max(1, min(value, maximum))
-
 
 def get_r2_client(env: dict[str, str] | None = None):
     import boto3
@@ -57,7 +54,6 @@ def get_r2_client(env: dict[str, str] | None = None):
         ),
     )
 
-
 def r2_transfer_config():
     from boto3.s3.transfer import TransferConfig
 
@@ -66,7 +62,6 @@ def r2_transfer_config():
         multipart_chunksize=16 * 1024 * 1024,
         use_threads=False,
     )
-
 
 def iter_r2_objects(s3, bucket: str, prefix: str):
     token = None
@@ -85,11 +80,9 @@ def iter_r2_objects(s3, bucket: str, prefix: str):
         if not token:
             raise RuntimeError("R2 listing was truncated without a continuation token")
 
-
 def iter_r2_object_keys(s3, bucket: str, prefix: str):
     for obj in iter_r2_objects(s3, bucket, prefix):
         yield obj["Key"]
-
 
 def download_r2_objects(
     s3,
@@ -184,7 +177,6 @@ def download_r2_objects(
             future.result()
     return len(objects)
 
-
 def upload_r2_files(s3, bucket: str, uploads: list[tuple[Path, str, str]], max_workers: int) -> None:
     if not uploads:
         return
@@ -208,7 +200,6 @@ def upload_r2_files(s3, bucket: str, uploads: list[tuple[Path, str, str]], max_w
         futures = [pool.submit(upload_one, item) for item in uploads]
         for future in as_completed(futures):
             future.result()
-
 
 def compress_raw_volume(raw_path: Path, zst_path: Path, max_input_bytes: int | None = None) -> None:
     limit = max_input_bytes or _bounded_env_int(

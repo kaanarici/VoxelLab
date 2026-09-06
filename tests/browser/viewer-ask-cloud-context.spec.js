@@ -127,7 +127,7 @@ test('Ask sends active cloud action provenance as hidden request context', async
   expect(postedPayload.viewerContext).toContain('Completed cloud actions in loaded study: 2.');
   expect(postedPayload.viewerContext).toContain('Active completed cloud action: Cloud CT/MR segmentation; series Cloud Segmentation Result; job job_fixture_cloud_123; status partial');
   expect(postedPayload.viewerContext).toContain('Other completed cloud action: Cloud reconstruction; series Cloud Reconstruction Result; job job_fixture_recon_456');
-  expect(postedPayload.viewerContext).toContain('Other registration evidence: series Cloud Reconstruction Result; verdict slightly off; displacement 3.25 mm; dice 0.86; rotation 1.2 deg; source modal:rigid_registration');
+  expect(postedPayload.viewerContext).toContain('Other registration evidence: series Cloud Reconstruction Result; verdict slightly off; reported displacement 3.25 mm; dice 0.86; rotation 1.2 deg; source modal:rigid_registration');
   expect(postedPayload.viewerContext).toContain('export Metadata panel Registration JSON filename voxellab-registration-evidence-cloud_recon_result.json');
   expect(postedPayload.viewerContext).toContain('inspect Metadata panel Compare opens fixed/moving compare with Cloud Segmentation Result as fixed image');
   expect(postedPayload.viewerContext).toContain('outputs raw volume');

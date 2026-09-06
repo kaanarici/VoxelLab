@@ -1,8 +1,3 @@
-// Standard marching-cubes lookup tables (Paul Bourke). EDGE_TABLE[i] is a
-// 12-bit mask of which cube edges the surface crosses for corner-bitmask i;
-// TRI_TABLE[i] lists triangles as edge indices (groups of 3). Generated and
-// cross-validated (every triangle edge is set in EDGE_TABLE). Do not hand-edit.
-
 export const EDGE_TABLE = [
   0,
   265,

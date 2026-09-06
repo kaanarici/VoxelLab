@@ -1,6 +1,3 @@
-// Browser modules cannot JSON-import schemas/ over HTTP; dumpContractEnums()
-// must stay identical to schemas/enums.json (scripts/check_contract_enums.mjs).
-
 export const ORTHONORMAL_TOLERANCE = 0.001;
 export const SLICE_AXIS_ALIGNMENT_MIN = 0.9999;
 

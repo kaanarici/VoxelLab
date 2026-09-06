@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Install public demo packs for VoxelLab."""
 
 from __future__ import annotations
 
@@ -34,14 +33,11 @@ if str(PYTHON_ROOT) not in sys.path:
 from json_store import update_json
 from scripts.check_assets import validate_assets
 
-
 def load_catalog(path: Path = CATALOG_PATH) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
-
 def packs_by_id(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {pack["id"]: pack for pack in catalog.get("packs", []) if isinstance(pack, dict) and isinstance(pack.get("id"), str)}
-
 
 def resolve_selected_packs(
     catalog: dict[str, Any],
@@ -66,14 +62,12 @@ def resolve_selected_packs(
         raise ValueError(f"unknown pack ids in catalog selection: {missing}")
     return [pack_map[pack_id] for pack_id in mode_ids]
 
-
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
 
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +81,6 @@ def write_json(path: Path, payload: Any) -> None:
         if not complete:
             temp_path.unlink(missing_ok=True)
 
-
 def _response_status(response: Any) -> int | None:
     status = getattr(response, "status", None)
     if status is not None:
@@ -97,7 +90,6 @@ def _response_status(response: Any) -> int | None:
         code = getcode()
         return int(code) if code is not None else None
     return None
-
 
 def _response_header(response: Any, name: str) -> str | None:
     headers = getattr(response, "headers", None)
@@ -110,7 +102,6 @@ def _response_header(response: Any, name: str) -> str | None:
         return str(value) if value is not None else None
     return None
 
-
 def _parse_content_range(value: str, target_name: str) -> tuple[int, int, int | None]:
     match = re.fullmatch(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", value.strip(), flags=re.IGNORECASE)
     if match is None:
@@ -121,7 +112,6 @@ def _parse_content_range(value: str, target_name: str) -> tuple[int, int, int | 
     if end < start or (total is not None and end >= total):
         raise ValueError(f"{target_name}: invalid Content-Range {value!r}")
     return start, end, total
-
 
 def download_to_path(
     url: str,
@@ -249,14 +239,12 @@ def download_to_path(
         temp_target.unlink(missing_ok=True)
     return target
 
-
 def verify_checksum(path: Path, expected: str) -> None:
     if not expected:
         return
     actual = sha256_file(path)
     if actual != expected:
         raise ValueError(f"{path.name}: sha256 {actual} != expected {expected}")
-
 
 def verify_size(path: Path, expected: Any) -> None:
     if expected in (None, ""):
@@ -266,11 +254,10 @@ def verify_size(path: Path, expected: Any) -> None:
     if actual != size:
         raise ValueError(f"{path.name}: size {actual} != expected {size}")
 
-
 def sha256_zip_contents(path: Path) -> str:
     digest = hashlib.sha256()
     with zipfile.ZipFile(path) as bundle:
-        # Shape: "patient/IM0001.dcm" -> stable digest input independent of ZIP wrapper timestamps.
+
         for info in sorted(bundle.infolist(), key=lambda item: str(item.filename or "")):
             name = str(info.filename or "")
             if not name or info.is_dir():
@@ -284,7 +271,6 @@ def sha256_zip_contents(path: Path) -> str:
                     digest.update(chunk)
     return digest.hexdigest()
 
-
 def verify_zip_contents_checksum(path: Path, expected: str) -> None:
     if not expected:
         return
@@ -292,20 +278,17 @@ def verify_zip_contents_checksum(path: Path, expected: str) -> None:
     if actual != expected:
         raise ValueError(f"{path.name}: zip content sha256 {actual} != expected {expected}")
 
-
 def require_checksum(item: dict[str, Any], context: str) -> str:
     checksum = str(item.get("sha256", "") or "").strip().lower()
     if len(checksum) != 64 or any(ch not in "0123456789abcdef" for ch in checksum):
         raise ValueError(f"{context}: expected sha256 checksum in catalog")
     return checksum
 
-
 def catalog_relative_path(raw: str, context: str) -> Path:
     path = Path(raw)
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"{context}: path must stay inside pack target")
     return path
-
 
 def catalog_download_limit(item: dict[str, Any], pack: dict[str, Any]) -> int | None:
     if item.get("size_bytes") not in (None, ""):
@@ -314,11 +297,10 @@ def catalog_download_limit(item: dict[str, Any], pack: dict[str, Any]) -> int | 
         return int(float(pack["estimated_size_mb"]) * 1024 * 1024)
     return None
 
-
 def extract_zip_safe(bundle: zipfile.ZipFile, target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     root = target_dir.resolve()
-    # Shape: "patient/IM0001.dcm" -> /tmp/extract/patient/IM0001.dcm inside `root`.
+
     for info in bundle.infolist():
         name = str(info.filename or "")
         if not name:
@@ -331,13 +313,11 @@ def extract_zip_safe(bundle: zipfile.ZipFile, target_dir: Path) -> None:
     for info in bundle.infolist():
         _ = bundle.extract(info, target_dir)
 
-
 def has_visible_file(directory: Path) -> bool:
     for path in directory.rglob("*"):
         if path.is_file() and not any(part.startswith(".") or part == "__MACOSX" for part in path.relative_to(directory).parts):
             return True
     return False
-
 
 def merge_manifest_entries(data_dir: Path, pack_manifest: dict[str, Any]) -> list[str]:
     manifest_path = data_dir / "manifest.json"
@@ -353,7 +333,6 @@ def merge_manifest_entries(data_dir: Path, pack_manifest: dict[str, Any]) -> lis
 
     _ = update_json(manifest_path, merge)
     return touched
-
 
 def copy_pack_tree(src_dir: Path, data_dir: Path, slugs: list[str]) -> None:
     for slug in slugs:
@@ -386,7 +365,6 @@ def copy_pack_tree(src_dir: Path, data_dir: Path, slugs: list[str]) -> None:
                     else:
                         temp_dest.unlink()
 
-
 def install_artifact_pack(pack: dict[str, Any], data_dir: Path) -> dict[str, Any]:
     archive_path = ROOT / pack["archive_path"]
     if not archive_path.is_file():
@@ -408,7 +386,6 @@ def install_artifact_pack(pack: dict[str, Any], data_dir: Path) -> dict[str, Any
         copy_pack_tree(temp_root, data_dir, slugs)
         _ = merge_manifest_entries(data_dir, pack_manifest)
         return {"pack": pack["id"], "installed": slugs, "target": str(data_dir)}
-
 
 def install_source_pack(pack: dict[str, Any], root: Path) -> dict[str, Any]:
     target_dir = root / catalog_relative_path(str(pack["target_dir"]), f"{pack['id']} target_dir")
@@ -476,12 +453,10 @@ def install_source_pack(pack: dict[str, Any], root: Path) -> dict[str, Any]:
     write_json(target_dir / "PACK_INFO.json", notice)
     return {"pack": pack["id"], "installed": downloaded, "target": str(target_dir)}
 
-
 def install_pack(pack: dict[str, Any], root: Path, data_dir: Path) -> dict[str, Any]:
     if pack.get("kind") == "artifact" or pack.get("archive_path"):
         return install_artifact_pack(pack, data_dir)
     return install_source_pack(pack, root)
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install VoxelLab public demo packs.")
@@ -494,7 +469,6 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--with-ct", action="store_true", help="Add the CT source pack")
     _ = parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -516,7 +490,6 @@ def main() -> int:
         for item in results:
             print(f"- {item['pack']}: {item['target']}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

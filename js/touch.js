@@ -1,20 +1,9 @@
-// Touch/gesture support for iPad and trackpad users.
-//
-// - One finger drag: window/level (same as mouse drag)
-// - Two finger pinch: zoom
-// - Two finger pan: pan the image
-// - Swipe up/down on scrubber area: scrub slices
-//
-// Attaches to the view-stage element. Coordinates with the existing
-// mouse-driven pan/zoom in viewer.js via the same CSS custom properties
-// (--zoom, --tx, --ty) on #view-xform.
-
 import { $ } from './dom.js';
 import { state } from './core/state.js';
 import { setZoomTransform } from './core/state/viewer-commands.js';
 
-let _onWL = null;       // callback: (dWindow, dLevel) => void
-let _onScrub = null;    // callback: (delta) => void  — +1/-1 per slice
+let _onWL = null;
+let _onScrub = null;
 
 export function initTouch({ onWindowLevel, onScrub }) {
   _onWL = onWindowLevel;
@@ -23,10 +12,10 @@ export function initTouch({ onWindowLevel, onScrub }) {
   const stage = $('view-stage');
   if (!stage) return;
 
-  let touches0 = null;   // snapshot of touches at gesture start
+  let touches0 = null;
   let startZoom = 1;
   let startTx = 0, startTy = 0;
-  let gestureType = null; // 'wl' | 'zoom-pan' | null
+  let gestureType = null;
 
   stage.addEventListener('touchstart', (e) => {
     if (state.mode !== '2d') return;
@@ -41,14 +30,14 @@ export function initTouch({ onWindowLevel, onScrub }) {
     if (!touches0 || state.mode !== '2d') return;
 
     if (gestureType === 'wl' && e.touches.length === 1 && _onWL) {
-      // Single-finger drag → window/level
+
       const dx = e.touches[0].clientX - touches0[0].clientX;
       const dy = e.touches[0].clientY - touches0[0].clientY;
       _onWL(dx * 0.5, -dy * 0.5);
       touches0 = copyTouches(e.touches);
       e.preventDefault();
     } else if (gestureType === 'zoom-pan' && e.touches.length >= 2) {
-      // Two-finger → pinch zoom + pan
+
       const d0 = dist(touches0[0], touches0[1]);
       const d1 = dist(e.touches[0], e.touches[1]);
       const scale = d1 / Math.max(1, d0);
@@ -79,7 +68,6 @@ export function initTouch({ onWindowLevel, onScrub }) {
     gestureType = null;
   }, { passive: true });
 
-  // Swipe on the scrubber area for slice navigation
   const scrubWrap = document.querySelector('.scrub-block');
   if (scrubWrap && _onScrub) {
     let scrubStartY = null;

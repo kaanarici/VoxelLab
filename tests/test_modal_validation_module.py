@@ -4,17 +4,14 @@ import importlib
 import sys
 import types
 
-
 class FakeRetries:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
-
 
 def import_modal_validation():
     sys.modules["modal"] = types.SimpleNamespace(Retries=FakeRetries)
     _ = sys.modules.pop("modal_validation", None)
     return importlib.import_module("modal_validation")
-
 
 def test_modal_validation_env_helpers_are_bounded(monkeypatch):
     module = import_modal_validation()
@@ -26,7 +23,6 @@ def test_modal_validation_env_helpers_are_bounded(monkeypatch):
     assert module.env_float("TEST_FLOAT", 1.5, min_value=0.5) == 0.5
     assert module.env_gpu("MRI_VIEWER_MODAL_GPU") == ["L4", "A10"]
 
-
 def test_modal_validation_rejects_unknown_gpu(monkeypatch):
     module = import_modal_validation()
     monkeypatch.setenv("MRI_VIEWER_MODAL_GPU", "expensive-mystery-gpu")
@@ -37,7 +33,6 @@ def test_modal_validation_rejects_unknown_gpu(monkeypatch):
         assert "unsupported Modal GPU type" in str(exc)
     else:
         raise AssertionError("unknown GPUs must fail deployment configuration")
-
 
 def test_modal_validation_ephemeral_disk_uses_current_modal_bounds(monkeypatch):
     module = import_modal_validation()
@@ -54,7 +49,6 @@ def test_modal_validation_ephemeral_disk_uses_current_modal_bounds(monkeypatch):
             pass
         else:
             raise AssertionError("invalid Modal disk requests must fail deployment configuration")
-
 
 def test_modal_validation_upload_items_and_auth(monkeypatch):
     module = import_modal_validation()

@@ -1,4 +1,3 @@
-// Gather measurements / ROIs / annotations for SR export.
 import { drawingEntriesForSeries } from '../overlay/annotation-graph.js';
 import { inPlanePixelSpacing } from '../core/geometry.js';
 

@@ -5,7 +5,6 @@ from pathlib import Path
 
 import analyze
 
-
 def write_png(path: Path) -> None:
     _ = path.write_bytes(b"".join([
         b"\x89PNG\r\n\x1a\n",
@@ -16,7 +15,6 @@ def write_png(path: Path) -> None:
         b"\xe2!\xbc3",
         b"\x00\x00\x00\x00IEND\xaeB`\x82",
     ]))
-
 
 def test_process_keeps_partial_slice_runs_out_of_full_coverage(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
@@ -47,7 +45,6 @@ def test_process_keeps_partial_slice_runs_out_of_full_coverage(tmp_path: Path, m
     assert written["coverage"]["analyzedSlices"] == [2]
     assert written["coverage"]["isComplete"] is False
 
-
 def test_process_marks_full_overview_complete_once_all_overview_slices_exist(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
     series_dir = data_dir / "sample"
@@ -75,7 +72,6 @@ def test_process_marks_full_overview_complete_once_all_overview_slices_exist(tmp
     assert written["coverage"]["overviewSlices"] == [0, 2, 4]
     assert written["coverage"]["isComplete"] is True
 
-
 def test_process_keeps_same_slug_viewer_jobs_in_distinct_identity_sidecars(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
     series_dir = data_dir / "sample"
@@ -102,7 +98,6 @@ def test_process_keeps_same_slug_viewer_jobs_in_distinct_identity_sidecars(tmp_p
     assert second["summary"] == "Study B"
     assert not (data_dir / "sample_analysis.json").exists()
 
-
 def test_analysis_output_path_rejects_path_like_identity(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(analyze, "DATA", tmp_path / "data")
     try:
@@ -111,7 +106,6 @@ def test_analysis_output_path_rejects_path_like_identity(tmp_path: Path, monkeyp
         assert "invalid analysis key" in str(exc)
     else:
         raise AssertionError("path-like analysis key should fail closed")
-
 
 def test_process_rejects_reusing_persisted_analysis_key_for_another_slug(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
@@ -140,7 +134,6 @@ def test_process_rejects_reusing_persisted_analysis_key_for_another_slug(tmp_pat
     assert persisted["slug"] == "sample"
     assert persisted["summary"] == "Study A"
 
-
 def test_process_raises_on_slice_failure(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
     series_dir = data_dir / "sample"
@@ -162,7 +155,6 @@ def test_process_raises_on_slice_failure(tmp_path: Path, monkeypatch) -> None:
     else:
         raise AssertionError("process should fail when a selected slice fails")
 
-
 def test_process_raises_on_missing_slice_image(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
     (data_dir / "sample").mkdir(parents=True)
@@ -174,7 +166,6 @@ def test_process_raises_on_missing_slice_image(tmp_path: Path, monkeypatch) -> N
         assert "slice 0 image is missing" in str(exc)
     else:
         raise AssertionError("process should fail when a selected slice image is missing")
-
 
 def test_process_raises_on_summary_failure(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
@@ -200,7 +191,6 @@ def test_process_raises_on_summary_failure(tmp_path: Path, monkeypatch) -> None:
         assert "summary failed: summary provider unavailable" in str(exc)
     else:
         raise AssertionError("process should fail when summary generation fails")
-
 
 def test_process_keeps_selected_overview_subset_partial(tmp_path: Path, monkeypatch) -> None:
     data_dir = tmp_path / "data"
@@ -231,7 +221,6 @@ def test_process_keeps_selected_overview_subset_partial(tmp_path: Path, monkeypa
     assert written["coverage"]["analyzedSlices"] == [0, 2, 4]
     assert written["coverage"]["isComplete"] is False
 
-
 def test_build_analysis_prompt_marks_context_as_approximate() -> None:
     prompt, labels, fingerprint = analyze.build_analysis_prompt(
         {"name": "Sample", "slices": 2},
@@ -252,7 +241,6 @@ def test_build_analysis_prompt_marks_context_as_approximate() -> None:
     assert "infer restricted diffusion" in prompt
     assert labels == {3}
     assert fingerprint
-
 
 def test_analyze_slice_filters_unprompted_region_labels(monkeypatch) -> None:
     monkeypatch.setattr(

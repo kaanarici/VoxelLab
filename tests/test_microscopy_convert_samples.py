@@ -1,7 +1,3 @@
-"""End-to-end conversion of real vendor samples, guarded so CI (no samples, no optional
-readers) skips cleanly. Run locally after downloading samples into test-samples/microscopy/
-and `pip install voxellab-tooling[microscopy]`. These samples are gitignored, not demo data.
-"""
 import importlib.util
 import os
 
@@ -11,14 +7,12 @@ SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "..", "test-samples", "micr
 READER = {"czi": "czifile", "nd2": "nd2", "lif": "liffile"}
 EXPECTED_NATIVE_PARTS = {"czi": 1, "nd2": 1, "lif": 4}
 
-
 def _available(ext):
     return (
         os.path.exists(os.path.join(SAMPLE_DIR, f"sample.{ext}"))
         and importlib.util.find_spec(READER[ext]) is not None
         and importlib.util.find_spec("tifffile") is not None
     )
-
 
 @pytest.mark.parametrize("ext", ["czi", "nd2", "lif"])
 def test_vendor_sample_converts_to_calibrated_ome_tiff(ext, tmp_path):
@@ -39,9 +33,8 @@ def test_vendor_sample_converts_to_calibrated_ome_tiff(ext, tmp_path):
     with tifffile.TiffFile(out) as tif:
         ome = tif.ome_metadata or ""
         assert "<OME" in ome
-        # Sizes reflect the normalized axes; the browser reads these via parseOmeXmlMetadata.
-        assert 'SizeX="' in ome and 'SizeY="' in ome
 
+        assert 'SizeX="' in ome and 'SizeY="' in ome
 
 @pytest.mark.parametrize("ext", ["czi", "nd2", "lif"])
 def test_vendor_sample_split_conversion_preserves_every_native_unit(ext, tmp_path):

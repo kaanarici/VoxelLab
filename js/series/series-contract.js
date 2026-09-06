@@ -7,7 +7,7 @@ import {
 import { state } from '../core/state.js';
 import { setManifestCollections } from '../core/state/viewer-commands.js';
 import { RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE } from '../core/viewer-session-shape.js';
-// Shape: ['projectionMatrices', 'sourceDetectorGeometry', 'isocenter', 'calibrationStatus'].
+
 export const PROJECTION_MISSING_GEOMETRY = [
   'projectionMatrices',
   'sourceDetectorGeometry',
@@ -15,9 +15,7 @@ export const PROJECTION_MISSING_GEOMETRY = [
   'calibrationStatus',
 ];
 export const MODAL_REQUIRED_URL_FIELDS = ['rawUrl', 'sliceUrlBase'];
-// Cloud series carry `sourceJobId` (camelCase, written by normalize_series_entry);
-// `job_id` is the snake_case on-wire alias a raw Modal envelope may use before
-// normalization. Earlier `modalJobId`/`jobId` aliases were never emitted.
+
 export const SERIES_JOB_ID_FIELDS = ['job_id', 'sourceJobId'];
 export const REQUIRED_SERIES_FIELDS = {
   slug: 'string',
@@ -203,7 +201,7 @@ export function projectionSetRecordForEntry(entry) {
   const modality = String(entry.modality || 'OT').toUpperCase();
   const id = String(entry.id || entry.projectionSetId || `${entry.slug}_projection_set`).trim();
   assertSafeProjectionSetId(id);
-  // Shape: one manifest projectionSets[] record for a local or cloud source.
+
   const record = {
     id,
     name: entry.name || id,
@@ -259,7 +257,7 @@ export function localDisplayEntryForImport(entry, projectionSetRecord) {
 }
 
 export function normalizeSeriesEntryForManifest(manifest, entry) {
-  // Shape: one manifest series[] record merged from local, DICOMweb, or cloud flows.
+
   const next = withRegistrationDerivedBinding(manifest, { ...entry });
   if (next.group == null) next.group = seriesCompareGroup(next);
   if (next.sourceProjectionSetId) {

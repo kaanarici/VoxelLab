@@ -1,5 +1,3 @@
-// Main 2D canvas: pan/zoom/window, hover, tool routing (wired from wire-controls.js).
-
 import { $ } from './dom.js';
 import { state } from './core/state.js';
 import { getAskSession } from './ask-session.js';
@@ -24,12 +22,6 @@ import { updateScaleBar } from './overlay/scale-bar.js';
 import { showHoverAt } from './slice-view.js';
 import { setWindowLevel, setZoomTransform } from './core/state/viewer-commands.js';
 
-/**
- * @param {object} deps
- * @param {(cx: number, cy: number) => [number, number]} deps.clientToCanvasPx
- * @param {(d: number) => void} deps.step
- * @param {() => void} deps.hideHover
- */
 export function wireViewCanvas(deps) {
   const { clientToCanvasPx, step, hideHover } = deps;
   let wlFramePending = false;
@@ -39,7 +31,7 @@ export function wireViewCanvas(deps) {
   const wrap = $('canvas-wrap');
   wrap.addEventListener('wheel', (e) => {
     if (state.mode !== '2d' && state.mode !== 'cmp') return;
-    // Wheel over the inline Ask panel scrolls the chat, not the slice stack.
+
     if (e.target.closest('#ask-composer')) return;
     e.preventDefault();
     if (e.metaKey || e.ctrlKey) {
@@ -53,9 +45,7 @@ export function wireViewCanvas(deps) {
   const canvas = $('view');
   let dragging = false; let panning = false; let lastX = 0; let lastY = 0;
   const xform = $('view-xform');
-  // Controls are zoom-independent: drag pans (grab), Shift adjusts window/level
-  // (ew-resize). Keeping this fixed avoids datasets that load at fit-zoom <= 1.01
-  // (e.g. large CT) silently inverting the default drag.
+
   const syncPassiveCursor = (e = {}) => {
     xform.classList.toggle('wl-ready', !!e.shiftKey);
     xform.classList.toggle('pan-ready', !e.shiftKey);
@@ -137,8 +127,7 @@ export function wireViewCanvas(deps) {
       const [px, py] = clientToCanvasPx(e.clientX, e.clientY);
       if (onROIMove(px, py)) drawMeasurements();
     }
-    // Selection crosshair only while the pen is armed; otherwise the viewer is a
-    // normal pannable viewer even with the Ask composer open.
+
     if (getAskSession().mode && getAskSession().pen && state.mode === '2d' && !dragging && !panning) {
       hideAnnotHover();
       hideHover();

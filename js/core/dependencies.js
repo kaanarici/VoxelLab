@@ -1,12 +1,9 @@
-/** Bump when static assets must replace SW caches; no query-string cache busting elsewhere. */
-export const SERVICE_WORKER_VERSION = '2026-08-22-1';
+export const SERVICE_WORKER_VERSION = '2026-09-06-1';
 export const IMAGE_CACHE_VERSION = '2026-04-11-2';
 export const IMAGE_CACHE_NAME = `voxellab-images-${IMAGE_CACHE_VERSION}`;
 export const VOLUME_CACHE_VERSION = '2026-04-11-1';
 export const VOLUME_CACHE_NAME = `voxellab-volumes-${VOLUME_CACHE_VERSION}`;
 
-// Root-absolute local package assets resolve from every module depth. Both the
-// browser server and Electron custom protocol expose only this allowlisted set.
 const DEPENDENCY_ASSET_BASE = '/node_modules';
 
 export const THREE_MODULE_URL = `${DEPENDENCY_ASSET_BASE}/three/build/three.module.js`;

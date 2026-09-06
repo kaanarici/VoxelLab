@@ -1,4 +1,3 @@
-// Tissue volume stats panel + scrubber jumps from stats links.
 import { state } from '../core/state.js';
 import { $ } from '../dom.js';
 import { effectiveSliceSpacing } from '../mpr/mpr-geometry.js';
@@ -58,9 +57,6 @@ export function renderVolumes() {
     }
   }
 
-  // Skip the innerHTML teardown when the computed content is identical — switching
-  // the primary series (e.g. in compare mode) otherwise re-renders this panel every
-  // time and makes it flash. Handlers below stay bound to the existing DOM.
   const volSig = `${series.slug}|${fmt(csfMl)}|${fmt(gmMl)}|${fmt(wmMl)}|${fmt(total)}|${extra}`;
   if (host._volSig === volSig) {
     panel.classList.remove('panel-init-hidden');

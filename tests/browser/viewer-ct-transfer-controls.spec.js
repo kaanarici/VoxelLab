@@ -19,8 +19,7 @@ test('CT HU transfer controls are CT-only and clear stale active state', async (
 
   await page.locator('#series-list li').nth(0).click();
   await page.locator('#btn-3d').click();
-  // The VOLUME (3D) panel starts collapsed by default; expand it to reach the CT
-  // HU Range controls (same reveal step the other panel tests use).
+
   if (await page.locator('#panel-3d').evaluate((el) => el.classList.contains('collapsed'))) {
     await page.locator('#panel-3d .sec-title').click();
   }

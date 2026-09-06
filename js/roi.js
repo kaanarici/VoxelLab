@@ -1,5 +1,3 @@
-// Region-of-interest tool.
-
 import { adcDisplayFromNorm } from './adc.js';
 import { ellipseInclusion, polygonInclusion } from './roi/roi-geometry.js';
 import { samplePlaneIntensity } from './microscopy/microscopy-plane-sampler.js';
@@ -16,45 +14,14 @@ import {
   setRoiEntriesForSlice,
 } from './overlay/annotation-graph.js';
 
-// Three primitive shapes:
-//   · ellipse — drag from one corner to the opposite corner of the
-//               bounding box; pixels inside the inscribed ellipse form
-//               the ROI
-//   · polygon — click to add vertices, double-click or Enter to close
-//   · point   — one click, for C/Z/T-scoped counting workflows
-//
-// For each ROI we compute viewer ROI summary statistics from the
-// voxels inside the shape on the current slice:
-//   · area in mm² (from pixelSpacing)
-//   · pixel count
-//   · mean, std, min, max of the stored 8-bit slice PNG values
-//   · for DWI ADC: the same stats translated to physical ADC
-//     (×10⁻³ mm²/s) using the series stats sidecar
-//
-// Live ROI bags are owned by viewer-commands (`setRoiMapEntry`) via
-// annotation-graph. That module hydrates from localStorage at boot and
-// mirrors live writes; isolated hosts pass `isolatedHostWrites()`.
-//
-// Tool surface:
-//   · initROI(deps)          — redraw/notify callbacks for this tool
-//   · toggleROI('ellipse'|'polygon'|'point')  — flip into the tool
-//   · drawROIs(svg, ...)     — render all current-slice ROIs into an
-//                              existing SVG element
-//   · onROIClick(ev)         — mousedown handler on the canvas
-//   · onROIMove(ev)          — mousemove during a live ellipse drag
-//   · isROIMode()            — is any ROI tool currently active?
-
 const NS = 'http://www.w3.org/2000/svg';
 
-// Internal state. Cleared on module load so a stale "pending" ROI can't
-// survive a refresh.
 const roiState = {
-  mode:      null,     // null | 'ellipse' | 'polygon' | 'point'
-  pending:   null,     // in-progress shape being drawn
-  deps:      null,     // injected host dependencies
+  mode:      null,
+  pending:   null,
+  deps:      null,
 };
 
-// ---------- persistence ----------
 function listHere() {
   const { state: host } = roiState.deps;
   return roiEntriesForSlice(host, host.manifest.series[host.seriesIdx], host.sliceIdx);
@@ -88,12 +55,6 @@ function sameMicroscopyScope(roi, scope) {
     && Number(roi.microscopy?.timeIndex || 0) === scope.timeIndex;
 }
 
-// ---------- stats ----------
-//
-// For each ROI we walk the bounding box of the shape, test each pixel
-// for inclusion, and accumulate statistics from the stored 8-bit slice
-// PNG data. This is the same display-domain source the hover readout
-// uses. Only the ADC branch below converts back into physical units.
 function computeStats(pts, roiKind) {
   const { state: host, getRawSliceData } = roiState.deps;
   const series = host.manifest.series[host.seriesIdx];
@@ -110,16 +71,13 @@ function computeStats(pts, roiKind) {
     return { length_px: lengthPx, length_mm: spacing.known ? lengthMm : null };
   }
   const W = series.width, H = series.height;
-  const raw = getRawSliceData(host.sliceIdx);   // Uint8Array RGBA of the stored slice PNG
-  // D1b: microscopy ROIs measure the retained raw single-channel plane (Fiji "Mean gray
-  // value") when one is available; everything else keeps the 8-bit display-domain path.
+  const raw = getRawSliceData(host.sliceIdx);
+
   const rawPlane = series.imageDomain === 'microscopy'
     ? rawPlaneFor(host, series, series.microscopy?.channelIndex || 0, series.microscopy?.timeIndex || 0, host.sliceIdx)
     : null;
   const useRaw = !!(rawPlane && rawPlane.width === W && rawPlane.height === H);
-  // CT: measure true Hounsfield from the band-encoded hrVoxels (the .raw the 3D
-  // path uses), not the percentile-windowed display PNG. Accurate within the
-  // [-1024, +2048] band the volume carries; beyond that it's clamped like hover.
+
   const isCtHu = series.modality === 'CT' && host.hrVoxels?.length === W * H * series.slices;
   const zBase = host.sliceIdx * W * H;
   if (!useRaw && !isCtHu && !raw) return null;
@@ -150,7 +108,6 @@ function computeStats(pts, roiKind) {
     return stats;
   }
 
-  // Bounding box
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const [x, y] of pts) {
     if (x < minX) minX = x; if (x > maxX) maxX = x;
@@ -161,7 +118,6 @@ function computeStats(pts, roiKind) {
   minY = Math.max(0, Math.floor(minY));
   maxY = Math.min(H - 1, Math.ceil(maxY));
 
-  // Inclusion test per shape
   const inside = roiKind === 'ellipse'
     ? ellipseInclusion(pts)
     : polygonInclusion(pts);
@@ -199,9 +155,6 @@ function computeStats(pts, roiKind) {
   else if (isCtHu) { stats.valueSource = 'hounsfield'; stats.valueUnit = 'HU'; }
   if (Number.isFinite(areaMm2)) stats.area_mm2 = areaMm2;
 
-  // Physical ADC translation if we're on DWI ADC and the rescale info
-  // is available. Use the hrVoxels if present (more precise); otherwise
-  // skip — the 8-bit path is too lossy for a meaningful ADC number.
   if (series.slug === 'dwi_adc' && host.overlays.stats && host.overlays.stats.adc && host.hrVoxels) {
     const adc = host.overlays.stats.adc;
     const hr = host.hrVoxels;
@@ -233,16 +186,13 @@ function computeStats(pts, roiKind) {
   return stats;
 }
 
-// ---------- rendering ----------
 export function drawROIs(svg) {
-  // Remove only the ROI elements from the SVG — leave the measurement
-  // ruler elements alone. We mark ours with class="roi-group".
+
   svg.querySelectorAll('.roi-group').forEach(el => el.remove());
 
   const list = listHere().filter(roiVisibleInCurrentScope);
   list.forEach((roi, i) => renderOne(svg, roi, i));
 
-  // Live preview of an in-progress shape
   if (roiState.pending) {
     renderPending(svg, roiState.pending);
   }
@@ -283,7 +233,6 @@ function renderOne(svg, roi, i) {
     g.appendChild(poly);
   }
 
-  // Stats label at the top-right of the bounding box
   const xs = roi.pts.map(p => p[0]), ys = roi.pts.map(p => p[1]);
   const lx = Math.max(...xs);
   const ly = Math.min(...ys) - 6;
@@ -310,7 +259,6 @@ function renderOne(svg, roi, i) {
   txt.textContent = line;
   g.appendChild(txt);
 
-  // Delete × button, same pattern as measurements
   const [dx, dy] = [lx + 8, ly - 10];
   const btnR = 8;
   const bg = document.createElementNS(NS, 'circle');
@@ -336,7 +284,7 @@ function renderOne(svg, roi, i) {
   hit.addEventListener('click', (ev) => {
     ev.stopPropagation();
     const cur = listHere();
-    // Shape: roi.id is a per-slice monotonic integer like 1, 2, 3.
+
     const next = (roi.id != null)
       ? deleteDrawingEntryById(cur, roi.id)
       : cur.filter((_, idx) => idx !== i);
@@ -381,7 +329,6 @@ function renderPending(svg, pending) {
   svg.appendChild(g);
 }
 
-// ---------- tool activation ----------
 export function initROI(deps) {
   roiState.deps = deps;
 }
@@ -420,9 +367,6 @@ export function cancelROI() {
   roiState.deps.onROIChange?.();
 }
 
-// Mouse-down handler for the canvas. Expected to be called from the host
-// page's unified pointer dispatch. Coordinates should already be in the
-// canvas's native pixel space.
 export function onROIDown(px, py) {
   if (!roiState.mode) return;
 
@@ -430,7 +374,7 @@ export function onROIDown(px, py) {
     if (!roiState.pending) {
       roiState.pending = { "shape": 'ellipse', pts: [[px, py], [px, py]] };
     } else {
-      // Second click finalizes
+
       roiState.pending.pts[1] = [px, py];
       finalize();
     }
@@ -462,23 +406,20 @@ export function finalizePolygonROI() {
   finalize();
 }
 
-// CT ROIs measure Hounsfield from the raw volume; in a 2D-only session it isn't
-// loaded yet, so pull it in on demand (cached + shared with 3D/MPR). Taking a
-// measurement also lights up the hover HU readout, which reads the same volume.
 async function ensureCtHuVolume() {
   const host = roiState.deps?.state;
   const series = host?.manifest?.series?.[host.seriesIdx];
   if (!series || series.modality !== 'CT' || (!series.hasRaw && !series.rawUrl)) return;
   if (host.hrVoxels?.length === series.width * series.height * series.slices) return;
   try { await (await import('./volume/volume-hr-voxels.js')).ensureHRVoxels(); }
-  catch { /* fall back to the 8-bit display path */ }
+  catch {                                           }
 }
 
 async function finalize() {
   if (!roiState.pending) return;
   const { pts, "shape": roiKind } = roiState.pending;
   await ensureCtHuVolume();
-  if (!roiState.pending) return; // cancelled while the volume loaded
+  if (!roiState.pending) return;
   const stats = computeStats(pts, roiKind);
   if (!stats) { roiState.pending = null; roiState.deps.onROIChange?.(); return; }
   const list = listHere();
@@ -530,8 +471,6 @@ function appendPointCount(px, py) {
   roiState.deps.onROIChange?.();
 }
 
-// Re-compute stats for every ROI on the current slice. Used when the
-// source data or the underlying slice changes.
 export function refreshROIStatsHere() {
   const list = listHere();
   if (!list.length) return;
@@ -542,7 +481,6 @@ export function refreshROIStatsHere() {
   setHere(list);
 }
 
-// Total count across all slices of the current series (for sidebar).
 export function countROIs() {
   const { state: host } = roiState.deps;
   if (!host || !host.manifest) return 0;

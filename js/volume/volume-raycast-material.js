@@ -6,10 +6,6 @@ import {
   VOLUME_RAYCAST_VERTEX_SHADER,
 } from './volume-raycast-shaders.js';
 
-/**
- * Raycast ShaderMaterial for Data3DTexture volume + label LUT. Uniforms match
- * volume-raycast-shaders.js; `renderMode` maps to uMode (0 transfer, 1 MIP, 2 minIP).
- */
 export function createVolumeRaycastMaterial(opts) {
   const {
     texture,
@@ -57,6 +53,7 @@ export function createVolumeRaycastMaterial(opts) {
         gridHeight * spacing[1] / densityUnit,
         gridDepth * spacing[2] / densityUnit,
       ) },
+      uHiddenLabels: { value: new Int32Array(8) },
       uIsolate:    { value: 0 },
     },
     vertexShader: VOLUME_RAYCAST_VERTEX_SHADER,

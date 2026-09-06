@@ -1,8 +1,3 @@
-// Global viewer state. App document + runtime buffers behind one proxy.
-// App writes go through viewer-commands. Runtime caches use viewer-runtime
-// setters. `_` roots and cmpStacks are raw maps; entry writes use
-// setPassthroughRootEntry so subscribers still hear them.
-
 import { createInitialAppModel } from './state/app-model.js';
 import { createInitialRuntimeState } from './state/runtime-state.js';
 import { RUNTIME_OVERLAY_CACHE_KEYS_BY_TYPE } from './viewer-session-shape.js';

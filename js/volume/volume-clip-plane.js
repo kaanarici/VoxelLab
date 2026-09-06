@@ -6,19 +6,9 @@ function finite(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-/**
- * @param {{
- *   dims?: { W?: number, H?: number, D?: number },
- *   spacing?: { row?: number, col?: number, slice?: number },
- *   yaw?: number,
- *   pitch?: number,
- *   depth?: number,
- *   invert?: boolean,
- * }} [options]
- */
 export function volumeClipPlane({
-  dims,
-  spacing,
+  dims = { W: 1, H: 1, D: 1 },
+  spacing = { row: 1, col: 1, slice: 1 },
   yaw = 0,
   pitch = 0,
   depth = 0.5,

@@ -1,4 +1,3 @@
-/* global document, getComputedStyle, innerWidth, requestAnimationFrame */
 import { expect, test } from '@playwright/test';
 
 import {

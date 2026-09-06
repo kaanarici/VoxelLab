@@ -16,7 +16,7 @@ const { patchManifestSeries } = await import('../js/core/state/viewer-commands.j
 const { overlayKindsForSeries, setSeriesOverlayHints } = await import('../js/runtime/overlay-kinds.js');
 
 test('volume stacks remain MPR/3D-capable by default', () => {
-  // Shape: manifest.series[*] from bundled CT/MR volume stacks.
+
   const series = {
     modality: 'MR',
     width: 768,
@@ -37,7 +37,7 @@ test('volume stacks remain MPR/3D-capable by default', () => {
 });
 
 test('projection modalities do not become MPR/3D just because multiple files exist', () => {
-  // Shape: imported CR/DX/XA series with multiple projection images.
+
   const series = {
     modality: 'DX',
     width: 2048,
@@ -314,7 +314,7 @@ test('only resource-safe calibrated microscopy stacks gain the shared MPR/3D pat
 });
 
 test('overlay capability consumer normalizes legacy flags into canonical overlay kinds', () => {
-  // Shape: viewer series entry with today’s manifest booleans.
+
   const series = {
     hasSeg: true,
     hasRegions: true,

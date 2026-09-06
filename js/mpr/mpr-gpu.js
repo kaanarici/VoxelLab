@@ -6,7 +6,6 @@ import {
 import { MAX_ACCURATE_SLAB_SAMPLES } from './mpr-projection.js';
 import { gpuMprInputSupport } from './mpr-gpu-support.js';
 
-// Shape: one shared offscreen WebGL MPR renderer reused for all panes.
 const runtime = {
   canvas: null,
   renderer: null,
@@ -18,7 +17,7 @@ const runtime = {
   max3DTextureSize: 0,
   floatLinearFiltering: false,
   lastFailureReason: '',
-  // Shape: reusable 256x1 RGBA LUT byte planes + change counters for current GPU render state.
+
   lutCache: {
     grayBytes: new Uint8Array(256 * 4),
     regionBytes: new Uint8Array(256 * 4),
@@ -323,8 +322,8 @@ export function releaseGpuMprVolumeTextures() {
 
 function clearGlErrors(gl) {
   if (!gl?.getError) return;
-  for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i += 1) {
-    // Clear stale errors so this draw owns the error observed after render.
+  for (let i = 0; i < 8; i += 1) {
+    if (gl.getError() === gl.NO_ERROR) return;
   }
 }
 
@@ -358,7 +357,6 @@ function fillGrayLutBytes(target, wlLut) {
   return target;
 }
 
-// Shape: { origin:[0,0,12], axisU:[255,0,0], axisV:[0,255,0] } in voxel coordinates.
 export function drawGpuMprSlice(canvas, {
   plane,
   projection = null,

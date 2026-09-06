@@ -1,7 +1,3 @@
-// ROI results serialization + file download: CSV/JSON sidecar and ImageJ ROI
-// ZIP. Pulls calibrated rows and the bundle shape from roi-results-model.js;
-// the panel UI (roi-results-table.js) only triggers these exporters.
-
 import { preferredLengthUnit } from '../core/physical-units.js';
 import { state } from '../core/state.js';
 import { microscopySourceWarningLabels } from '../microscopy/microscopy-provenance-text.js';

@@ -1,40 +1,3 @@
-"""
-SAM embedding pre-computation for the MRI viewer.
-
-Reads each series' slice PNGs from data/<slug>/*.png, runs a SAM-family
-image encoder on each slice, and writes the embeddings as a compact
-Float16 binary blob. The browser-side decoder (js/slimsam.js) loads
-individual slice embeddings from these files at runtime and feeds them
-into the lightweight ONNX mask decoder.
-
-Output per series:
-    data/<slug>_sam_embed.bin      Float16, shape (N, 256, 64, 64) packed
-    data/<slug>_sam_meta.json      {"slug","slices","embed_dim","embed_h",
-                                    "embed_w","dtype","stride","bytes_per_slice",
-                                    "total_bytes","width","height"}
-
-If zstd is on PATH the binary is also compressed to
-data/<slug>_sam_embed.bin.zst for R2 upload. The JS side can fetch
-either the raw .bin (local dev) or the .zst (hosted, decompressed via
-fzstd in the browser).
-
-Install dependencies:
-    pip install segment-anything torch torchvision Pillow numpy
-
-Model:
-    The script prefers the MedSAM ViT-B checkpoint for the image encoder
-    from
-    https://huggingface.co/flaviagiammarino/medsam-vit-b
-    If that fails it falls back to the standard SAM ViT-B checkpoint
-    from Meta (sam_vit_b_01ec64.pth).
-
-Usage:
-    python3 slimsam_embed.py                   # all series in manifest
-    python3 slimsam_embed.py flair t1_se       # only these slugs
-    python3 slimsam_embed.py --every 2         # encode every 2nd slice
-    python3 slimsam_embed.py --skip-compress   # skip zstd step
-"""
-
 import json
 import os
 import shutil
@@ -43,9 +6,6 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
-
-# Dependency check — run BEFORE any torch import so the user gets a clear
-# message instead of a cryptic ImportError stacktrace.
 
 _MISSING: list[str] = []
 np = None
@@ -88,29 +48,20 @@ def _deps_ok() -> bool:
     )
     return False
 
-
-# Paths
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 MANIFEST = DATA / "manifest.json"
 
-# MedSAM ViT-B checkpoint from HuggingFace (preferred)
 MEDSAM_HF_REPO = "flaviagiammarino/medsam-vit-b"
 MEDSAM_HF_FILE = "pytorch_model.bin"
 
-# Fallback: standard SAM ViT-B from Meta
 SAM_VIT_B_URL = (
     "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
 )
 SAM_VIT_B_LOCAL = ROOT / "sam_vit_b_01ec64.pth"
 
-
-# Model loading
-
 def _download_medsam_checkpoint() -> Path | None:
-    """Try downloading the MedSAM checkpoint via huggingface_hub.
-    Returns the local path on success, None on failure.
-    """
+
     try:
         from huggingface_hub import hf_hub_download
         path = hf_hub_download(
@@ -122,9 +73,8 @@ def _download_medsam_checkpoint() -> Path | None:
         print(f"  [info] could not download MedSAM from HuggingFace: {e}")
         return None
 
-
 def _download_sam_vit_b() -> Path | None:
-    """Download the standard SAM ViT-B checkpoint from Meta."""
+
     if SAM_VIT_B_LOCAL.exists():
         return SAM_VIT_B_LOCAL
     print(f"  downloading SAM ViT-B from {SAM_VIT_B_URL} ...")
@@ -136,18 +86,14 @@ def _download_sam_vit_b() -> Path | None:
         print(f"  [error] failed to download SAM ViT-B: {e}")
         return None
 
-
 def load_model():
-    """Load MedSAM (preferred) or standard SAM ViT-B as fallback.
-    Returns a SamPredictor ready for set_image(), or None on failure.
-    """
+
     assert torch is not None
     assert sam_model_registry is not None
     assert SamPredictor is not None
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"  device: {device}")
 
-    # Prefer MedSAM checkpoint
     ckpt = _download_medsam_checkpoint()
     if ckpt is not None:
         print(f"  loading MedSAM ViT-B from {ckpt}")
@@ -173,40 +119,30 @@ def load_model():
     sam.eval()
     return SamPredictor(sam)
 
-
-# Embedding computation
-
 def load_slice_pngs(slug: str) -> list[Path]:
-    """Return sorted list of slice PNGs for a series."""
+
     folder = DATA / slug
     if not folder.is_dir():
         return []
     return sorted(folder.glob("*.png"))
-
 
 def compute_embeddings(
     predictor: Any,
     pngs: list[Path],
     every_n: int = 1,
 ) -> tuple[Any, int, int]:
-    """Run the SAM image encoder on each (or every Nth) slice.
 
-    Returns (embeddings, width, height) where embeddings is a Float16
-    array of shape (num_slices, C, H_embed, W_embed).  Slices that are
-    skipped (when every_n > 1) get zero-filled embeddings so the index
-    maps 1:1 to slice number.
-    """
     assert np is not None
     assert Image is not None
     assert torch is not None
-    # First pass: determine embedding shape from the first slice.
+
     img0 = np.array(Image.open(pngs[0]).convert("RGB"))
     width, height = img0.shape[1], img0.shape[0]
 
     with torch.no_grad():
         predictor.set_image(img0)
         sample = predictor.get_image_embedding().cpu().numpy()
-    # sample shape: (1, C, H_e, W_e)
+
     _, C, H_e, W_e = sample.shape
 
     embeddings = np.zeros((len(pngs), C, H_e, W_e), dtype=np.float16)
@@ -214,8 +150,7 @@ def compute_embeddings(
 
     for i in range(1, len(pngs)):
         if every_n > 1 and i % every_n != 0:
-            # Interpolate later or leave zeroed — the JS side checks for
-            # all-zero slices and reports "no embedding" for them.
+
             continue
         img = np.array(Image.open(pngs[i]).convert("RGB"))
         with torch.no_grad():
@@ -227,9 +162,6 @@ def compute_embeddings(
 
     return embeddings, width, height
 
-
-# Output
-
 def write_outputs(
     slug: str,
     embeddings: Any,
@@ -237,20 +169,18 @@ def write_outputs(
     height: int,
     skip_compress: bool,
 ) -> None:
-    """Write the .bin and .json files, optionally compress with zstd."""
+
     assert np is not None
     num_slices, C, H_e, W_e = embeddings.shape
-    stride = C * H_e * W_e * 2  # 2 bytes per float16
+    stride = C * H_e * W_e * 2
 
     bin_path = DATA / f"{slug}_sam_embed.bin"
     meta_path = DATA / f"{slug}_sam_meta.json"
 
-    # Write raw binary — flat float16 in C-contiguous order.
     embeddings.tofile(bin_path)
     total_bytes = bin_path.stat().st_size
     print(f"    wrote {bin_path.name}  ({total_bytes / 1024 / 1024:.1f} MB)")
 
-    # Write metadata JSON.
     meta = {
         "slug": slug,
         "slices": num_slices,
@@ -267,7 +197,6 @@ def write_outputs(
     _ = meta_path.write_text(json.dumps(meta, indent=2))
     print(f"    wrote {meta_path.name}")
 
-    # Optional zstd compression (same pattern as compress_volumes.py).
     if not skip_compress and shutil.which("zstd"):
         zst_path = DATA / f"{slug}_sam_embed.bin.zst"
         cmd = [
@@ -287,16 +216,12 @@ def write_outputs(
     elif not skip_compress:
         print("    [info] zstd not on PATH — skipping compression")
 
-
-# Main
-
 def main() -> bool:
     if not _deps_ok():
         return False
 
     args = sys.argv[1:]
 
-    # Parse flags.
     every_n = 1
     skip_compress = False
     slugs: list[str] = []
@@ -316,7 +241,6 @@ def main() -> bool:
             slugs.append(args[i])
             i += 1
 
-    # Load manifest.
     if not MANIFEST.exists():
         print(f"ERROR: manifest not found at {MANIFEST}", file=sys.stderr)
         return False
@@ -326,7 +250,6 @@ def main() -> bool:
         print("manifest has no series — nothing to do")
         return True
 
-    # Filter to requested slugs (or all).
     if slugs:
         wanted = set(slugs)
         series_list = [s for s in all_series if s["slug"] in wanted]
@@ -340,7 +263,6 @@ def main() -> bool:
         print("no matching series — nothing to do")
         return True
 
-    # Load model (once, reused across all series).
     print("loading SAM model ...")
     t0 = time.time()
     predictor = load_model()
@@ -348,7 +270,6 @@ def main() -> bool:
         return False
     print(f"  model loaded in {time.time() - t0:.1f}s")
 
-    # Process each series.
     ok = 0
     fail = 0
     for series in series_list:
@@ -372,7 +293,6 @@ def main() -> bool:
 
     print(f"\ndone: {ok} succeeded, {fail} failed")
     return fail == 0
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

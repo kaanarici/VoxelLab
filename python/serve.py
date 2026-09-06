@@ -1,36 +1,3 @@
-"""
-Tiny local helper server for VoxelLab.
-
-Runs exactly like `python3 -m http.server 8000` for static files, but adds a
-small JSON API so the Generate Analysis button in the viewer can actually
-kick off analyze.py without the user dropping into a terminal.
-
-Endpoints:
-    POST /api/analyze?slug=<slug>    start analyze.py for one series
-    GET  /api/analyze/result          read one source-keyed result without a noisy static 404
-    GET  /api/analyze/status          per-slug terminal job state + last line
-    GET  /api/ai/models               Claude Code + Codex models from the local CLIs
-    POST /api/ask                     body: {slug, slice, question, x, y} or {slug, slice, question, region:{x0,y0,x1,y1}}
-                                      point-and-ask the configured local AI
-                                      provider about a crop of a specific
-                                      slice. Cached to
-                                      data/<slug>_asks.json.
-    POST /api/consult                 synthesize all per-slice findings
-                                      into a consolidated recommendation.
-                                      Cached to data/consult.json. Pass
-                                      ?force=1 to regenerate.
-    GET  /api/consult                 return the cached consult if any.
-
-analyze.py is already idempotent: if a JSON sidecar already exists for the
-slug, only missing slices are sent to the configured AI provider. That means
-the button is safe to click — it never re-pays for work that is already
-cached.
-
-Run from the mri-viewer folder:
-    python3 serve.py              # :8000
-    python3 serve.py --port 8080
-"""
-
 import argparse
 import http.server
 import io
@@ -53,14 +20,12 @@ from host_policy import STATIC_PACKAGE_PATHS, STATIC_ROOT_DIRECTORIES, STATIC_RO
 from microscopy_convert import SUPPORTED_EXTENSIONS as SUPPORTED_CONVERT_EXTENSIONS
 from runtime_env import overlay_env
 
-
 ROOT = _server_config.ROOT
 DATA = _server_config.DATA
 TRACKBALL_CONTROLS_PATH = "/node_modules/three/examples/jsm/controls/TrackballControls.js"
 
-
 def allowed_static_path(request_path: str) -> bool:
-    """Limit the local server to viewer assets and runtime package modules."""
+
     path = unquote(str(request_path or ""))
     if path in {"", "/", "/index.html"}:
         return True
@@ -77,7 +42,6 @@ def allowed_static_path(request_path: str) -> bool:
         relative.startswith(package_path) if package_path.endswith("/") else relative == package_path
         for package_path in STATIC_PACKAGE_PATHS
     )
-
 
 def rewritten_trackball_controls_source(source: str) -> str:
     return source.replace("from 'three';", "from '../../../build/three.module.js';")
@@ -99,7 +63,6 @@ RATE_LIMIT_LOCK = _security_http.RATE_LIMIT_LOCK
 RUNNING = _ai_routes.RUNNING
 LOCK = _ai_routes.LOCK
 
-
 class ViewerHTTPServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 128
@@ -108,38 +71,29 @@ class ViewerHTTPServer(http.server.ThreadingHTTPServer):
         self.address_family = socket.AF_INET6 if ":" in str(server_address[0]) else socket.AF_INET
         super().__init__(server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
 
-
 def env_bool(value: str | None) -> bool | None:
     return _server_config.env_bool(value)
-
 
 def env_list(value: str | None) -> list[str] | None:
     return _server_config.env_list(value)
 
-
 def runtime_config() -> dict:
     return _server_config.runtime_config(ROOT, overlay_env, public_ai_status, modal_proxy_available)
-
 
 def _lazy_ask():
     return _ai_routes.lazy_ask()
 
-
 def valid_slugs() -> set[str]:
     return _ai_routes.valid_slugs(DATA)
-
 
 def modal_cloud_base() -> str:
     return _cloud_proxy.modal_cloud_base(overlay_env)
 
-
 def modal_auth_token() -> str:
     return _cloud_proxy.modal_auth_token(overlay_env)
 
-
 def modal_proxy_available() -> bool:
     return _cloud_proxy.modal_proxy_available(modal_cloud_base, modal_auth_token)
-
 
 def proxy_modal_json(function_name: str, payload: dict, timeout: int = 60) -> tuple[int, dict]:
     return _cloud_proxy.proxy_modal_json(
@@ -152,77 +106,58 @@ def proxy_modal_json(function_name: str, payload: dict, timeout: int = 60) -> tu
         urlrequest.urlopen,
     )
 
-
 def localhost_origin(origin: str) -> str:
     return _security_http.localhost_origin(origin)
-
 
 def is_same_origin(origin: str, host: str) -> bool:
     return _security_http.is_same_origin(origin, host)
 
-
 def loopback_host(value: str) -> bool:
     return _security_http.loopback_host(value)
-
 
 def content_security_policy() -> str:
     return _security_http.content_security_policy()
 
-
 def local_nostore_static_path(path: str) -> bool:
     return _security_http.local_nostore_static_path(path)
-
 
 def https_origin(value: str | None) -> str:
     return _asset_proxy.https_origin(value)
 
-
 def manifest_proxy_origins(manifest_path=None) -> set[str]:
     return _asset_proxy.manifest_proxy_origins(manifest_path or (DATA / "manifest.json"))
-
 
 def configured_proxy_origins(config: dict | None = None) -> set[str]:
     return _asset_proxy.configured_proxy_origins(config, DATA, runtime_config)
 
-
 def private_proxy_host(hostname: str | None) -> bool:
     return _asset_proxy.private_proxy_host(hostname)
-
 
 def allowed_proxy_asset_url(url: str, config: dict | None = None) -> str:
     return _asset_proxy.allowed_proxy_asset_url(url, config, configured_proxy_origins)
 
-
 def proxy_asset_request(url: str) -> urlrequest.Request:
     return _asset_proxy.proxy_asset_request(url)
-
 
 def proxy_asset_ssl_context():
     return _asset_proxy.proxy_asset_ssl_context()
 
-
 def proxy_asset_urlopen(request, *, timeout, context):
     return _asset_proxy.proxy_asset_urlopen(request, timeout=timeout, context=context)
 
-
 PROXY_ASSET_SSL_CONTEXT = proxy_asset_ssl_context()
-
 
 def consume_rate_limit(path: str, client_key: str) -> tuple[bool, int]:
     return _security_http.consume_rate_limit(path, client_key)
 
-
 def valid_cloud_upload_items(items) -> bool:
     return _cloud_proxy.valid_cloud_upload_items(items)
-
 
 def validate_cloud_proxy_payload(path: str, payload) -> tuple[int, dict] | None:
     return _cloud_proxy.validate_cloud_proxy_payload(path, payload)
 
-
 def validate_ask_payload(body, known_slugs: set[str]) -> tuple[dict, tuple[int, dict] | None]:
     return _ai_routes.validate_ask_payload(body, known_slugs)
-
 
 def _analysis_status_entry(
     *,
@@ -245,18 +180,14 @@ def _analysis_status_entry(
         slug=slug,
     )
 
-
 def _stream_tail(proc, analysis_key: str, slug: str) -> None:
     return _ai_routes.stream_tail(proc, analysis_key, slug, RUNNING, LOCK, time)
-
 
 def series_meta(slug: str) -> dict | None:
     return _ai_routes.series_meta(DATA, slug)
 
-
 def parse_analysis_slices(raw: str, slug: str) -> tuple[list[int] | None, str | None]:
     return _ai_routes.parse_analysis_slices(raw, slug, series_meta)
-
 
 def start_analysis(slug: str, *, analysis_key: str, force: bool = False, slices: list[int] | None = None) -> tuple[int, str]:
     return _ai_routes.start_analysis(
@@ -273,22 +204,17 @@ def start_analysis(slug: str, *, analysis_key: str, force: bool = False, slices:
         stream_tail=_stream_tail,
     )
 
-
 def status_payload(analysis_key: str | None = None) -> dict:
     return _ai_routes.status_payload(RUNNING, LOCK, analysis_key)
-
 
 def consult_ready() -> bool:
     return _ai_routes.consult_ready(DATA)
 
-
 def ai_post_guard(config: dict | None = None) -> tuple[int, dict] | None:
     return _ai_routes.ai_post_guard(config, runtime_config)
 
-
 class Handler(http.server.SimpleHTTPRequestHandler):
-    # Serve only from the mri-viewer folder regardless of where we were
-    # launched. `directory=` was added in 3.7.
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
@@ -296,8 +222,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             super().copyfile(source, outputfile)
         except (BrokenPipeError, ConnectionResetError):
-            # Browsers routinely cancel prefetches and superseded image loads.
-            # The request is already over, so do not emit a server traceback.
+
             return
 
     def end_headers(self):
@@ -324,7 +249,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             _ = self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError):
-            # Client disconnected before reading the JSON body.
+
             return
 
     def _has_local_api_token(self) -> bool:
@@ -505,17 +430,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if _ai_routes.handle_ai_get(self, parsed, DATA, self._has_local_api_token, status_payload):
             return
-        # Everything else -> static file under ROOT
+
         return super().do_GET()
 
-    # Quieter access log so the terminal isn't drowned in image requests.
     def log_message(self, format, *args):
         msg = format % args
         if any(marker in msg for marker in ("favicon.ico", "_asks.json", "_analysis.json")) and " 404 " in msg:
             return
         if "/api/" in msg or any(code in msg for code in (" 404 ", " 500 ", " 409 ")):
             _ = sys.stderr.write(f"[serve] {msg}\n")
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser()
@@ -544,7 +467,6 @@ def main() -> bool:
     except KeyboardInterrupt:
         print("\nbye")
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

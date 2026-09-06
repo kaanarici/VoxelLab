@@ -247,7 +247,7 @@ test('showHoverAt resolves hover region names from the active labels overlay ima
   };
   state.imgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([10, 20, 30, 40]) }];
   state.regionImgs = [{ complete: true, naturalWidth: 2, _bytes: Uint8Array.from([0, 7, 0, 0]) }];
-  // Shape: { legend: { 7: "Thalamus" }, colors: { 7: [255, 0, 0] } }.
+
   state.overlays.regionMeta = { legend: { 7: 'Thalamus' }, colors: { 7: [255, 0, 0] } };
   state.regionVoxels = null;
 

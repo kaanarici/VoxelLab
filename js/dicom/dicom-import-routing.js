@@ -21,13 +21,12 @@ export async function parseSourceManifests(files = [], { onActualFileBytes = nul
       if (key) bySeriesUID.set(key, { payload, file });
     } catch (error) {
       if (isDICOMResourceLimit(error)) throw error;
-      // Ignore non-source JSON attachments.
+
     }
   }
   return bySeriesUID;
 }
 
-/** Build a stable DICOM series grouping key from study + series identifiers. */
 export function dicomSeriesGroupKey(meta) {
   const study = getStr(meta, 'StudyInstanceUID', 'study');
   const fallback = [

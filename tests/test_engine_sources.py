@@ -9,7 +9,6 @@ from engine_sources import (
     ultrasound_summary,
 )
 
-
 def test_normalize_source_manifest_promotes_geometry_model_and_version() -> None:
     manifest = normalize_source_manifest(
         {
@@ -29,7 +28,6 @@ def test_normalize_source_manifest_promotes_geometry_model_and_version() -> None
 
     assert manifest["sourceRecordVersion"] == 1
     assert manifest["projection"]["geometryModel"] == "parallel-beam-stack"
-
 
 def test_projection_manifest_errors_accepts_v2_geometry_model() -> None:
     errors = projection_manifest_errors(
@@ -52,7 +50,6 @@ def test_projection_manifest_errors_accepts_v2_geometry_model() -> None:
     )
 
     assert errors == []
-
 
 def test_projection_and_ultrasound_summary_include_versioned_contract_fields() -> None:
     projection = projection_summary(
@@ -82,7 +79,6 @@ def test_projection_and_ultrasound_summary_include_versioned_contract_fields() -
     assert ultrasound["sourceRecordVersion"] == 2
     assert ultrasound["profileId"] == "tracked-freehand-sector-default"
 
-
 def test_registration_manifest_errors_require_explicit_selected_pair() -> None:
     valid = {
         "sourceRecordVersion": 2,
@@ -107,7 +103,6 @@ def test_registration_manifest_errors_require_explicit_selected_pair() -> None:
     assert any("different series" in error for error in errors)
     assert any("transform" in error for error in errors)
 
-
 def test_registration_summary_normalizes_transform_alias() -> None:
     summary = registration_summary({
         "sourceRecordVersion": 2,
@@ -127,7 +122,6 @@ def test_registration_summary_normalizes_transform_alias() -> None:
         "source": "external-json",
         "sourceRecordVersion": 2,
     }
-
 
 def test_manifest_output_shape_requires_real_ints_and_reasonable_volume_size() -> None:
     errors = projection_manifest_errors(

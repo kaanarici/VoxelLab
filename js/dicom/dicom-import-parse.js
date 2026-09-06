@@ -1,24 +1,3 @@
-// DICOM parsing with robust handling of real-world DICOM variations.
-// Compressed transfer syntaxes are routed through dicom-codecs.js and fail
-// closed when the browser cannot recover medically faithful pixel samples.
-//
-// Correctness notes:
-//   - Slice ordering: uses ImagePositionPatient (spatial) when available,
-//     falls back to InstanceNumber (acquisition order). IPP sorting is
-//     critical for non-axial acquisitions where InstanceNumber may not
-//     correspond to spatial position.
-//   - BitsStored vs BitsAllocated: masks pixel values to BitsStored to
-//     discard padding bits in the upper portion of the allocated word.
-//   - PhotometricInterpretation: handles MONOCHROME1 (inverted) by
-//     storing the shared 2D/MPR display domain in presentation polarity.
-//   - PixelSpacing: treated as optional. When absent, measurements are
-//     disabled (pixelSpacing = [0, 0]) rather than assuming 1mm.
-//   - RescaleSlope/Intercept: applied per-slice (can vary per frame in
-//     enhanced DICOM, though we read per-file for now).
-//   - WindowCenter/WindowWidth: read from DICOM tags. If absent,
-//     auto-computed from the 2nd-98th percentile of the pixel data
-//     (not min/max, which is dominated by outliers).
-
 import { CT_HU_LO, CT_HU_HI } from '../core/constants.js';
 import { DCMJS_IMPORT_URL } from '../core/dependencies.js';
 import {
@@ -72,7 +51,6 @@ function stripBasicOffsetTable(values, frameCount) {
   return values.slice(1);
 }
 
-/** Expand an enhanced multi-frame instance into per-frame `{ meta, pixels|encodedValue }` records. */
 export function extractEnhancedMultiFramePixels(item) {
   const meta = item?.meta || item;
   const pixelData = item?.pixelData || meta?.PixelData;
@@ -119,17 +97,11 @@ export function extractEnhancedMultiFramePixels(item) {
   }));
 }
 
-// Sort slices spatially by ImagePositionPatient when available.
-// Falls back to InstanceNumber. IPP sorting projects each slice's
-// position onto the slice normal (cross product of IOP row × col)
-// and sorts by that scalar — correct for any acquisition plane.
 function sortSlicesSpatially(datasets) {
   const sorted = sortDatasetsSpatially(datasets, (item) => item.meta);
   datasets.splice(0, datasets.length, ...sorted);
 }
 
-// Auto W/L from percentiles (more robust than min/max).
-// Callers provide already-transformed, non-padding samples.
 function autoWindowLevel(samples) {
   samples.sort((a, b) => a - b);
   const lo = samples[Math.floor(samples.length * 0.02)];
@@ -163,8 +135,6 @@ function integerTagValue(meta, key) {
   return { present: true, value: parsed };
 }
 
-// DICOM Pixel Padding Value and Range Limit are stored samples, not rescaled
-// modality values. Keep this boundary before windowing and normalization.
 function pixelPaddingRange(meta, bitsStored, pixelRepresentation, photometric) {
   const value = integerTagValue(meta, 'PixelPaddingValue');
   const limit = integerTagValue(meta, 'PixelPaddingRangeLimit');
@@ -292,7 +262,6 @@ async function parseDicomGroupLocally(files, lib, onProgress) {
   return datasets;
 }
 
-/** Discover every series, then decode and yield one bounded series at a time. */
 export async function* iterateDICOMFileGroups(files, onProgress = () => {}) {
   const selectedFiles = Array.from(files || []);
   assertDICOMInputFiles(selectedFiles);
@@ -351,20 +320,17 @@ export async function* iterateDICOMFileGroups(files, onProgress = () => {}) {
   }
 }
 
-/** Parse local DICOM files into one or more importable series groups. */
 export async function parseDICOMFileGroups(files, onProgress = () => {}) {
   const results = [];
   for await (const result of iterateDICOMFileGroups(files, onProgress)) results.push(result);
   return results.length ? results : null;
 }
 
-/** Parse local DICOM files and return the first importable series result. */
 export async function parseDICOMFiles(files, onProgress = () => {}) {
   for await (const result of iterateDICOMFileGroups(files, onProgress)) return result;
   return null;
 }
 
-/** Convert a grouped DICOM stack into viewer-ready byte slices, manifest metadata, and raw voxels. */
 export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {}, slug, skippedReasons = [], sourceManifest = null, signal = null) {
   const throwIfAborted = () => {
     if (signal?.aborted) throw new DOMException('DICOM import was cancelled', 'AbortError');
@@ -386,7 +352,6 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
 
   assertDICOMSeriesWorkingSet(datasets);
 
-  // Spatial sort (IPP when possible).
   sortSlicesSpatially(datasets);
   const importClassification = classifyDICOMImport(datasets, sourceManifest);
   const postExpansionRestriction = importRestrictionReason(importClassification);
@@ -406,14 +371,12 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
   const modality = getStr(first, 'Modality', 'OT');
   const bitsAllocated = getInt(first, 'BitsAllocated', 16);
   const bitsStored = getInt(first, 'BitsStored', bitsAllocated);
-  const pixelRepresentation = getInt(first, 'PixelRepresentation', 0); // 0=unsigned, 1=signed
+  const pixelRepresentation = getInt(first, 'PixelRepresentation', 0);
   const photometric = getStr(first, 'PhotometricInterpretation', 'MONOCHROME2').trim().toUpperCase();
   const isInverted = photometric === 'MONOCHROME1';
 
-  // Bit mask for BitsStored (discard padding bits)
   const bitMask = (1 << bitsStored) - 1;
 
-  // Transfer syntax for codec detection
   const transferSyntax = getStr(first, 'TransferSyntaxUID')
     || first['00020010']?.Value?.[0] || '';
   const compressed = datasets.some(d => isCompressed(getStr(d.meta, 'TransferSyntaxUID') || transferSyntax));
@@ -485,7 +448,6 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
         if (!pixels) continue;
       }
 
-      // Per-slice rescale (can vary per frame in enhanced DICOM)
       const slope = getFloat(meta, 'RescaleSlope', 1);
       const intercept = getFloat(meta, 'RescaleIntercept', 0);
       const count = Math.min(pixels.length, voxelsPerSlice);
@@ -509,7 +471,7 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
 
       for (let i = 0; i < count; i++) {
         if ((i & 0xffff) === 0) throwIfAborted();
-        // Shape: signed `-1024`, packed signed `0x0c18`, or unsigned `4095`.
+
         const stored = storedPixelValue(pixels[i], bitsStored, pixelRepresentation, bitMask);
         if (isPaddingValue(stored, padding)) {
           rawVolume[rawBase + i] = Number.NaN;
@@ -535,13 +497,12 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
       rawSliceIdx++;
     } catch (error) {
       if (error?.name === 'AbortError' || signal?.aborted) throw error;
-      // Skip bad slices
+
     }
   }
 
   if (!rawSliceIdx) return null;
 
-  // Normalize to [0,1]. CT: fixed HU band (see convert_ct.py); else data min/max.
   const actualVoxels = rawSliceIdx * voxelsPerSlice;
   const hrVoxels = rawSliceIdx < datasets.length
     ? rawVolume.subarray(0, actualVoxels) : rawVolume;
@@ -617,7 +578,6 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     ? 'display-volume'
     : reconstructionCapabilityForGeometryKind(geometryKind);
 
-  // Build a readable name from available metadata
   let name = seriesDesc;
   if (!name) {
     const parts = [modality];
@@ -669,9 +629,7 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     isProjection: importClassification.isProjection,
     isProjectionSet: importClassification.isProjectionSet,
     isReconstructedVolumeStack: importClassification.isReconstructedVolumeStack,
-    // Extra metadata for display (not used by viewer logic). Patient name is
-    // deliberately NOT retained — it is PHI and nothing reads it (local-first
-    // privacy: don't hold identifying data we never use).
+
     _bodyPart: bodyPart,
     _studyDate: studyDate,
     _photometric: photometric,

@@ -1,6 +1,3 @@
-// Flatten slice PNGs into Uint8 stacks (+ seg / region volumes). Shared by
-// 3D, MPR, and slice hover. See viewer.js / volume-3d orchestration.
-
 import { state } from '../core/state.js';
 import { createImageBitmapBatch } from '../image-bitmap-batch.js';
 import { readImageByteData } from '../overlay/overlay-data.js';
@@ -30,28 +27,12 @@ function overlayVoxelsAppeared(before) {
   );
 }
 
-// In-flight builds share the same study-aware volume cache key used by
-// restored runtime caches.
 const _pendingBuilds = new Map();
 
 function currentVolumeVariant(series) {
   return state.overlays.useBrain && series?.hasBrain ? 'brain' : 'base';
 }
 
-/**
- * Pre-build the base voxel volume off the main thread before any sync
- * ensureVoxels() call hits the synchronous fallback. Safe to call
- * multiple times — concurrent callers share one in-flight build, and a
- * cached result short-circuits immediately.
- *
- * Skips when: voxels already cached for this key; local raw volume present
- * (already optimal); worker/OffscreenCanvas/createImageBitmap unavailable;
- * slice images not all loaded yet.
- *
- * @returns {Promise<boolean>} true if the worker built voxels (or they were
- *   already cached), false if the caller should fall through to the
- *   synchronous main-thread path.
- */
 export async function tryFlattenVoxelsInWorker() {
   const series = state.manifest?.series?.[state.seriesIdx];
   if (!series) return false;
@@ -59,8 +40,6 @@ export async function tryFlattenVoxelsInWorker() {
   const key = seriesVariantKey(series, variant, state.manifest);
   if (state.voxels && state.voxelsKey === key) return true;
 
-  // Local raw volumes are already in memory as Float32; the sync path is
-  // fastest there because it just clamps to uint8 inline.
   const localRaw = !state.overlays.useBrain && state._localRawVolumes?.[series.slug];
   if (localRaw) {
     touchLocalRawVolume(series.slug);
@@ -81,7 +60,7 @@ export async function tryFlattenVoxelsInWorker() {
     && inflight.requestId === requestId
     && inflight.viewerSession === viewerSession
   ) {
-    try { await inflight.promise; } catch { /* fall through */ }
+    try { await inflight.promise; } catch {                    }
     return state.voxels && state.voxelsKey === key;
   }
 
@@ -98,8 +77,7 @@ export async function tryFlattenVoxelsInWorker() {
       return await flattenImageBitmapsInWorker({ bitmaps, w: W, h: H, d: D });
     } catch (err) {
       console.warn('voxellab tryFlattenVoxelsInWorker: worker rejected', err);
-      // If the worker rejected before postMessage handed ownership over (capability
-      // check, validation, throw), the bitmaps still belong to us — close them.
+
       for (const bmp of bitmaps) bmp?.close?.();
       return null;
     }
@@ -128,15 +106,10 @@ export async function tryFlattenVoxelsInWorker() {
   return true;
 }
 
-/** Called from initVolume3D with the same renderVolumes as the rest of the app. */
 export function initEnsureVoxels(deps) {
   _renderVolumes = deps.renderVolumes;
 }
 
-/**
- * Reads every slice PNG into a flat Uint8Array once per (series, variant) so
- * both 3D and MPR can share it. Also reads the seg mask stack when present.
- */
 export function ensureVoxels() {
   const series = state.manifest.series[state.seriesIdx];
   const variant = currentVolumeVariant(series);

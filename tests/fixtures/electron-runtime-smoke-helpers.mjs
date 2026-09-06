@@ -1,4 +1,3 @@
-/* global document, getComputedStyle, window */
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs/promises';
@@ -216,7 +215,7 @@ export async function closeApp(app) {
   try {
     await app.close();
   } catch {
-    // The Electron process may already be closing after a failed launch assertion.
+
   }
 }
 

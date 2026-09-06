@@ -1,4 +1,3 @@
-/* global Buffer */
 import { expect, test } from '@playwright/test';
 
 const ONE_PIXEL_PNG = Buffer.from(

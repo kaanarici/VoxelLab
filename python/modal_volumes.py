@@ -7,7 +7,6 @@ from geometry import affine_lps_from_series, geometry_from_slices
 from modal_io import compress_raw_volume
 from series_contract import PROJECTION_MISSING_GEOMETRY, normalize_series_entry
 
-
 def normalize_volume_for_pngs(vol, modality: str, np) -> Any:
     if modality == "CT":
         lo, hi = png_normalization_window(vol, modality, np)
@@ -17,14 +16,12 @@ def normalize_volume_for_pngs(vol, modality: str, np) -> Any:
     pngs = np.clip((vol - lo) / max(hi - lo, 1), 0, 1)
     return (pngs * 255).astype(np.uint8)
 
-
 def normalize_volume_for_raw(vol, modality: str, np) -> Any:
     if modality == "CT":
         lo_hu, hi_hu = raw_normalization_window(vol, modality, np)
         return np.clip((vol - lo_hu) / (hi_hu - lo_hu), 0, 1)
     lo_r, hi_r = raw_normalization_window(vol, modality, np)
     return np.clip((vol - lo_r) / max(hi_r - lo_r, 1e-6), 0, 1)
-
 
 def png_normalization_window(vol, modality: str, np) -> tuple[float, float]:
     if modality == "CT":
@@ -35,7 +32,6 @@ def png_normalization_window(vol, modality: str, np) -> tuple[float, float]:
         return float(lo), float(hi)
     return 0.0, max(float(vol.max()) if vol.size else 0.0, 1.0)
 
-
 def raw_normalization_window(vol, modality: str, np) -> tuple[float, float]:
     if modality == "CT":
         return -1024.0, 2048.0
@@ -44,7 +40,6 @@ def raw_normalization_window(vol, modality: str, np) -> tuple[float, float]:
         lo, hi = np.percentile(nz, [0.1, 99.9])
         return float(lo), float(hi)
     return 0.0, 1.0
-
 
 def volume_normalization_report(vol, modality: str, np) -> dict[str, Any]:
     png_lo, png_hi = png_normalization_window(vol, modality, np)
@@ -85,12 +80,10 @@ def volume_normalization_report(vol, modality: str, np) -> dict[str, Any]:
         },
     }
 
-
 def write_png_stack(out_dir: Path, pngs, Image) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for z in range(pngs.shape[0]):
         Image.fromarray(pngs[z], mode="L").save(out_dir / f"{z:04d}.png")
-
 
 def write_nifti_from_dicom_stack(vol_dhw, slices, out_path: Path, np, nib) -> None:
     geometry = geometry_from_slices(slices)
@@ -107,10 +100,8 @@ def write_nifti_from_dicom_stack(vol_dhw, slices, out_path: Path, np, nib) -> No
     vol_xyz = np.transpose(vol_dhw, (2, 1, 0))
     nib.save(nib.Nifti1Image(vol_xyz.astype(np.float32), affine), str(out_path))
 
-
 def source_uid_value(source_manifest: dict[str, Any], key: str, fallback: str = "") -> str:
     return str(source_manifest.get(key, "") or fallback or "")
-
 
 def build_projection_set_entry(
     projection_set: dict[str, Any],
@@ -120,7 +111,7 @@ def build_projection_set_entry(
     projection_calibration: dict[str, Any] | None = None,
     engine_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    # Shape: {"id":"projection_set_1","projectionKind":"cbct","projectionCount":120,...}.
+
     entry = {
         "id": str(projection_set["id"]),
         "slug": str(projection_set["id"]),
@@ -151,7 +142,6 @@ def build_projection_set_entry(
     if isinstance(engine_report, dict) and engine_report:
         entry["engineReport"] = engine_report
     return entry
-
 
 def build_derived_volume_entry(
     *,
@@ -215,7 +205,6 @@ def build_derived_volume_entry(
     if body_part:
         entry["bodyPart"] = body_part
     return normalize_series_entry(entry, public_url)
-
 
 def write_volume_outputs(*, vol, slug: str, modality: str, out_root: Path, public_url: str, Image, np) -> tuple[Path, Path, dict[str, Any]]:
     out_dir = out_root / slug

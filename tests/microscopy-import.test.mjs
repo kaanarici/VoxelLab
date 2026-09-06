@@ -1,4 +1,3 @@
-/* global Buffer */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -450,7 +449,7 @@ test('buildMicroscopySeriesResults retains raw single-channel planes for analysi
     assert.deepEqual(Object.keys(result.rawPlanes), ['0|0']);
     const planes = result.rawPlanes['0|0'];
     assert.equal(planes.length, 2);
-    // Raw values > 255 prove this is the raw domain, not an 8-bit display reconstruction.
+
     assert.deepEqual([...planes[0].pixels], [40000, 10000]);
     assert.deepEqual([planes[0].width, planes[0].height], [2, 1]);
 

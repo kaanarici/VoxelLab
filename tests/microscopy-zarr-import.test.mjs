@@ -1,4 +1,3 @@
-/* global Buffer, ReadableStream */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';

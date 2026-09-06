@@ -1,4 +1,3 @@
-/* global Event, document, fetch, requestAnimationFrame */
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
@@ -6,7 +5,6 @@ import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture
 function seriousMessage(consoleMessage) {
   if (consoleMessage.type() !== 'error') return null;
 
-  // Example: Chromium may log a favicon miss that is unrelated to app health.
   const text = consoleMessage.text();
   if (text.includes('favicon.ico') && text.includes('404')) return null;
   if (text.includes('_asks.json') && text.includes('404')) return null;
@@ -17,7 +15,7 @@ function seriousMessage(consoleMessage) {
 }
 
 async function waitForCanvasPaint(page, selector = '#view') {
-  // Shape: { found: true, width: 768, height: 768, nonBlackPixels: 530074, maxChannel: 255 }.
+
   let lastStats = null;
 
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -139,7 +137,7 @@ async function waitForMprVolumeReady(page) {
 
 test('loads a local-first volume fixture and paints the main 2D canvas', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
-  // Shape: ["console.error: ...", "pageerror: ..."].
+
   const seriousErrors = [];
 
   page.on('console', (message) => {

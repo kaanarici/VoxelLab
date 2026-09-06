@@ -1,13 +1,3 @@
-// Centralized UI sync after state mutations.
-//
-// Every slice-navigation site was assembling its own redraw list,
-// and most missed mode-specific updates (MPR crosshair, compare grid,
-// 3D clip plane, sparkline, measurements). This module replaces those
-// scattered lists with two functions:
-//
-//   syncSlice()    — call after any state.sliceIdx change
-//   syncOverlays() — call after toggling tissue/labels/heatmap/colormap
-
 import { $ } from './dom.js';
 import { state, subscribe } from './core/state.js';
 import { updateScrubFill } from './cine.js';
@@ -57,17 +47,6 @@ function redrawActiveViews({ fullMpr = false, interactiveMpr = false } = {}) {
   if (state.mode === 'cmp') drawCompare();
 }
 
-// rAF coalescer: multiple `state.sliceIdx` writes inside one task
-// (e.g. a wheel burst, a `batch()` block, or sliceIdx + mode toggles) collapse
-// into a single redraw on the next animation frame. The coalescer also folds
-// `fullMpr=true` requests so a same-tick mode change correctly upgrades the
-// scheduled redraw to a full MPR pass.
-//
-// Skips the redraw entirely when `(sliceIdx, mode)` is unchanged AND no
-// fullMpr request is pending — no-op writes do not waste a frame.
-//
-// Always runs the final redraw if `sliceIdx` changed since the last fired
-// frame (regression anchor: never get stuck on the penultimate slice).
 let _rafScheduled = false;
 let _rafFullMpr = false;
 let _rafInteractiveMpr = false;
@@ -223,26 +202,14 @@ export function initReactiveSync({
     scheduleRedraw({ fullMpr: true });
   });
 
-  // Anatomy-label isolate/lock selection. Repaint the 2D/MPR/compare colored
-  // mask and rebuild the 3D label LUT so isolation tracks hover and lock changes
-  // (regionColors are filtered per-frame at draw time; no cache clear needed).
-  // lockedLabels also flips the Structures checkbox state, so re-render the list.
-  for (const key of ['lockedLabels', 'previewLabel']) {
+  for (const key of ['lockedLabels', 'hiddenLabels']) {
     subscribe(key, () => {
       const three = getThreeRuntime();
       scheduleRedraw({ fullMpr: true });
       if (three.mesh) void updateLabelTexture();
-      if (key === 'lockedLabels') renderStructuresPanel();
+      renderStructuresPanel();
     });
   }
-  // hiddenLabels (the Structures checkboxes' single source of truth): a toggle
-  // repaints the 2D mask + 3D LUT and re-renders the list from effective state.
-  subscribe('hiddenLabels', () => {
-    const three = getThreeRuntime();
-    scheduleRedraw({ fullMpr: true });
-    if (three.mesh) void updateLabelTexture();
-    renderStructuresPanel();
-  });
 
   for (const key of ['window', 'level', 'colormap', 'invertDisplay', 'imgs', 'loaded']) {
     subscribe(key, () => {
@@ -357,23 +324,11 @@ export function initReactiveSync({
   }
 }
 
-/**
- * Sync all UI after state.sliceIdx changed.
- *
- * @param {object} [opts]
- * @param {boolean} [opts.scrub=true]      Update scrub slider position
- * @param {boolean} [opts.fullMpr=false]   Full MPR redraw vs Z-plane only
- */
 export function syncSlice({ scrub = true, fullMpr = false } = {}) {
   syncSliceUI({ scrub });
   redrawActiveViews({ fullMpr });
 }
 
-/**
- * Redraw all mode-appropriate canvases after an overlay or display change
- * (brain toggle, seg toggle, colormap change, window/level, invert, etc.).
- * Does NOT touch the scrub slider or slice counter — only redraws pixels.
- */
 export function syncOverlays() {
   redrawActiveViews({ fullMpr: true });
   if (is3dActive() || isMprActive()) ensureActiveOverlayVolumes();

@@ -1,7 +1,3 @@
-// Render the VoxelLab brand masters into the concrete files the desktop build
-// consumes: macOS .icns, Windows .ico, the 1024 PNG, the in-app favicon, and
-// the DMG installer background (@1x + @2x retina). Run generate-logo.mjs first.
-
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,24 +8,18 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const ASSETS = join(ROOT, 'electron', 'assets');
 
-// Full-bleed dark squircle (favicon + Windows .ico + icon.png look best edge-to-edge).
 const FULLBLEED_SVG = join(HERE, 'voxellab-icon-dark.svg');
-// macOS safe-area master (824 squircle body inside a 1024 canvas with a transparent
-// margin) so VoxelLab matches other Dock/Finder icons under the Tahoe icon grid.
+
 const MACOS_SVG = join(HERE, 'voxellab-icon-macos.svg');
 
 const rsvg = (svg, w, h, out) =>
   execFileSync('rsvg-convert', ['-w', String(w), '-h', String(h), svg, '-o', out]);
 
-// ── 1. App icon PNG (1024 full-bleed; Windows/Linux/fallback) + macOS safe-area
-//        PNG used by the runtime Dock-icon override (app.dock.setIcon).
 rsvg(FULLBLEED_SVG, 1024, 1024, join(ASSETS, 'icon.png'));
 console.log('wrote electron/assets/icon.png');
 rsvg(MACOS_SVG, 1024, 1024, join(ASSETS, 'icon-macos.png'));
 console.log('wrote electron/assets/icon-macos.png');
 
-// ── 2. macOS .icns via a temp iconset + iconutil, from the safe-area master so
-//        every rep carries the transparent margin.
 const work = mkdtempSync(join(tmpdir(), 'voxellab-icns-'));
 const iconset = join(work, 'icon.iconset');
 mkdirSync(iconset, { recursive: true });
@@ -44,7 +34,6 @@ for (const [size, name] of icnsSpec) rsvg(MACOS_SVG, size, size, join(iconset, n
 execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(ASSETS, 'icon.icns')]);
 console.log('wrote electron/assets/icon.icns');
 
-// ── 3. Windows .ico (multi-resolution, full-bleed).
 const icoPngs = [16, 24, 32, 48, 64, 128, 256].map(size => {
   const p = join(work, `ico-${size}.png`);
   rsvg(FULLBLEED_SVG, size, size, p);
@@ -53,12 +42,9 @@ const icoPngs = [16, 24, 32, 48, 64, 128, 256].map(size => {
 execFileSync('magick', [...icoPngs, join(ASSETS, 'icon.ico')]);
 console.log('wrote electron/assets/icon.ico');
 
-// ── 4. favicon.svg — keep the in-app/browser tab mark in sync with the brand.
 writeFileSync(join(ROOT, 'favicon.svg'), faviconSvg());
 console.log('wrote favicon.svg');
 
-// ── 5. DMG installer background (@1x 660×400, @2x 1320×800). appdmg auto-loads
-// the @2x sibling when the window size matches the @1x pixel size.
 const bg = join(work, 'dmg-background.svg');
 writeFileSync(bg, dmgBackgroundSvg());
 rsvg(bg, 660, 400, join(ASSETS, 'dmg-background.png'));
@@ -67,11 +53,8 @@ console.log('wrote electron/assets/dmg-background.png (+@2x)');
 
 rmSync(work, { recursive: true, force: true });
 
-// ── helpers ────────────────────────────────────────────────────────────────
-
 function faviconSvg() {
-  // Compact voxel cube for tab/PWA use; lit faces + red accent voxel, no internal
-  // grid (illegible at favicon sizes). Mirrors the app-icon palette/lighting.
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="fb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34353a"/><stop offset="1" stop-color="#161719"/></linearGradient>
@@ -90,8 +73,7 @@ function faviconSvg() {
 }
 
 function dmgBackgroundSvg() {
-  // Light, macOS-native install backdrop. Icon centres must match the forge
-  // maker `contents` coordinates (app 176,212 · Applications 484,212).
+
   const font = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 400" width="660" height="400">
   <rect width="660" height="400" fill="#f5f5f7"/>

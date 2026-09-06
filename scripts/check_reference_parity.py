@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Run parity-oriented internal engine checks for advanced imaging paths."""
 
 from __future__ import annotations
 
@@ -21,13 +20,11 @@ SUITES = {
     ],
 }
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run parity-oriented advanced imaging checks.")
     _ = parser.add_argument("--suite", choices=sorted(SUITES), action="append", help="Named suite to run. Repeatable.")
     _ = parser.add_argument("--all", action="store_true", help="Run every known parity suite.")
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
@@ -37,7 +34,6 @@ def main() -> int:
         for command in SUITES[suite_name]:
             _ = subprocess.run(command, cwd=ROOT, check=True)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

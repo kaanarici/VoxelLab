@@ -24,13 +24,13 @@ function loadSettings() {
       _settings.opacity = Math.max(0.15, Math.min(0.75, stored.opacity));
     }
     if (stored.smooth?.constructor === Boolean) _settings.smooth = stored.smooth;
-  } catch { /* keep defaults */ }
+  } catch {                     }
 }
 
 function saveSettings() {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(_settings));
-  } catch { /* ignore private-mode storage failures */ }
+  } catch {                                            }
 }
 
 async function loadSlimSAM() {
@@ -78,7 +78,7 @@ export function setSlimSAMMode(active) {
   }
   if (!_active) {
     _lastMask = null;
-    _drawSlice(); // clear mask overlay
+    _drawSlice();
   }
   syncSlimSAMMenu();
   return _active;
@@ -120,7 +120,6 @@ export async function onSlimSAMClick(ev, clientToCanvasPx) {
 
   const [px, py] = clientToCanvasPx(ev.clientX, ev.clientY);
 
-  // Check if embeddings exist
   let slimsam;
   try {
     slimsam = await loadSlimSAM();
@@ -160,7 +159,7 @@ function drawSlimSAMMask() {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   overlayMask(ctx, _lastMask, {
-    color: [64, 180, 255], // cyan-blue
+    color: [64, 180, 255],
     opacity: _settings.opacity,
     smooth: _settings.smooth,
   });

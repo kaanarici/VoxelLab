@@ -1,16 +1,3 @@
-"""
-Generate low-resolution preview volumes for instant 3D rendering.
-
-Each series' .raw volume (uint16, full resolution) is downsampled to
-~128³ and saved as a compact uint8 file that ships WITH the app. When
-the user enters 3D mode, the preview loads in <100ms and renders
-immediately. The full-res volume streams from R2 in the background and
-swaps in seamlessly when ready.
-
-Output: data/<slug>_preview.raw  (uint8, ~2-4 MB per series)
-        Updates manifest.json with hasPreview: true + preview dimensions
-"""
-
 import argparse
 import json
 import sys
@@ -19,22 +6,20 @@ import numpy as np
 from json_store import update_manifest_series
 
 DATA = Path(__file__).resolve().parents[1] / "data"
-TARGET = 128  # max dimension in any axis
-
+TARGET = 128
 
 def downsample(vol, target_shape):
-    """Simple block-average downsample. Not fancy but correct for previews."""
+
     D, H, W = vol.shape
     td, th, tw = target_shape
-    # Block sizes
+
     bd = max(1, D // td)
     bh = max(1, H // th)
     bw = max(1, W // tw)
-    # Trim to exact multiple
-    vol = vol[:td * bd, :th * bh, :tw * bw]
-    # Reshape and mean over blocks
-    return vol.reshape(td, bd, th, bh, tw, bw).mean(axis=(1, 3, 5))
 
+    vol = vol[:td * bd, :th * bh, :tw * bw]
+
+    return vol.reshape(td, bd, th, bh, tw, bw).mean(axis=(1, 3, 5))
 
 def process(series):
     slug = series["slug"]
@@ -50,7 +35,6 @@ def process(series):
 
     vol = u16.reshape(D, H, W).astype(np.float32) / 65535.0
 
-    # Compute target dimensions preserving aspect ratio
     max_dim = max(D, H, W)
     scale = TARGET / max_dim
     td = max(1, round(D * scale))
@@ -60,7 +44,7 @@ def process(series):
     print(f"  {W}×{H}×{D} → {tw}×{th}×{td}")
 
     preview = downsample(vol, (td, th, tw))
-    # Convert to uint8 for compact storage
+
     preview_u8 = (np.clip(preview, 0, 1) * 255).astype(np.uint8)
 
     out_path = DATA / f"{slug}_preview.raw"
@@ -71,7 +55,6 @@ def process(series):
     series["hasPreview"] = True
     series["previewDims"] = [tw, th, td]
     return True
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser(description="Downsample .raw volumes to uint8 previews for fast 3D load.")
@@ -105,7 +88,6 @@ def main() -> bool:
     _ = update_manifest_series(manifest_path, updates)
     print("\nDone.")
     return ok
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

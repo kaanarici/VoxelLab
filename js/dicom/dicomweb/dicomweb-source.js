@@ -1,6 +1,3 @@
-// DICOMweb WADO-RS → same per-instance / frame model as local Part 10
-// ({ Modality, ImagePositionPatient, ... }) for classifyDICOMImport + geometry.
-
 import { frameMetasForInstance } from '../dicom-frame-meta.js';
 import { numberList } from '../../core/geometry.js';
 import {
@@ -136,8 +133,6 @@ function normalizeFunctionalGroupItem(item) {
   return Object.keys(normalized).length ? normalized : null;
 }
 
-// Normalize a DICOM JSON instance object into the naturalized metadata shape
-// expected by the shared geometry/classification pipeline.
 export function normalizeInstance(instance) {
   const bitsAllocated = tagNumber(instance, TAG.BitsAllocated, 16);
   const normalized = {
@@ -179,17 +174,14 @@ export function normalizeInstance(instance) {
   return normalized;
 }
 
-// Normalize an array of DICOM JSON instances into the same shape used by local imports.
 export function normalizeInstances(instances = []) {
   return instances.map(normalizeInstance);
 }
 
-// Build a WADO-RS frame retrieval URL for a given instance.
 export function frameUrl(wadoBase, studyUID, seriesUID, instanceUID, frame = 1) {
   return `${wadoBase}/studies/${assertDicomUid(studyUID, 'Study UID')}/series/${assertDicomUid(seriesUID, 'Series UID')}/instances/${assertDicomUid(instanceUID, 'Instance UID')}/frames/${assertDicomFrameNumber(frame)}`;
 }
 
-// Build a WADO-RS metadata URL for a series.
 export function seriesMetadataUrl(wadoBase, studyUID, seriesUID) {
   return `${wadoBase}/studies/${assertDicomUid(studyUID, 'Study UID')}/series/${assertDicomUid(seriesUID, 'Series UID')}/metadata`;
 }

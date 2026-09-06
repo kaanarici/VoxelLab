@@ -1,12 +1,3 @@
-"""
-Convert MRI DICOM series into PNG stacks + manifest.json for the viewer.
-
-Auto-discovers MR series from subdirectories under the DICOM root (set via
-MRI_VIEWER_DICOM_ROOT or --source).  Sorts slices by patient-space geometry,
-applies percentile window/level normalization, and writes one PNG per slice
-plus a manifest describing each series.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -53,12 +44,8 @@ CONVERTER_OWNED_FIELDS = {
     "group",
 }
 
-
 def discover_mr_series(source: Path) -> list[tuple[str, str, str, str]]:
-    """Auto-discover MR DICOM series from subdirectories of *source*.
 
-    Returns list of (folder_name, slug, display_name, description).
-    """
     import pydicom
 
     found: list[tuple[str, str, str, str]] = []
@@ -70,7 +57,7 @@ def discover_mr_series(source: Path) -> list[tuple[str, str, str, str]]:
         files = candidate_dicom_files(subdir)
         if not files:
             continue
-        # Peek at first readable MR DICOM to get series metadata
+
         for f in files[:5]:
             try:
                 ds = pydicom.dcmread(f, stop_before_pixels=True)
@@ -82,7 +69,7 @@ def discover_mr_series(source: Path) -> list[tuple[str, str, str, str]]:
             protocol = str(getattr(ds, "ProtocolName", "") or "").strip()
             label = series_desc or protocol or subdir.name
             slug = slugify(label)
-            # Deduplicate
+
             base = slug
             n = 2
             while slug in seen_slugs:
@@ -94,28 +81,25 @@ def discover_mr_series(source: Path) -> list[tuple[str, str, str, str]]:
 
     return found
 
-
 def load_slice(path: Path):
     import numpy as np
     import pydicom
 
     ds = pydicom.dcmread(path)
     arr = ds.pixel_array.astype(np.float32)
-    # Apply modality rescale if present
+
     slope = float(getattr(ds, "RescaleSlope", 1) or 1)
     inter = float(getattr(ds, "RescaleIntercept", 0) or 0)
     arr = arr * slope + inter
     return ds, arr
 
-
 def normalize_stack(stack: np.ndarray) -> np.ndarray:
-    """Percentile window/level across whole volume → uint8."""
+
     lo, hi = np.percentile(stack, [0.5, 99.5])
     if hi <= lo:
         hi = lo + 1
     out = np.clip((stack - lo) / (hi - lo), 0, 1)
     return (out * 255).astype(np.uint8)
-
 
 def process_series(
     source: Path,
@@ -136,7 +120,6 @@ def process_series(
     files = candidate_dicom_files(folder)
     print(f"\n[{slug}] {name}  ({len(files)} files)")
 
-    # Read headers, keep only MR slices, sort in patient space.
     entries = []
     for f in files:
         try:
@@ -153,25 +136,21 @@ def process_series(
         print(f"[{slug}] no MR slices after filtering", file=sys.stderr)
         return None
 
-    # Load pixel data
     arrs, loaded = [], []
     for _header, f in entries:
         ds, arr = load_slice(f)
         arrs.append(arr)
         loaded.append(ds)
 
-    stack = np.stack(arrs)  # (N, H, W)
+    stack = np.stack(arrs)
 
-    # Normalize whole volume together so contrast is consistent across slices
     norm = normalize_stack(stack)
 
-    # Write PNGs
     out_dir = OUT / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     for i, img in enumerate(norm):
         Image.fromarray(img, mode="L").save(out_dir / f"{i:04d}.png", optimize=True)
 
-    # Collect metadata
     meta_first = loaded[0]
     geometry = geometry_from_slices(loaded)
     rows = int(meta_first.Rows)
@@ -215,7 +194,6 @@ def process_series(
     print(f"  → {info['slices']} slices, {cols}×{rows}, spacing={info['pixelSpacing']}, thickness={thickness}mm")
     return info
 
-
 def upsert_series(manifest: dict, entries: list[dict], study_date: str) -> dict:
     series = list(manifest.get("series", []))
     by_slug = {entry.get("slug"): index for index, entry in enumerate(series) if isinstance(entry, dict)}
@@ -236,7 +214,6 @@ def upsert_series(manifest: dict, entries: list[dict], study_date: str) -> dict:
     if not manifest.get("studyDate") and study_date:
         manifest["studyDate"] = study_date
     return manifest
-
 
 def main() -> bool:
     ap = argparse.ArgumentParser(
@@ -301,7 +278,6 @@ def main() -> bool:
     )
     print(f"\nWrote {manifest_path}")
     return True
-
 
 if __name__ == "__main__":
     raise SystemExit(0 if main() else 1)

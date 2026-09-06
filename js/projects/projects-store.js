@@ -1,5 +1,3 @@
-// IndexedDB + localStorage for project folders and pinned series (no DOM).
-
 const DB_NAME = 'mri-viewer-projects';
 const DB_VERSION = 1;
 const STORE = 'projects';

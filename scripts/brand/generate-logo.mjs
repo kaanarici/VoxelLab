@@ -1,21 +1,10 @@
-// VoxelLab brand mark generator.
-// Concept: an isometric voxel cube (a 3D pixel — the unit of a medical volume)
-// rendered in neutral graphite with lit faces and a single red accent voxel.
-//
-// Emits four masters that build-assets.mjs renders into the shipped files:
-//   voxellab-icon-macos.svg  — 1024 canvas, transparent margin, 824 squircle body
-//                              centered (macOS / Tahoe safe-area). Source of icon.icns.
-//   voxellab-icon-dark.svg   — 1024 full-bleed graphite squircle. Source of icon.png + icon.ico.
-//   voxellab-icon-light.svg  — 1024 full-bleed light squircle (alt brand surface).
-//   voxellab-mark.svg        — 512 standalone cube, no background.
-
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const COS30 = Math.cos(Math.PI / 6); // 0.8660254…
+const COS30 = Math.cos(Math.PI / 6);
 const SIN30 = 0.5;
 
 const round = n => Math.round(n * 100) / 100;
@@ -24,7 +13,6 @@ const sub = ([x, y], [a, b]) => [x - a, y - b];
 const add = ([x, y], [a, b]) => [x + a, y + b];
 const scale = ([x, y], f) => [x * f, y * f];
 
-// Isometric cube anchored at top apex (cx, ty), edge length S.
 function cube(S, cx, ty) {
   const w = S * COS30, h = S * SIN30;
   return {
@@ -46,7 +34,6 @@ function faceGrid(O, U, V, n, stroke, opacity, width) {
   return `<g stroke="${stroke}" stroke-width="${width}" stroke-opacity="${opacity}" stroke-linecap="round">${lines.join('')}</g>`;
 }
 
-// Back-corner cell of the top face, as a lit accent voxel cap.
 function accentVoxel(c, fill) {
   const Utop = sub(c.right, c.top), Vtop = sub(c.left, c.top);
   const u = scale(Utop, 1 / 3), v = scale(Vtop, 1 / 3);
@@ -55,7 +42,6 @@ function accentVoxel(c, fill) {
   return { poly: [a, b, e, d], topEdge: [d, a, b], fill };
 }
 
-// Cube artwork. `style` selects flat fills (favicon/mark) vs lit gradients (app icon).
 function cubeBody(c, style) {
   const flat = style === 'flat';
   const topFill = flat ? '#eef0f3' : 'url(#vTop)';
@@ -101,7 +87,6 @@ function cubeBody(c, style) {
     ${rim}`;
 }
 
-// Shared gradient + filter defs for the lit app-icon variants.
 function litDefs() {
   return `
     <linearGradient id="vTop" x1="0.18" y1="0" x2="0.82" y2="1">
@@ -132,11 +117,9 @@ function bodyGradient(id, top, mid, bottom) {
     </linearGradient>`;
 }
 
-// macOS safe-area master: 1024 canvas, 824 squircle body at (100,100) r=184,
-// ~100px transparent margin so VoxelLab matches other Dock/Finder icons.
 function macosIconFile() {
   const X = 100, BODY = 824, R = 184, CX = 512;
-  const c = cube(320, CX, 206); // centered with breathing room above/below
+  const c = cube(320, CX, 206);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
     ${bodyGradient('mBody', '#34353a', '#222327', '#161719')}
@@ -154,10 +137,8 @@ function macosIconFile() {
 `;
 }
 
-// Full-bleed squircle master (favicon/Windows source). 1024 canvas, squircle
-// fills the canvas. `variant` is 'dark' (lit graphite) or 'light'.
 function fullBleedIconFile(variant) {
-  const R = 228; // 0.2237 * 1024
+  const R = 228;
   const c = cube(330, 512, 150);
   const dark = variant === 'dark';
   const body = dark
@@ -179,7 +160,6 @@ function fullBleedIconFile(variant) {
 `;
 }
 
-// Standalone mark (no background) — flat fills for embedding on any surface.
 function markFile() {
   const c = cube(214, 256, 44);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">

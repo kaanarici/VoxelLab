@@ -3,12 +3,10 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
-
 R2_ENDPOINT_HOST_RE = re.compile(
     r"^[a-z0-9]+(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com$"
 )
 R2_BUCKET_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$")
-
 
 def https_origin(value: object) -> str:
     try:
@@ -28,7 +26,6 @@ def https_origin(value: object) -> str:
         return ""
     return f"https://{parsed.hostname.lower()}"
 
-
 def normalize_r2_endpoint(value: object) -> str:
     raw = str(value or "").strip()
     origin = https_origin(raw)
@@ -41,11 +38,9 @@ def normalize_r2_endpoint(value: object) -> str:
         return ""
     return origin
 
-
 def normalize_r2_bucket(value: object) -> str:
     bucket = str(value or "").strip()
     return bucket if R2_BUCKET_RE.fullmatch(bucket) else ""
-
 
 def validate_r2_bucket_pair(upload_bucket: object, results_bucket: object) -> tuple[str, str]:
     upload = normalize_r2_bucket(upload_bucket)
@@ -55,7 +50,6 @@ def validate_r2_bucket_pair(upload_bucket: object, results_bucket: object) -> tu
     if upload == results:
         raise ValueError("R2 upload and results buckets must be different")
     return upload, results
-
 
 def normalize_public_r2_url(value: object) -> str:
     raw = str(value or "").strip()
@@ -67,7 +61,6 @@ def normalize_public_r2_url(value: object) -> str:
         return ""
     path = parsed.path.rstrip("/")
     return f"{origin}{path}"
-
 
 def upload_origins(endpoint: object, configured: object = None) -> list[str]:
     values = configured if isinstance(configured, (list, tuple, set)) else str(configured or "").split(",")

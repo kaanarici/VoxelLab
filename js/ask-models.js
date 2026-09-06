@@ -25,7 +25,7 @@ export function readStoredAskModelKey() {
 export function writeStoredAskModelKey(key) {
   const value = String(key || '').trim();
   if (!value) return;
-  try { localStorage.setItem(ASK_MODEL_STORAGE_KEY, value); } catch { /* ignore */ }
+  try { localStorage.setItem(ASK_MODEL_STORAGE_KEY, value); } catch {              }
 }
 
 export function pickAskModel(models, storedKey, preferredProvider = '') {

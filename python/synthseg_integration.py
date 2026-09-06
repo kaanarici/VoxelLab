@@ -5,13 +5,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 SYNTHSEG_REPO_URL = "https://github.com/BBillot/SynthSeg.git"
 DEFAULT_SYNTHSEG_VENV = Path("/tmp/synthseg_env")
 
-
 def find_mri_synthseg() -> str | None:
-    """Find mri_synthseg binary."""
+
     result = shutil.which("mri_synthseg")
     if result:
         return result
@@ -29,9 +27,8 @@ def find_mri_synthseg() -> str | None:
             return candidate
     return None
 
-
 def synthseg_runtime(root: Path, venv: Path | None = None) -> dict[str, Path | str]:
-    # runtime shape: {"repo_url": "...", "repo_dir": Path(".../synthseg_repo"), "predict_script": Path(...), "models_dir": Path(...), "venv_dir": Path("/tmp/synthseg_env"), "venv_python": Path(...)}
+
     repo_dir = root / "synthseg_repo"
     venv_dir = (venv or DEFAULT_SYNTHSEG_VENV).expanduser()
     return {
@@ -43,7 +40,6 @@ def synthseg_runtime(root: Path, venv: Path | None = None) -> dict[str, Path | s
         "venv_dir": venv_dir,
         "venv_python": venv_dir / "bin" / "python",
     }
-
 
 def synthseg_repo_errors(root: Path, venv: Path | None = None) -> list[str]:
     runtime = synthseg_runtime(root, venv)
@@ -72,7 +68,3 @@ def synthseg_repo_errors(root: Path, venv: Path | None = None) -> list[str]:
         if result.returncode and not result.stdout.strip():
             errors.append(f"SynthSeg venv module check failed: {result.stderr.strip() or result.returncode}")
     return errors
-
-
-def synthseg_repo_ready(root: Path, venv: Path | None = None) -> bool:
-    return not synthseg_repo_errors(root, venv)

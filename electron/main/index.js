@@ -49,8 +49,7 @@ import {
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PRELOAD_PATH = path.join(ROOT_DIR, 'electron/preload/index.cjs');
 const APP_ICON_PATH = path.join(ROOT_DIR, 'electron/assets/icon.png');
-// macOS Dock/About use the safe-area (padded) variant so the runtime icon matches
-// the .icns footprint and is sized like other Dock apps, not edge-to-edge.
+
 const MAC_ICON_PATH = path.join(ROOT_DIR, 'electron/assets/icon-macos.png');
 const REPO_URL = 'https://github.com/kaanarici/VoxelLab';
 const IS_SMOKE = process.env.VOXELLAB_ELECTRON_SMOKE === '1';
@@ -64,8 +63,7 @@ const pendingMenuCommands = [];
 const readyWindows = new WeakSet();
 const converterJobs = new ConverterJobManager({
   userDataPath: () => app.getPath('userData'),
-  // Smoke profiles already live under the OS temporary directory. Retaining
-  // their artifacts there keeps automated checks out of the developer's Trash.
+
   releaseJobDir: IS_SMOKE ? async () => false : jobDir => shell.trashItem(jobDir),
 });
 const openedConversionOutputs = new Set();
@@ -478,16 +476,15 @@ function watchUnpackagedAssets() {
   const dirs = ['css', 'js', 'templates'].map(dir => path.join(ROOT_DIR, dir));
   const files = ['index.html', 'icons.svg', 'viewer.js'].map(name => path.join(ROOT_DIR, name));
   for (const dir of dirs) {
-    try { watch(dir, { recursive: true }, reload); } catch { /* watch is best-effort in unpackaged dev */ }
+    try { watch(dir, { recursive: true }, reload); } catch {                                              }
   }
   for (const file of files) {
-    try { watch(file, reload); } catch { /* same */ }
+    try { watch(file, reload); } catch {            }
   }
 }
 
 function createWindow() {
-  // Smokes keep a fixed, deterministic window; real launches restore the last
-  // size/position/state so the app reopens where the researcher left it.
+
   const restored = IS_SMOKE ? { options: { width: 1440, height: 960 }, maximized: false, fullScreen: false } : restoredWindowOptions(app);
   const window = new BrowserWindow({
     ...restored.options,
@@ -645,8 +642,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     recentDocuments = await readRecentDocuments(app);
     savedImports = await readSavedImports(app);
-    // Converted data is session-scoped. This also recovers artifacts that a
-    // previous crash could not send to the operating system trash on exit.
+
     await converterJobs.releaseStaleArtifacts();
     app.setAboutPanelOptions({
       applicationName: 'VoxelLab',

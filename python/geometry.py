@@ -1,18 +1,16 @@
-"""Canonical patient-space geometry helpers shared by the Python pipeline."""
-
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from functools import cmp_to_key
 from typing import Any
 
 from contracts import ORTHONORMAL_TOLERANCE
 
-
 def float_list(value: Any, length: int) -> list[float]:
     if isinstance(value, str):
         items = value.split("\\")
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         items = list(value)
     else:
         return []
@@ -31,7 +29,6 @@ def float_list(value: Any, length: int) -> list[float]:
         out.append(number)
     return out if len(out) >= length else []
 
-
 def is_orthonormal_image_plane(iop: Any, tolerance: float = ORTHONORMAL_TOLERANCE) -> bool:
     values = float_list(iop, 6)
     if len(values) < 6:
@@ -44,14 +41,11 @@ def is_orthonormal_image_plane(iop: Any, tolerance: float = ORTHONORMAL_TOLERANC
         return False
     return abs(dot3(row, col)) <= tolerance
 
-
 def dot3(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b))
 
-
 def norm3(v: list[float]) -> float:
     return math.sqrt(dot3(v, v))
-
 
 def cross3(a: list[float], b: list[float]) -> list[float]:
     return [
@@ -60,11 +54,32 @@ def cross3(a: list[float], b: list[float]) -> list[float]:
         a[0] * b[1] - a[1] * b[0],
     ]
 
-
 def normalize3(v: list[float]) -> list[float]:
     length = norm3(v)
     return [item / length for item in v] if length > 1e-6 else []
 
+def geometry_from_grid(config: dict[str, Any]) -> dict[str, Any]:
+    spacing = float_list(config.get("outputSpacingMm"), 3)
+    origin = float_list(config.get("firstIPP"), 3)
+    orientation = float_list(config.get("orientation"), 6)
+    shape = config.get("outputShape", [])
+    if len(spacing) != 3 or min(spacing) <= 0 or len(origin) != 3:
+        raise ValueError("Output grid requires positive spacing and a finite origin")
+    if len(shape) != 3 or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in shape):
+        raise ValueError("Output grid requires three positive integer dimensions")
+    if not is_orthonormal_image_plane(orientation):
+        raise ValueError("Output grid requires orthonormal orientation")
+    normal = normalize3(cross3(orientation[:3], orientation[3:]))
+    return {
+        "pixelSpacing": [spacing[1], spacing[0]],
+        "sliceThickness": spacing[2],
+        "sliceSpacing": spacing[2],
+        "sliceSpacingRegular": True,
+        "firstIPP": origin,
+        "lastIPP": [origin[i] + normal[i] * spacing[2] * (shape[2] - 1) for i in range(3)],
+        "orientation": orientation,
+        "frameOfReferenceUID": str(config.get("frameOfReferenceUID", "") or ""),
+    }
 
 def slice_normal_from_iop(iop: Any) -> list[float]:
     values = float_list(iop, 6)
@@ -76,7 +91,6 @@ def slice_normal_from_iop(iop: Any) -> list[float]:
         return []
     return normalize3(cross3(row, col))
 
-
 def slice_axis_alignment_from_series(series: dict[str, Any]) -> float:
     normal = slice_normal_from_iop(series.get("orientation", [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]))
     first = float_list(series.get("firstIPP", []), 3)
@@ -87,13 +101,11 @@ def slice_axis_alignment_from_series(series: dict[str, Any]) -> float:
     span_norm = norm3(span)
     return abs(dot3(span, normal)) / span_norm if span_norm > 1e-6 else 0.0
 
-
 def ipp_projection(ds: Any, normal: list[float]) -> float | None:
     ipp = float_list(getattr(ds, "ImagePositionPatient", []), 3)
     if len(ipp) < 3 or not normal:
         return None
     return dot3(ipp, normal)
-
 
 def slice_sort_key(ds: Any) -> tuple[int, float, int]:
     instance = int(getattr(ds, "InstanceNumber", 0) or 0)
@@ -102,7 +114,6 @@ def slice_sort_key(ds: Any) -> tuple[int, float, int]:
     if projection is None:
         return (1, 0.0, instance)
     return (0, projection, instance)
-
 
 def sort_datasets_spatially(datasets: list[Any], get_dataset: Any | None = None) -> list[Any]:
     if not datasets:
@@ -128,7 +139,6 @@ def sort_datasets_spatially(datasets: list[Any], get_dataset: Any | None = None)
 
     return sorted(datasets, key=cmp_to_key(compare))
 
-
 def spacing_from_positions(positions: list[list[float]], normal: list[float]) -> dict[str, Any]:
     if len(positions) < 2 or not normal:
         return {"mean": 0.0, "min": 0.0, "max": 0.0, "regular": False}
@@ -148,7 +158,6 @@ def spacing_from_positions(positions: list[list[float]], normal: list[float]) ->
         "regular": min_value > 0.0 and (max_value - min_value) <= tolerance,
     }
 
-
 def frame_of_reference_summary(slices: list[Any]) -> dict[str, Any]:
     uids = [str(getattr(ds, "FrameOfReferenceUID", "") or "").strip() for ds in slices]
     nonempty = [uid for uid in uids if uid]
@@ -158,15 +167,8 @@ def frame_of_reference_summary(slices: list[Any]) -> dict[str, Any]:
     consistent = len(nonempty) == len(uids) and all(value == uid for value in nonempty)
     return {"consistent": consistent, "uid": uid if consistent else ""}
 
-
 def extract_enhanced_multiframe_slices(ds: Any) -> list[Any] | None:
-    """Extract per-frame geometry from enhanced multi-frame functional groups.
 
-    Returns a list of lightweight objects matching the interface expected by
-    geometry_from_slices (PixelSpacing, ImageOrientationPatient,
-    ImagePositionPatient, SliceThickness, FrameOfReferenceUID), or None
-    if the dataset lacks the required per-frame functional groups.
-    """
     per_frame = getattr(ds, "PerFrameFunctionalGroupsSequence", None)
     shared_seq = getattr(ds, "SharedFunctionalGroupsSequence", None)
     if not per_frame or len(per_frame) < 1:
@@ -212,12 +214,11 @@ def extract_enhanced_multiframe_slices(ds: Any) -> list[Any] | None:
         s.SliceThickness = shared_thickness
         s.FrameOfReferenceUID = frame_uid
         s.RescaleSlope = float(getattr(transform, "RescaleSlope", shared_slope) or shared_slope)
-        s.RescaleIntercept = float(getattr(transform, "RescaleIntercept", shared_intercept) or shared_intercept)
+        s.RescaleIntercept = float(getattr(transform, "RescaleIntercept", shared_intercept))
         s.InstanceNumber = len(frames) + 1
         frames.append(s)
 
     return frames if frames else None
-
 
 def geometry_from_slices(slices: list[Any]) -> dict[str, Any]:
     if not slices:
@@ -261,7 +262,6 @@ def geometry_from_slices(slices: list[Any]) -> dict[str, Any]:
         "frameOfReferenceUIDConsistent": bool(frame_ref["consistent"]),
     }
 
-
 def series_effective_slice_spacing(series: dict[str, Any]) -> float:
     explicit = float(series.get("sliceSpacing", 0.0) or 0.0)
     if explicit > 0:
@@ -275,7 +275,6 @@ def series_effective_slice_spacing(series: dict[str, Any]) -> float:
         dz = float(last[2]) - float(first[2])
         return math.sqrt(dx * dx + dy * dy + dz * dz) / (count - 1)
     return float(series.get("sliceThickness", 1.0) or 1.0)
-
 
 def affine_lps_from_series(series: dict[str, Any]) -> list[list[float]]:
     orientation = float_list(series.get("orientation", []), 6) or [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
@@ -302,7 +301,6 @@ def affine_lps_from_series(series: dict[str, Any]) -> list[list[float]]:
         [0.0, 0.0, 0.0, 1.0],
     ]
 
-
 def classify_geometry_kind(spacing_stats: dict[str, Any], slice_count: int) -> str:
     if slice_count <= 0:
         return "insufficient"
@@ -314,7 +312,6 @@ def classify_geometry_kind(spacing_stats: dict[str, Any], slice_count: int) -> s
         return "cartesian_volume"
     return "cartesian_stack_irregular"
 
-
 def build_geometry_record(
     slices: list[Any],
     *,
@@ -322,11 +319,7 @@ def build_geometry_record(
     height: int = 0,
     source: str = "dicom_classic_singleframe",
 ) -> dict[str, Any]:
-    """Build a canonical GeometryRecord from sorted DICOM-like slice objects.
 
-    The returned dict is the cross-language contract consumed by capability
-    policy, viewer, and pipeline code.
-    """
     geo = geometry_from_slices(slices)
     if not geo:
         return {
@@ -379,7 +372,6 @@ def build_geometry_record(
         "frameOfReferenceUIDConsistent": geo["frameOfReferenceUIDConsistent"],
         "source": source,
     }
-
 
 def compare_group_key(series: dict[str, Any]) -> str | None:
     if series.get("frameOfReferenceUIDConsistent") is False:

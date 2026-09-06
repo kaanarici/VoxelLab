@@ -49,9 +49,7 @@ export function rawVolumeResourceBudget(width, height, slices) {
   const expectedVoxels = safeMultiply(planeVoxels, dimensions[2], 'volume voxel count');
   const decodedBytes = rawVolumeExpectedByteLength(expectedVoxels);
   const compressionOverhead = Math.ceil(decodedBytes / 100) + (64 * 1024);
-  // Peak compressed-worker construction retains a decoder window, exact
-  // decoded output, Float32 normalization, and render handoff (4× decoded),
-  // plus streamed parts, their joined buffer, and one cache/fallback copy.
+
   const fixedWorkingSetBytes = safeMultiply(decodedBytes, 4, 'decoded working-set byte count');
   const encodedWorkingSetBytes = Math.floor(
     (RAW_VOLUME_LIMITS.maxWorkingSetBytes - fixedWorkingSetBytes) / 3,

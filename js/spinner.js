@@ -1,15 +1,3 @@
-// viewer-spinner refcount with flash-guard.
-//
-// Callers no longer poke spinner.hidden directly; they mark a key as pending
-// or done. The aggregate spinner is visible iff any key is pending. On top
-// of that, two thresholds avoid visual jitter:
-//
-//   SHOW_DELAY_MS  — wait this long before showing; if the work finishes
-//                    first, the spinner never flashes.
-//   MIN_SHOW_MS    — once shown, stay visible at least this long so users
-//                    don't see a 1-frame strobe on the tail end.
-//
-// Shape: pending keys Set<string> — e.g. Set { 'series-load', 'three-surface' }.
 const pending = new Set();
 
 const SHOW_DELAY_MS = 150;

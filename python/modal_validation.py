@@ -33,7 +33,6 @@ MODAL_GPU_TYPES = {
     "B300",
 }
 
-
 def env_int(name: str, default: int, *, min_value: int | None = None, max_value: int | None = None) -> int:
     raw = os.environ.get(name, "")
     try:
@@ -45,7 +44,6 @@ def env_int(name: str, default: int, *, min_value: int | None = None, max_value:
     if max_value is not None:
         value = min(max_value, value)
     return value
-
 
 def env_float(name: str, default: float, *, min_value: float | None = None, max_value: float | None = None) -> float:
     raw = os.environ.get(name, "")
@@ -59,7 +57,6 @@ def env_float(name: str, default: float, *, min_value: float | None = None, max_
         value = min(max_value, value)
     return value
 
-
 def env_ephemeral_disk_mb(name: str) -> int | None:
     raw = os.environ.get(name, "").strip()
     if raw.lower() in {"", "0", "default", "none"}:
@@ -71,7 +68,6 @@ def env_ephemeral_disk_mb(name: str) -> int | None:
     if not 524_288 <= value <= 3_145_728:
         raise ValueError(f"{name} must be 0 or between 524288 and 3145728 MiB")
     return value
-
 
 def env_gpu(name: str, default: str = "T4") -> str | list[str] | None:
     raw = os.environ.get(name, default).strip()
@@ -94,7 +90,6 @@ def env_gpu(name: str, default: str = "T4") -> str | list[str] | None:
         return None
     return choices if len(choices) > 1 else choices[0]
 
-
 def retry_policy(max_retries: int, initial_delay: float, backoff: float):
     if max_retries <= 0:
         return None
@@ -106,34 +101,27 @@ def retry_policy(max_retries: int, initial_delay: float, backoff: float):
         backoff_coefficient=backoff,
     )
 
-
 def drop_none(**kwargs) -> dict:
     return {key: value for key, value in kwargs.items() if value is not None}
-
 
 def validate_job_id(job_id: object) -> str:
     if not isinstance(job_id, str) or not JOB_ID_RE.fullmatch(job_id):
         return ""
     return job_id
 
-
 def validate_modality(modality: object) -> str:
     if not isinstance(modality, str) or modality not in MODALITIES:
         return ""
     return modality
 
-
 def validate_processing_mode(mode: object) -> str:
     return _validate_processing_mode_shared(mode)
-
 
 def validate_input_kind(kind: object, processing_mode: str = "standard") -> str:
     return _validate_input_kind_shared(kind, processing_mode)
 
-
 def input_kind_error(kind: object, processing_mode: str = "standard") -> str:
     return _input_kind_error_shared(kind, processing_mode)
-
 
 def validate_upload_filename(filename: object) -> str:
     if not isinstance(filename, str) or not filename or len(filename) > 180:
@@ -142,12 +130,10 @@ def validate_upload_filename(filename: object) -> str:
         return ""
     return filename
 
-
 def validate_upload_id(upload_id: object) -> str:
     if not isinstance(upload_id, str) or not UPLOAD_ID_RE.fullmatch(upload_id):
         return ""
     return upload_id
-
 
 def validate_total_upload_bytes(value: object) -> int | None:
     if value in {None, ""}:
@@ -158,17 +144,14 @@ def validate_total_upload_bytes(value: object) -> int | None:
         return None
     return size if size >= 0 else None
 
-
 def upload_object_name(upload_id: str, filename: str) -> str:
     if filename in SOURCE_MANIFEST_NAMES:
         return filename
     return f"{upload_id}__{filename}"
 
-
 def upload_content_type(filename: str) -> str:
-    # Shape: "IM0001" -> "application/dicom", "voxellab.source.json" -> "application/json".
-    return "application/json" if filename in SOURCE_MANIFEST_NAMES else "application/dicom"
 
+    return "application/json" if filename in SOURCE_MANIFEST_NAMES else "application/dicom"
 
 def normalize_upload_items(payload: dict) -> tuple[list[dict[str, str | int]], str | None]:
     raw_items = payload.get("items")
@@ -201,7 +184,6 @@ def normalize_upload_items(payload: dict) -> tuple[list[dict[str, str | int]], s
 
     return [], "structured upload items with size_bytes are required"
 
-
 def presigned_upload_expiry_seconds(url: str) -> int | None:
     try:
         parsed = urlparse(url)
@@ -218,13 +200,11 @@ def presigned_upload_expiry_seconds(url: str) -> int | None:
             return None
     return None
 
-
 def validate_presigned_upload_url(url: str, *, max_seconds: int = 900, fallback_seconds: int | None = None) -> bool:
     expiry = presigned_upload_expiry_seconds(url)
     if expiry is None:
         return fallback_seconds is not None and fallback_seconds <= max_seconds
     return 0 < expiry <= max_seconds
-
 
 def auth_error(token: object, expected_token: str | None = None) -> str:
     expected = expected_token if expected_token is not None else os.environ.get("MODAL_AUTH_TOKEN", "").strip()

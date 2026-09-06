@@ -10,7 +10,7 @@ function rleFrame(bytes) {
 }
 
 test('DICOM RLE decodes a padded deterministic 8-bit grayscale byte vector', async () => {
-  // A five-byte PackBits stream is padded with zero to the required even segment length.
+
   const encoded = rleFrame([
     1, 0, 0, 0, 64, 0, 0, 0,
     ...new Array(56).fill(0),
@@ -24,7 +24,7 @@ test('DICOM RLE decodes a padded deterministic 8-bit grayscale byte vector', asy
 });
 
 test('DICOM RLE decodes padded 16-bit planes in DICOM MSB-first order', async () => {
-  // Both five-byte PackBits streams carry one zero pad byte. Plane 0 is the high byte.
+
   const encoded = rleFrame([
     2, 0, 0, 0, 64, 0, 0, 0, 70, 0, 0, 0,
     ...new Array(52).fill(0),

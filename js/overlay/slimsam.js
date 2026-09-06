@@ -1,6 +1,3 @@
-// SlimSAM integration — manifest, embedding fetch, ONNX decoder, overlay.
-// See slimsam-fetch.js, slimsam-inference.js, slimsam-overlay.js.
-
 import {
   slimsamSetManifest,
   slimsamFetchMeta,

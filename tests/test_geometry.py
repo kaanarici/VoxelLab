@@ -22,28 +22,23 @@ from geometry import (
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "geometry" / "canonical-cases.json").read_text())
 
-
 class FakeDicom:
     def __init__(self, **meta):
         for key, value in meta.items():
             setattr(self, key, value)
 
-
 def _approx(actual: float, expected: float, tol: float = 1e-6) -> None:
     assert abs(actual - expected) < tol, f"{actual} != {expected}"
-
 
 def _approx_list(actual: list[float], expected: list[float], tol: float = 1e-6) -> None:
     assert len(actual) == len(expected)
     for index, value in enumerate(actual):
         _approx(value, expected[index], tol)
 
-
 def _approx_matrix(actual: list[list[float]], expected: list[list[float]], tol: float = 1e-6) -> None:
     for r in range(len(expected)):
         for c in range(len(expected[r])):
             _approx(actual[r][c], expected[r][c], tol)
-
 
 def _assert_geometry_record(actual: dict, expected: dict) -> None:
     assert actual["kind"] == expected["kind"]
@@ -61,23 +56,19 @@ def _assert_geometry_record(actual: dict, expected: dict) -> None:
     assert actual["frameOfReferenceUIDConsistent"] == expected["frameOfReferenceUIDConsistent"]
     assert actual["source"] == expected["source"]
 
-
 def test_geometry_contract_dot3() -> None:
     for case in FIXTURE["sharedContract"]["dot3"]:
         assert dot3(case["a"], case["b"]) == case["expected"]
 
-
 def test_geometry_contract_cross3() -> None:
     for case in FIXTURE["sharedContract"]["cross3"]:
         assert cross3(case["a"], case["b"]) == case["expected"]
-
 
 def test_geometry_contract_norm3_and_normalize3() -> None:
     for case in FIXTURE["sharedContract"]["norm3"]:
         _approx(norm3(case["v"]), case["expected"])
     for case in FIXTURE["sharedContract"]["normalize3"]:
         _approx_list(normalize3(case["v"]), case["expected"])
-
 
 def test_geometry_contract_normals_projection_sorting_and_spacing() -> None:
     for case in FIXTURE["sharedContract"]["sliceNormalFromIOP"]:
@@ -93,7 +84,6 @@ def test_geometry_contract_normals_projection_sorting_and_spacing() -> None:
     for case in FIXTURE["sharedContract"]["sliceSpacingStatsFromPositions"]:
         assert spacing_from_positions(case["positions"], case["normal"]) == case["expected"]
 
-
 def test_geometry_contract_kind_affine_and_compare_group() -> None:
     for case in FIXTURE["sharedContract"]["classifyGeometryKind"]:
         assert classify_geometry_kind(case["spacingStats"], case["sliceCount"]) == case["expected"]
@@ -106,7 +96,6 @@ def test_geometry_contract_kind_affine_and_compare_group() -> None:
         else:
             assert result.startswith(case["expectedPrefix"])
 
-
 def test_geometry_contract_build_geometry_record() -> None:
     for case in FIXTURE["sharedContract"]["buildGeometryRecord"]:
         slices = [FakeDicom(**meta) for meta in case["input"]["metas"]]
@@ -118,7 +107,6 @@ def test_geometry_contract_build_geometry_record() -> None:
         )
 
         _assert_geometry_record(record, case["expected"])
-
 
 def test_geometry_contract_is_orthonormal_image_plane() -> None:
     for case in FIXTURE["sharedContract"]["isOrthonormalImagePlane"]:

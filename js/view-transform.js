@@ -1,4 +1,3 @@
-// Pan/zoom for the main 2D view stage (--zoom / --tx / --ty on #view-xform).
 import { state } from './core/state.js';
 import { $ } from './dom.js';
 import { drawMeasurements } from './roi/measure.js';
@@ -27,7 +26,6 @@ export function resetTransform() {
   applyTransform();
 }
 
-/** Zoom around the view center (for the toolbar +/- buttons). */
 export function zoomByFactor(factor) {
   const oldZoom = state.zoom;
   const newZoom = Math.max(0.4, Math.min(10, oldZoom * factor));
@@ -37,7 +35,6 @@ export function zoomByFactor(factor) {
   applyTransform();
 }
 
-/** Zoom around cursor; keeps the point under the cursor fixed after scaling. */
 export function zoomAt(clientX, clientY, factor) {
   const stage = $('view-stage').getBoundingClientRect();
   const cx = clientX - stage.left - stage.width / 2;

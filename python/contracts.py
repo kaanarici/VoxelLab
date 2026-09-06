@@ -1,5 +1,3 @@
-"""Shared VoxelLab wire enums. Keep in lockstep with schemas/enums.json."""
-
 from __future__ import annotations
 
 import json
@@ -20,7 +18,6 @@ ULTRASOUND_MODES = frozenset(_ENUMS["ultrasoundModes"])
 ULTRASOUND_PROBE_GEOMETRIES = frozenset(_ENUMS["ultrasoundProbeGeometries"])
 REGISTRATION_TRANSFORMS = frozenset(_ENUMS["registrationTransforms"])
 
-
 def dump_contract_enums() -> dict:
     return {
         "orthonormalTolerance": ORTHONORMAL_TOLERANCE,
@@ -37,7 +34,6 @@ def dump_contract_enums() -> dict:
         "registrationTransforms": sorted(REGISTRATION_TRANSFORMS),
     }
 
-
 def source_record_version(payload: object) -> int:
     if not isinstance(payload, dict):
         return 0
@@ -47,7 +43,6 @@ def source_record_version(payload: object) -> int:
     except (TypeError, ValueError):
         return 0
     return value if value in SOURCE_RECORD_VERSIONS else 0
-
 
 def parallel_beam_coverage_deg(angles: list[float]) -> float:
     if len(angles) < 2:
