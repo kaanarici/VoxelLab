@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from r2_config import (
     normalize_public_r2_url,
     normalize_r2_bucket,
@@ -43,13 +45,15 @@ def test_r2_upload_origins_derive_s3_origin_without_trusting_public_read_domain(
 
 def test_r2_upload_and_public_result_buckets_must_be_distinct() -> None:
     assert validate_r2_bucket_pair("scan-inputs", "scan-results") == ("scan-inputs", "scan-results")
-    for upload, results in (("scan-data", "scan-data"), ("", "scan-results"), ("Scan", "scan-results")):
-        try:
-            _ = validate_r2_bucket_pair(upload, results)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("expected invalid R2 bucket pair rejection")
+
+@pytest.mark.parametrize(
+    ("upload", "results"),
+    [("scan-data", "scan-data"), ("", "scan-results"), ("Scan", "scan-results")],
+    ids=["same-bucket", "missing-upload-bucket", "invalid-bucket-name"],
+)
+def test_r2_bucket_pairs_that_cannot_be_isolated_are_rejected(upload: str, results: str) -> None:
+    with pytest.raises(ValueError):
+        _ = validate_r2_bucket_pair(upload, results)
 
 def test_r2_only_preflight_checks_both_distinct_buckets_without_modal(monkeypatch) -> None:
     env = {

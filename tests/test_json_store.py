@@ -12,20 +12,7 @@ import ask
 import context
 import json_store
 
-def _series() -> dict:
-    return {
-        "slug": "sample",
-        "name": "Sample",
-        "description": "Sample series",
-        "slices": 1,
-        "width": 2,
-        "height": 2,
-        "pixelSpacing": [1.0, 1.0],
-        "sliceThickness": 1.0,
-        "hasBrain": False,
-        "hasSeg": False,
-        "hasRaw": False,
-    }
+from tests.helpers.python.manifests import local_series
 
 def _ask_entry(key: str) -> dict:
     return {
@@ -61,13 +48,13 @@ def _run_analysis_process(data_path: str, started, release, paid_calls) -> None:
     analyze.summarize = lambda *_args, **_kwargs: "summary"
     analyze.configured_provider = lambda _provider=None: "codex"
     analyze.resolve_model = lambda _model=None, _provider=None: "test"
-    if not analyze.process("sample", {**_series(), "modality": "MR"}, "test", sample_count=1):
+    if not analyze.process("sample", {**local_series(), "modality": "MR"}, "test", sample_count=1):
         raise AssertionError("analysis did not complete")
 
 def test_concurrent_ask_saves_retain_both_answers(tmp_path: Path, monkeypatch) -> None:
     data = tmp_path / "data"
     data.mkdir()
-    manifest = {"patient": "anonymous", "studyDate": "", "series": [_series()]}
+    manifest = {"patient": "anonymous", "studyDate": "", "series": [local_series()]}
     _ = (data / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setattr(ask, "DATA", data)
 
@@ -85,7 +72,7 @@ def test_concurrent_manifest_updates_retain_independent_flags(tmp_path: Path, mo
     _ = manifest_path.write_text(json.dumps({
         "patient": "anonymous",
         "studyDate": "",
-        "series": [_series()],
+        "series": [local_series()],
     }), encoding="utf-8")
     monkeypatch.setattr(analyze, "DATA", data)
 

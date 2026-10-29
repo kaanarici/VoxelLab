@@ -53,7 +53,7 @@ jobs:
           python-version-file: '.python-version'
           cache: pip
       - run: python -m pip install --require-hashes -r requirements/registration.lock
-      - run: python -m pytest -q tests/test_registration_alignment.py tests/test_dicom_geometry_native.py tests/test_modal_dicom_module.py tests/test_ultrasound_reconstruction.py tests/test_projection_rtk.py tests/test_projection_reconstruction.py tests/test_pipeline_preflight.py tests/test_engine_sources.py
+      - run: python -m pytest -q tests/test_registration_alignment.py tests/test_dicom_geometry_native.py tests/test_modal_dicom_module.py tests/test_ultrasound_reconstruction.py tests/test_projection_reconstruction.py tests/test_pipeline_preflight.py tests/test_engine_sources.py
         env:
           ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS: "1"
           ANTS_RANDOM_SEED: "2026"

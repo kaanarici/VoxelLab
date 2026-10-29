@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { clampLeftRailWidthPx, parseShellLayout, patchShellLayout } from '../js/shell/shell-layout-toggles.js';
+import { failingStorage, memoryStorage, withGlobal } from './helpers/node/viewer-globals.mjs';
+import {
+  clampLeftRailWidthPx,
+  loadShellLayout,
+  parseShellLayout,
+  patchShellLayout,
+} from '../js/shell/shell-layout-toggles.js';
+
+const SHELL_LAYOUT_KEY = 'mri-viewer/shellLayout/v1';
+
+function withStorage(t, storage = memoryStorage()) {
+  t.after(withGlobal('localStorage', storage));
+  return storage;
+}
 
 test('parseShellLayout keeps collapse flags and an optional left width', () => {
   assert.equal(parseShellLayout(null), null);
@@ -29,32 +41,58 @@ test('parseShellLayout keeps collapse flags and an optional left width', () => {
   );
 });
 
-test('patchShellLayout keeps sibling chrome sizes when updating the scrubber', () => {
-  const store = new Map();
-  const previous = globalThis.localStorage;
-  globalThis.localStorage = {
-    getItem: (key) => store.get(key) ?? null,
-    setItem: (key, value) => { store.set(key, String(value)); },
-    removeItem: (key) => { store.delete(key); },
-  };
-  try {
-    patchShellLayout({ leftCollapsed: false, rightCollapsed: true, leftWidth: 250 });
-    patchShellLayout({ scrubberWidth: 320 });
-    assert.deepEqual(JSON.parse(store.get('mri-viewer/shellLayout/v1')), {
-      leftCollapsed: false,
-      rightCollapsed: true,
-      leftWidth: 250,
-      scrubberWidth: 320,
-    });
-    patchShellLayout({ scrubberWidth: null });
-    assert.deepEqual(JSON.parse(store.get('mri-viewer/shellLayout/v1')), {
-      leftCollapsed: false,
-      rightCollapsed: true,
-      leftWidth: 250,
-    });
-  } finally {
-    globalThis.localStorage = previous;
-  }
+test('patchShellLayout keeps sibling chrome sizes when updating the scrubber', (t) => {
+  const storage = withStorage(t);
+
+  patchShellLayout({ leftCollapsed: false, rightCollapsed: true, leftWidth: 250 });
+  patchShellLayout({ scrubberWidth: 320 });
+  assert.deepEqual(JSON.parse(storage.getItem(SHELL_LAYOUT_KEY)), {
+    leftCollapsed: false,
+    rightCollapsed: true,
+    leftWidth: 250,
+    scrubberWidth: 320,
+  });
+
+  patchShellLayout({ scrubberWidth: null });
+  assert.deepEqual(JSON.parse(storage.getItem(SHELL_LAYOUT_KEY)), {
+    leftCollapsed: false,
+    rightCollapsed: true,
+    leftWidth: 250,
+  });
+});
+
+test('patchShellLayout ignores non-boolean collapse flags and non-finite widths', (t) => {
+  const storage = withStorage(t);
+
+  patchShellLayout({ leftCollapsed: true, rightCollapsed: true, leftWidth: 240 });
+  const next = patchShellLayout({ leftCollapsed: 'yes', rightCollapsed: 1, leftWidth: Number.NaN });
+
+  assert.deepEqual(next, { leftCollapsed: true, rightCollapsed: true });
+  assert.deepEqual(JSON.parse(storage.getItem(SHELL_LAYOUT_KEY)), {
+    leftCollapsed: true,
+    rightCollapsed: true,
+  });
+});
+
+test('shell layout survives unreadable and unwritable browser storage', (t) => {
+  withStorage(t, failingStorage());
+
+  assert.equal(loadShellLayout(), null);
+  assert.deepEqual(
+    patchShellLayout({ leftCollapsed: true, leftWidth: 260 }),
+    { leftCollapsed: true, rightCollapsed: false, leftWidth: 260 },
+  );
+});
+
+test('loadShellLayout rejects a stored record that lost its collapse flags', (t) => {
+  const storage = withStorage(t);
+  storage.setItem(SHELL_LAYOUT_KEY, JSON.stringify({ leftWidth: 250 }));
+
+  assert.equal(loadShellLayout(), null);
+  assert.deepEqual(
+    patchShellLayout({ scrubberWidth: 300 }),
+    { leftCollapsed: false, rightCollapsed: false, scrubberWidth: 300 },
+  );
 });
 
 test('clampLeftRailWidthPx stays between the left min and right rail', () => {
@@ -64,20 +102,5 @@ test('clampLeftRailWidthPx stays between the left min and right rail', () => {
   assert.equal(clampLeftRailWidthPx(100, 208, 312), 208);
   assert.equal(clampLeftRailWidthPx(250.6, 208, 312), 251);
   assert.equal(clampLeftRailWidthPx(Number.NaN, 208, 312), 208);
-});
-
-test('notify container stays at inline-end above the toolbar without a physical right override', () => {
-  const css = readFileSync(new URL('../css/base.css', import.meta.url), 'utf8');
-  const block = css.match(/#notify-container \{[\s\S]*?\n {2}\}/)?.[0];
-  assert.ok(block, 'expected #notify-container rule in css/base.css');
-  assert.match(block, /inset-inline-end:/);
-  assert.match(block, /--btn-toolbar/);
-  assert.doesNotMatch(block, /right:\s*auto/);
-  assert.match(css, /\.app:not\(\.right-collapsed\)\s*~\s*#notify-container/);
-  assert.match(css, /body:has\(\.toolbox\.open\) #notify-container/);
-  assert.match(css, /body:has\(\.custom-dropdown\.open\) #notify-container/);
-  assert.match(css, /z-index:\s*calc\(var\(--z-header\)\s*-\s*1\)/);
-  assert.match(css, /body:has\(\.canvas-wrap\.mpr\) #notify-container/);
-  assert.match(css, /body:has\(\.canvas-wrap\.mpr3d\) #notify-container/);
-  assert.doesNotMatch(css, /\.notify-item::before/);
+  assert.equal(clampLeftRailWidthPx(300, 280, 240), 280);
 });

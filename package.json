@@ -1,10 +1,13 @@
 {
   "name": "voxellab",
   "productName": "VoxelLab",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "main": "electron/main/index.js",
+  "bin": {
+    "voxellab-agent": "scripts/voxellab-agent.mjs"
+  },
   "author": "VoxelLab contributors",
   "description": "VoxelLab: local-first research imaging viewer with browser and Electron desktop entrypoints.",
   "scripts": {
@@ -24,16 +27,16 @@
     "desktop:ensure-electron": "node scripts/ensure_electron_runtime.mjs",
     "desktop:smoke": "npm run desktop:ensure-electron && node --test --test-concurrency=1 tests/electron-runtime-smoke.mjs tests/electron-nifti-smoke.mjs tests/electron-tiff-sequence-smoke.mjs tests/electron-microscopy-workflow-smoke.mjs",
     "desktop:check": "node scripts/check_electron_desktop.mjs && node scripts/check_electron_package.mjs && node scripts/check_release_workflow.mjs && node --test tests/electron-desktop-contract.test.mjs && npm run desktop:smoke",
-    "lint": "eslint js electron scripts tests viewer.js --max-warnings 0 && node --no-warnings --experimental-strip-types node_modules/oxlint/bin/oxlint js electron scripts tests viewer.js",
+    "lint": "eslint js electron scripts tests viewer.js --max-warnings 0 --cache --cache-location node_modules/.cache/eslint/ && node --no-warnings --experimental-strip-types node_modules/oxlint/bin/oxlint js electron scripts tests viewer.js",
     "lint:ci": "npm run lint",
-    "check": "npm run check:docs && npm run check:js && npm run check:py && npm run check:data && npm run check:geometry && npm run test:node",
-    "check:fast": "npm run check:docs && npm run check:js:fast && npm run check:py && npm run check:data && npm run check:validation && npm run check:geometry && npm run check:reference-parity && npm run test:python && npm run test:node",
+    "check": "npm run check:fast && npm run desktop:check",
+    "check:fast": "node scripts/run_checks.mjs check:py lint:ci test:node check:geometry check:data check:docs check:js:types:boundaries check:styles",
     "check:browser": "playwright test",
     "check:docs": "node scripts/check_documentation.mjs",
     "check:lab": "node scripts/check_lab_readiness.mjs --skip-validation-matrix --skip-public-export --skip-demo-pack --skip-converters --skip-browser",
     "check:accuracy": "node scripts/check_accuracy_ledger.mjs",
     "check:js": "npm run check:js:fast && npm run desktop:check",
-    "check:js:fast": "npm run lint:ci && npm run check:js:syntax && npm run check:js:types:boundaries && npm run check:styles",
+    "check:js:fast": "npm run lint:ci && npm run check:js:types:boundaries && npm run check:styles",
     "check:js:syntax": "node --check viewer.js && for f in $(find js -name '*.js') electron/main/*.js electron/shared/*.js; do node --check \"$f\" || exit 1; done && node --check electron/preload/index.cjs",
     "check:js:types:boundaries": "tsc -p jsconfig.boundaries.json --pretty false",
     "check:styles": "node scripts/check_inline_styles.mjs",
@@ -57,7 +60,8 @@
     "test": "npm run test:node && npm run test:browser",
     "test:node": "node --test tests/*.test.mjs",
     "test:python": "node scripts/run_python.mjs -m pytest -q",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "agent": "node scripts/voxellab-agent.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
@@ -74,7 +78,7 @@
     "eslint-plugin-unicorn": "^64.0.0",
     "globals": "^15.15.0",
     "oxlint": "1.77.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@cornerstonejs/codec-charls": "^1.2.3",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 from pathlib import Path
 import urllib.error
@@ -10,55 +9,11 @@ import pytest
 from scripts.merge_modal_result import companion_projection_source, infer_job_id, read_companion_projection, read_result_json, result_url, write_manifest
 from series_contract import merge_manifest_path
 
+from tests.helpers.python.manifests import cloud_manifest, modal_entry
+from tests.helpers.python.streams import FakeHTTPResponse
+
 def write_json(path: Path, data: dict) -> None:
     _ = path.write_text(json.dumps(data))
-
-def fixture_manifest() -> dict:
-    return {
-        "patient": "fixture",
-        "studyDate": "2026-04-09",
-        "series": [
-            {
-                "slug": "sample",
-                "name": "Sample",
-                "description": "Tiny fixture stack",
-                "slices": 2,
-                "width": 2,
-                "height": 1,
-                "pixelSpacing": [0.5, 0.5],
-                "sliceThickness": 1.0,
-                "hasBrain": False,
-                "hasSeg": True,
-                "hasRaw": False,
-            }
-        ],
-    }
-
-def modal_entry(**overrides) -> dict:
-    entry = {
-        "slug": "cloud_job12345",
-        "name": "Cloud CT",
-        "description": "2 slices - cloud processed",
-        "modality": "CT",
-        "slices": 2,
-        "width": 4,
-        "height": 4,
-        "pixelSpacing": [0.7, 0.7],
-        "sliceThickness": 1.5,
-        "group": None,
-        "hasBrain": False,
-        "hasSeg": False,
-        "hasSym": False,
-        "hasRegions": False,
-        "hasStats": False,
-        "hasAnalysis": False,
-        "hasMaskRaw": False,
-        "hasRaw": True,
-        "rawUrl": "https://r2.example/cloud_job12345.raw.zst",
-        "sliceUrlBase": "https://r2.example/data/cloud_job12345",
-    }
-    entry.update(overrides)
-    return entry
 
 def test_read_result_json_accepts_local_file(tmp_path: Path) -> None:
     path = tmp_path / "series.json"
@@ -74,22 +29,7 @@ def test_read_result_json_rejects_oversized_local_file(tmp_path: Path) -> None:
         _ = read_result_json(str(path), max_bytes=1)
 
 def test_read_result_json_caps_remote_read(monkeypatch) -> None:
-    class Response:
-        def __init__(self, payload: bytes):
-            self.payload = io.BytesIO(payload)
-            self.read_sizes: list[int] = []
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def read(self, size: int = -1) -> bytes:
-            self.read_sizes.append(size)
-            return self.payload.read(size)
-
-    response = Response(b'{"slug":"cloud_job12345"}')
+    response = FakeHTTPResponse(b'{"slug":"cloud_job12345"}')
     monkeypatch.setattr("scripts.merge_modal_result.urllib.request.urlopen", lambda *_args, **_kwargs: response)
 
     with pytest.raises(ValueError, match="JSON exceeds 5 bytes"):
@@ -158,7 +98,7 @@ def test_companion_projection_reraises_remote_non_404(monkeypatch) -> None:
 
 def test_merge_appends_without_dropping_existing_series(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
 
     merged, action, index = merge_manifest_path(manifest_path, modal_entry(), job_id="job12345")
 
@@ -181,7 +121,7 @@ def test_merge_can_create_first_manifest_from_cloud_result(tmp_path: Path) -> No
 
 def test_merge_accepts_modal_result_with_explicit_volume_reconstruction_fields(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
 
     merged, action, index = merge_manifest_path(
         manifest_path,
@@ -214,7 +154,7 @@ def test_merge_accepts_modal_result_with_explicit_volume_reconstruction_fields(t
     assert merged["series"][1]["renderability"]["canMpr3D"] is True
 
 def test_merge_updates_existing_series_by_slug(tmp_path: Path) -> None:
-    manifest = fixture_manifest()
+    manifest = cloud_manifest()
     manifest["series"].append(modal_entry(name="Old Name", sourceJobId="job12345"))
     manifest_path = tmp_path / "manifest.json"
     write_json(manifest_path, manifest)
@@ -227,7 +167,7 @@ def test_merge_updates_existing_series_by_slug(tmp_path: Path) -> None:
     assert merged["series"][1]["name"] == "New Name"
 
 def test_merge_appends_new_series_when_only_source_series_uid_matches(tmp_path: Path) -> None:
-    manifest = fixture_manifest()
+    manifest = cloud_manifest()
     manifest["series"].append(modal_entry(slug="cloud_old", sourceSeriesUID="1.2.3"))
     manifest_path = tmp_path / "manifest.json"
     write_json(manifest_path, manifest)
@@ -244,7 +184,7 @@ def test_merge_appends_new_series_when_only_source_series_uid_matches(tmp_path: 
     assert merged["series"][2]["sourceJobId"] == "job99999"
 
 def test_merge_updates_existing_series_by_job_id(tmp_path: Path) -> None:
-    manifest = fixture_manifest()
+    manifest = cloud_manifest()
     manifest["series"].append(modal_entry(slug="cloud_old", sourceJobId="job12345"))
     manifest_path = tmp_path / "manifest.json"
     write_json(manifest_path, manifest)
@@ -257,7 +197,7 @@ def test_merge_updates_existing_series_by_job_id(tmp_path: Path) -> None:
 
 def test_merge_hydrates_region_urls_from_public_base(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
 
     merged, action, index = merge_manifest_path(
         manifest_path,
@@ -272,7 +212,7 @@ def test_merge_hydrates_region_urls_from_public_base(tmp_path: Path) -> None:
 
 def test_merge_backfills_canonical_compare_group_from_frame_of_reference(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
 
     merged, action, index = merge_manifest_path(
         manifest_path,
@@ -290,7 +230,7 @@ def test_merge_backfills_canonical_compare_group_from_frame_of_reference(tmp_pat
 
 def test_merge_rejects_result_urls_outside_public_base(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
 
     with pytest.raises(ValueError, match="expected origin https://r2.example"):
         _ = merge_manifest_path(
@@ -300,7 +240,7 @@ def test_merge_rejects_result_urls_outside_public_base(tmp_path: Path) -> None:
         )
 
 def test_merge_rejects_ambiguous_existing_matches(tmp_path: Path) -> None:
-    manifest = fixture_manifest()
+    manifest = cloud_manifest()
     manifest["series"].append(modal_entry(slug="cloud_same", sourceSeriesUID="1.2.3"))
     manifest["series"].append(modal_entry(slug="cloud_other", sourceJobId="job12345"))
     manifest_path = tmp_path / "manifest.json"
@@ -315,7 +255,7 @@ def test_merge_rejects_ambiguous_existing_matches(tmp_path: Path) -> None:
 
 def test_merge_rejects_result_without_cloud_slice_urls(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
     entry = modal_entry()
     del entry["sliceUrlBase"]
 
@@ -324,7 +264,7 @@ def test_merge_rejects_result_without_cloud_slice_urls(tmp_path: Path) -> None:
 
 def test_merge_rejects_projection_result_claiming_display_volume(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
-    write_json(manifest_path, fixture_manifest())
+    write_json(manifest_path, cloud_manifest())
 
     with pytest.raises(ValueError, match="expected requires-reconstruction for geometryKind projectionSet"):
         _ = merge_manifest_path(

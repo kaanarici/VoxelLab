@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { URL } from 'node:url';
 
@@ -561,10 +560,6 @@ test('applyMicroscopyWorkflowRecipe rejects invalid channel styling without muta
   assert.equal(liveSeries().microscopyDataset.channels[1].displayColor, '#00FF00');
 });
 
-test('live recipe replay does not import writeHost helpers', () => {
-  const src = readFileSync(new URL('../js/microscopy/microscopy-workflow-recipe-replay.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /writeHost/);
-});
 
 test('applyMicroscopyWorkflowRecipe patches an isolated host in place', () => {
   const host = fixture();

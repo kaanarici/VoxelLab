@@ -1,56 +1,66 @@
+from __future__ import annotations
+
 import importlib.util
-import os
+from pathlib import Path
 
 import pytest
 
-SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "..", "test-samples", "microscopy")
+SAMPLE_DIR = Path(__file__).resolve().parents[1] / "test-samples" / "microscopy"
 READER = {"czi": "czifile", "nd2": "nd2", "lif": "liffile"}
 EXPECTED_NATIVE_PARTS = {"czi": 1, "nd2": 1, "lif": 4}
 
-def _available(ext):
-    return (
-        os.path.exists(os.path.join(SAMPLE_DIR, f"sample.{ext}"))
-        and importlib.util.find_spec(READER[ext]) is not None
-        and importlib.util.find_spec("tifffile") is not None
+def sample_case(extension: str):
+    """Skip explicitly when the local vendor sample or its reader is absent."""
+    missing = []
+    if not (SAMPLE_DIR / f"sample.{extension}").exists():
+        missing.append(f"test-samples/microscopy/sample.{extension}")
+    missing.extend(
+        module
+        for module in (READER[extension], "tifffile")
+        if importlib.util.find_spec(module) is None
+    )
+    return pytest.param(
+        extension,
+        id=extension,
+        marks=pytest.mark.skipif(bool(missing), reason=f"missing {', '.join(missing)}"),
     )
 
-@pytest.mark.parametrize("ext", ["czi", "nd2", "lif"])
-def test_vendor_sample_converts_to_calibrated_ome_tiff(ext, tmp_path):
-    if not _available(ext):
-        pytest.skip(f"no local sample.{ext} or its reader/tifffile is not installed")
+VENDOR_SAMPLES = [sample_case(extension) for extension in ("czi", "nd2", "lif")]
+
+@pytest.mark.parametrize("extension", VENDOR_SAMPLES)
+def test_a_vendor_sample_converts_to_a_calibrated_ome_tiff(extension: str, tmp_path: Path) -> None:
+    import tifffile
     from microscopy_convert import convert_to_ome_tiff_with_result, read_normalized_stack
 
-    src = os.path.join(SAMPLE_DIR, f"sample.{ext}")
-    stack = read_normalized_stack(src)
+    source = str(SAMPLE_DIR / f"sample.{extension}")
+    stack = read_normalized_stack(source)
+    output = str(tmp_path / "out.ome.tiff")
+
+    _ = convert_to_ome_tiff_with_result(source, output)
+
     assert stack.data.ndim == 5, "normalized to TCZYX"
-    assert stack.source_format == ext.upper()
+    assert stack.source_format == extension.upper()
     assert isinstance(stack.warnings, list)
-
-    out = str(tmp_path / "out.ome.tiff")
-    _ = convert_to_ome_tiff_with_result(src, out)
-    import tifffile
-
-    with tifffile.TiffFile(out) as tif:
+    with tifffile.TiffFile(output) as tif:
         ome = tif.ome_metadata or ""
         assert "<OME" in ome
+        assert 'SizeX="' in ome
+        assert 'SizeY="' in ome
 
-        assert 'SizeX="' in ome and 'SizeY="' in ome
-
-@pytest.mark.parametrize("ext", ["czi", "nd2", "lif"])
-def test_vendor_sample_split_conversion_preserves_every_native_unit(ext, tmp_path):
-    if not _available(ext):
-        pytest.skip(f"no local sample.{ext} or its reader/tifffile is not installed")
+@pytest.mark.parametrize("extension", VENDOR_SAMPLES)
+def test_a_split_conversion_preserves_every_native_unit(extension: str, tmp_path: Path) -> None:
     from microscopy_convert import convert_to_ome_tiff_parts, list_native_series_units
 
-    src = os.path.join(SAMPLE_DIR, f"sample.{ext}")
-    units = list_native_series_units(src)
-    results = convert_to_ome_tiff_parts(src, str(tmp_path / "split"), f"sample.{ext}")
+    source = str(SAMPLE_DIR / f"sample.{extension}")
 
-    assert len(units) == EXPECTED_NATIVE_PARTS[ext]
+    units = list_native_series_units(source)
+    results = convert_to_ome_tiff_parts(source, str(tmp_path / "split"), f"sample.{extension}")
+
+    assert len(units) == EXPECTED_NATIVE_PARTS[extension]
     assert len(results) == len(units)
     assert len({result.part_id for result in results}) == len(results)
     assert len({result.file_name for result in results}) == len(results)
     for result in results:
-        assert os.path.exists(result.output_path)
+        assert Path(result.output_path).exists()
         assert result.file_name.endswith(".ome.tiff")
         assert any("native reader" in warning for warning in result.warnings)

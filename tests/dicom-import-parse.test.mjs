@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createCanvasStub, withCanvasDocument as withDocumentStub } from './helpers/node/canvas-stub.mjs';
 
 const {
   buildDICOMSeriesResult,
@@ -9,36 +10,6 @@ const {
   extractEnhancedMultiFramePixels,
 } = await import('../js/dicom/dicom-import-parse.js');
 const { seriesCompareGroup } = await import('../js/core/geometry.js');
-
-function createCanvasStub() {
-  const context = {
-
-    createImageData(width, height) {
-      return { width, height, data: new Uint8ClampedArray(width * height * 4) };
-    },
-    putImageData() {},
-  };
-  return {
-    width: 0,
-    height: 0,
-    getContext() {
-      return context;
-    },
-  };
-}
-
-function withDocumentStub(fn) {
-  const previousDocument = globalThis.document;
-  globalThis.document = {
-    createElement(tag) {
-      if (tag === 'canvas') return createCanvasStub();
-      throw new Error(`unexpected element: ${tag}`);
-    },
-  };
-  return Promise.resolve(fn()).finally(() => {
-    globalThis.document = previousDocument;
-  });
-}
 
 function grayscaleMeta(overrides = {}) {
   return {

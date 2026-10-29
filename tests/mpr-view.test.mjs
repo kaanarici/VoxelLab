@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-globalThis.location = new globalThis.URL('http://127.0.0.1/');
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
+import { waitForValue } from './helpers/node/wait.mjs';
+
+const { storage } = installViewerGlobals();
 globalThis.window = globalThis.window || { addEventListener() {} };
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-  setItem(key, value) { storage.set(key, String(value)); },
-  removeItem(key) { storage.delete(key); },
-};
 
 const { state } = await import('../js/core/state.js');
 const { getMprViewport, setMprViewport } = await import('../js/core/state/viewer-commands.js');
@@ -441,7 +438,7 @@ test('interactive MPR draw path keeps fast quality until settle redraw', async (
     'interactive axis-update draw should stay in fast mode until settle timer fires',
   );
 
-  await new Promise((resolve) => globalThis.setTimeout(resolve, 180));
+  await waitForValue(() => state.mpr.quality, 'quality', { message: 'MPR interaction to settle back to quality mode' });
   assert.equal(state.mpr.quality, 'quality', 'interaction settle should restore quality mode');
 });
 
@@ -487,7 +484,7 @@ test('oblique interaction reuses the same fast then settle quality contract', as
   beginObliqueInteraction();
   assert.equal(state.mpr.quality, 'fast', 'oblique input should switch MPR to fast quality');
 
-  await new Promise((resolve) => globalThis.setTimeout(resolve, 180));
+  await waitForValue(() => state.mpr.quality, 'quality', { message: 'MPR interaction to settle back to quality mode' });
   assert.equal(state.mpr.quality, 'quality', 'oblique settle should restore quality mode');
 });
 
@@ -518,7 +515,7 @@ test('oblique MPR keeps canvas dimensions stable through real interaction settle
     styleWidth: canvas.style.width,
     styleHeight: canvas.style.height,
   };
-  await new Promise((resolve) => globalThis.setTimeout(resolve, 180));
+  await waitForValue(() => state.mpr.quality, 'quality', { message: 'MPR interaction to settle back to quality mode' });
 
   const settledSize = {
     width: canvas.width,
@@ -559,7 +556,7 @@ test('Z scrub keeps oblique pane stable until the settled full MPR redraw', asyn
     styleHeight: canvas.style.height,
   };
 
-  await new Promise((resolve) => globalThis.setTimeout(resolve, 180));
+  await waitForValue(() => state.mpr.quality, 'quality', { message: 'MPR interaction to settle back to quality mode' });
   const settled = {
     puts: canvas.getContext().puts,
     width: canvas.width,

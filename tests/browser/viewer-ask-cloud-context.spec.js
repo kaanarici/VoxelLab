@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { ASK_EVENT_PROTOCOL, ASK_EVENT_VERSION } from '../../js/ask-event-stream.js';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import { localVolumeSeries, routeLocalVolumeStudy } from '../helpers/browser/local-study.mjs';
 
 const askEvent = event => ({ protocol: ASK_EVENT_PROTOCOL, version: ASK_EVENT_VERSION, ...event });
 

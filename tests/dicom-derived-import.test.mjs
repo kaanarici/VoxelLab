@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { URL } from 'node:url';
+import { installCanvasDocument } from './helpers/node/canvas-stub.mjs';
 
 globalThis.location = new URL('http://127.0.0.1/');
 globalThis.localStorage = (() => {
@@ -12,26 +13,7 @@ globalThis.localStorage = (() => {
     clear() { store.clear(); },
   };
 })();
-globalThis.document = {
-  createElement(tag) {
-    if (tag !== 'canvas') throw new Error(`unexpected element ${tag}`);
-    return {
-      width: 0,
-      height: 0,
-      getContext() {
-        return {
-          createImageData(width, height) {
-            return { data: new Uint8ClampedArray(width * height * 4) };
-          },
-          putImageData() {},
-        };
-      },
-      toDataURL() {
-        return 'data:image/png;base64,test';
-      },
-    };
-  },
-};
+installCanvasDocument({ dataUrl: 'data:image/png;base64,test' });
 globalThis.Image = class {
   constructor() {
     this.src = '';

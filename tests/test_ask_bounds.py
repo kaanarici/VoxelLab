@@ -9,60 +9,97 @@ import pytest
 
 import ask
 
-def test_ask_accepts_current_slice_from_browser_local_import(monkeypatch) -> None:
-    Image = pytest.importorskip("PIL.Image")
+VIEWER_CLOUD_CONTEXT = "\n".join([
+    "Viewer cloud/action context:",
+    "- Cloud workflow operator summary: 4 action slots; runtime-ready 1; setup-required 0; blocked 0.",
+    "- Cloud workflow next step: Cloud CT/MR segmentation: use Upload study to select DICOM stack and run Process CT/MR on cloud GPU; loaded study: CT/MR source volume candidates: Active Local CT.",
+    "- Cloud action ready.",
+])
+
+class AskWorkspace:
+    """A data directory plus provider stubs for one `ask.ask` scenario."""
+
+    def __init__(self, root: Path, monkeypatch) -> None:
+        self.root = root
+        self.data = root / "data"
+        self.data.mkdir()
+        self.prompts: list[str] = []
+        self.calls: list[dict] = []
+        monkeypatch.setattr(ask, "DATA", self.data)
+        monkeypatch.setattr(ask, "ROOT", root)
+        self._monkeypatch = monkeypatch
+
+    def write_manifest(self, *series: dict) -> None:
+        _ = (self.data / "manifest.json").write_text(json.dumps({"series": list(series)}))
+
+    def write_sidecar(self, name: str, payload: dict) -> None:
+        _ = (self.data / name).write_text(json.dumps(payload))
+
+    def write_slice(self, folder: str, index: int, value: int, size: tuple[int, int] = (2, 2)) -> None:
+        image = pytest.importorskip("PIL.Image")
+        (self.data / folder).mkdir(exist_ok=True)
+        image.new("L", size, value).save(self.data / folder / f"{index:04d}.png")
+
+    def stub_provider(self, answer: str = "fresh") -> None:
+        def call_ai(prompt, _system, _schema, **kwargs):
+            self.prompts.append(prompt)
+            self.calls.append(kwargs)
+            return {"answer": answer}
+
+        self._monkeypatch.setattr(
+            ask,
+            "require_provider_ready",
+            lambda provider=None: {"provider": provider or "claude", "ready": True},
+        )
+        self._monkeypatch.setattr(ask, "_call_ai", call_ai)
+
+@pytest.fixture()
+def workspace(tmp_path: Path, monkeypatch) -> AskWorkspace:
+    return AskWorkspace(tmp_path, monkeypatch)
+
+def local_image_payload() -> dict:
+    image = pytest.importorskip("PIL.Image")
     buffer = io.BytesIO()
-    Image.new("L", (8, 6), 100).save(buffer, format="PNG")
-    local_image = {
+    image.new("L", (8, 6), 100).save(buffer, format="PNG")
+    return {
         "data_url": f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}",
         "width": 8,
         "height": 6,
         "name": "Local MR",
         "modality": "MR",
     }
-    calls = []
-    monkeypatch.setattr(ask, "require_provider_ready", lambda provider=None: {"ready": True})
-    monkeypatch.setattr(
-        ask,
-        "_call_ai",
-        lambda prompt, system, schema, **kwargs: calls.append((prompt, kwargs)) or {"answer": "Visible slice description."},
-    )
 
-    result = ask.ask("local_fixture_1", 2, "What is visible?", local_image=local_image, provider="codex")
+def test_a_browser_local_study_asks_about_the_current_slice_only(workspace: AskWorkspace) -> None:
+    workspace.stub_provider(answer="Visible slice description.")
+
+    result = ask.ask(
+        "local_fixture_1",
+        2,
+        "What is visible?",
+        local_image=local_image_payload(),
+        provider="codex",
+    )
 
     assert result["answer"] == "Visible slice description."
     assert result["cached"] is False
     assert result["crop"] == "local-current-slice"
-    assert "rest of the locally opened study was not transmitted" in calls[0][0]
-    assert len(calls[0][1]["images"]) == 1
+    assert "rest of the locally opened study was not transmitted" in workspace.prompts[0]
+    assert len(workspace.calls[0]["images"]) == 1
 
-def test_ask_rejects_coordinates_outside_series_bounds(monkeypatch, tmp_path: Path) -> None:
-    data = tmp_path / "data"
-    data.mkdir()
-    _ = (data / "manifest.json").write_text(json.dumps({
-        "series": [{
-            "slug": "t2_tse",
-            "slices": 2,
-            "width": 4,
-            "height": 4,
-        }],
-    }))
-    monkeypatch.setattr(ask, "DATA", data)
+def test_coordinates_outside_the_series_bounds_are_rejected(workspace: AskWorkspace) -> None:
+    workspace.write_manifest({"slug": "t2_tse", "slices": 2, "width": 4, "height": 4})
 
     with pytest.raises(ValueError, match="coordinates out of range"):
         _ = ask.ask("t2_tse", 0, "what is this?", x=5, y=1)
 
-def test_ask_rejects_invalid_slug_before_path_construction(monkeypatch, tmp_path: Path) -> None:
-    data = tmp_path / "data"
-    data.mkdir()
-    _ = (data / "manifest.json").write_text(json.dumps({"series": []}))
-    monkeypatch.setattr(ask, "DATA", data)
+def test_a_path_like_slug_is_rejected_before_any_path_is_built(workspace: AskWorkspace) -> None:
+    workspace.write_manifest()
 
     with pytest.raises(ValueError, match="invalid slug"):
         _ = ask.ask("../etc", 0, "what is this?", x=0, y=0)
 
-def test_ask_cache_requires_matching_context_fingerprint() -> None:
-    data = {
+def test_cached_answers_are_reused_only_for_a_matching_context_fingerprint() -> None:
+    entries = {
         "entries": [
             {
                 "key": "0:0:0:abc",
@@ -86,11 +123,11 @@ def test_ask_cache_requires_matching_context_fingerprint() -> None:
         ],
     }
 
-    assert ask._cached_ask(data, "0:0:0:abc", None)["answer"] == "old context-free answer"
-    assert ask._cached_ask(data, "0:0:0:abc", "ctx1")["answer"] == "context answer"
-    assert ask._cached_ask(data, "0:0:0:abc", "ctx2") is None
+    assert ask._cached_ask(entries, "0:0:0:abc", None)["answer"] == "old context-free answer"
+    assert ask._cached_ask(entries, "0:0:0:abc", "ctx1")["answer"] == "context answer"
+    assert ask._cached_ask(entries, "0:0:0:abc", "ctx2") is None
 
-def test_build_ask_prompt_includes_approximate_point_context() -> None:
+def test_the_prompt_marks_point_context_as_approximate_and_forbids_diagnosis() -> None:
     prompt = ask.build_ask_prompt(
         crop_path=Path("data/sample_asks/crop.png"),
         slice_png=Path("data/sample/0000.png"),
@@ -110,8 +147,9 @@ def test_build_ask_prompt_includes_approximate_point_context() -> None:
     assert "Do not classify anatomy as normal or abnormal" in ask.ASK_SYSTEM
     assert "Do not classify the study as normal or abnormal" in ask.CONSULT_SYSTEM
 
-def test_build_ask_prompt_keeps_viewer_context_separate_from_question() -> None:
+def test_viewer_context_stays_separate_from_the_users_question_in_the_prompt() -> None:
     context_text, fingerprint = ask._viewer_context_prompt("Viewer cloud/action context:\n- Cloud action ready.")
+
     prompt = ask.build_ask_prompt(
         crop_path=Path("data/sample_asks/crop.png"),
         slice_png=Path("data/sample/0000.png"),
@@ -132,9 +170,9 @@ def test_build_ask_prompt_keeps_viewer_context_separate_from_question() -> None:
     assert "Cloud action ready" in prompt
     assert "not additional user-authored question text" in prompt
 
-def test_stream_ai_maps_codex_deltas(monkeypatch) -> None:
-    def fake_stream(**kwargs):
-        yield {"type": "codex_event", "method": "item/agentMessage/delta", "params": {"delta": "{\"answer\":\"The"}}
+def test_streamed_provider_deltas_become_viewer_events(monkeypatch) -> None:
+    def fake_stream(**_kwargs):
+        yield {"type": "codex_event", "method": "item/agentMessage/delta", "params": {"delta": '{"answer":"The'}}
         yield {"type": "codex_event", "method": "item/agentMessage/delta", "params": {"delta": " hippocampus"}}
         yield {"type": "codex_event", "method": "item/commandExecution/outputDelta", "params": {"itemId": "cmd-1", "delta": "stdout"}}
         yield {"type": "result", "output": {"answer": "The hippocampus"}}
@@ -161,31 +199,22 @@ def test_stream_ai_maps_codex_deltas(monkeypatch) -> None:
         {"type": "tool_output", "id": "cmd-1", "text": "stdout"},
     ]
 
-def test_ask_bypasses_context_free_cache_when_valid_context_exists(monkeypatch, tmp_path: Path) -> None:
-    Image = pytest.importorskip("PIL.Image")
-
-    data = tmp_path / "data"
-    data.mkdir()
-    (data / "sample").mkdir()
-    (data / "sample_seg").mkdir()
-    (data / "sample_regions").mkdir()
-    Image.new("L", (2, 2), 100).save(data / "sample" / "0000.png")
-    Image.new("L", (2, 2), 1).save(data / "sample_seg" / "0000.png")
-    Image.new("L", (2, 2), 7).save(data / "sample_regions" / "0000.png")
-    _ = (data / "manifest.json").write_text(json.dumps({
-        "series": [{
-            "slug": "sample",
-            "slices": 1,
-            "width": 2,
-            "height": 2,
-            "pixelSpacing": [1.0, 1.0],
-            "firstIPP": [0.0, 0.0, 0.0],
-            "lastIPP": [0.0, 0.0, 0.0],
-            "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            "hasContext": True,
-        }],
-    }))
-    _ = (data / "sample_context.json").write_text(json.dumps({
+def test_a_context_free_cached_answer_is_bypassed_once_context_exists(workspace: AskWorkspace) -> None:
+    workspace.write_slice("sample", 0, 100)
+    workspace.write_slice("sample_seg", 0, 1)
+    workspace.write_slice("sample_regions", 0, 7)
+    workspace.write_manifest({
+        "slug": "sample",
+        "slices": 1,
+        "width": 2,
+        "height": 2,
+        "pixelSpacing": [1.0, 1.0],
+        "firstIPP": [0.0, 0.0, 0.0],
+        "lastIPP": [0.0, 0.0, 0.0],
+        "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        "hasContext": True,
+    })
+    workspace.write_sidecar("sample_context.json", {
         "slug": "sample",
         "version": 1,
         "slices": [{
@@ -194,12 +223,11 @@ def test_ask_bypasses_context_free_cache_when_valid_context_exists(monkeypatch, 
             "intensity": {"source": "base_png", "units": "display_uint8", "mean": 100.0},
             "regions": [{"label": 7, "name": "Approx region", "areaPx": 4, "areaMm2": 4.0}],
         }],
-    }))
-    key = ask._ask_key(0, 1, 1, "what is this?")
-    _ = (data / "sample_asks.json").write_text(json.dumps({
+    })
+    workspace.write_sidecar("sample_asks.json", {
         "slug": "sample",
         "entries": [{
-            "key": key,
+            "key": ask._ask_key(0, 1, 1, "what is this?"),
             "slice": 0,
             "x": 1,
             "y": 1,
@@ -207,50 +235,22 @@ def test_ask_bypasses_context_free_cache_when_valid_context_exists(monkeypatch, 
             "answer": "stale",
             "crop": "data/sample_asks/0000_1_1_6561768b93.png",
         }],
-    }))
-    prompts = []
-    monkeypatch.setattr(ask, "DATA", data)
-    monkeypatch.setattr(ask, "ROOT", tmp_path)
-    monkeypatch.setattr(ask, "require_provider_ready", lambda provider=None: {"provider": provider or "claude", "ready": True})
-    monkeypatch.setattr(
-        ask,
-        "_call_ai",
-        lambda prompt, system, schema, model="test", provider=None, images=None, timeout=240, allow_agent_tools=False, add_dirs=None, on_event=None: prompts.append(prompt) or {"answer": "fresh"},
-    )
+    })
+    workspace.stub_provider()
 
     result = ask.ask("sample", 0, "what is this?", x=1, y=1, model="test", provider="codex")
 
+    manifest = json.loads((workspace.data / "manifest.json").read_text())
     assert result["cached"] is False
     assert result["answer"] == "fresh"
     assert result["contextFingerprint"]
-    assert "Approx region" in prompts[0]
-    manifest = json.loads((data / "manifest.json").read_text())
+    assert "Approx region" in workspace.prompts[0]
     assert manifest["series"][0]["hasAskHistory"] is True
 
-def test_ask_viewer_context_reaches_prompt_without_polluting_question(monkeypatch, tmp_path: Path) -> None:
-    Image = pytest.importorskip("PIL.Image")
-
-    data = tmp_path / "data"
-    data.mkdir()
-    (data / "sample").mkdir()
-    Image.new("L", (2, 2), 100).save(data / "sample" / "0000.png")
-    _ = (data / "manifest.json").write_text(json.dumps({
-        "series": [{
-            "slug": "sample",
-            "slices": 1,
-            "width": 2,
-            "height": 2,
-        }],
-    }))
-    prompts = []
-    monkeypatch.setattr(ask, "DATA", data)
-    monkeypatch.setattr(ask, "ROOT", tmp_path)
-    monkeypatch.setattr(ask, "require_provider_ready", lambda provider=None: {"provider": provider or "claude", "ready": True})
-    monkeypatch.setattr(
-        ask,
-        "_call_ai",
-        lambda prompt, system, schema, model="test", provider=None, images=None, timeout=240, allow_agent_tools=False, add_dirs=None, on_event=None: prompts.append(prompt) or {"answer": "fresh"},
-    )
+def test_viewer_context_reaches_the_prompt_and_the_saved_history(workspace: AskWorkspace) -> None:
+    workspace.write_slice("sample", 0, 100)
+    workspace.write_manifest({"slug": "sample", "slices": 1, "width": 2, "height": 2})
+    workspace.stub_provider()
 
     result = ask.ask(
         "sample",
@@ -260,20 +260,15 @@ def test_ask_viewer_context_reaches_prompt_without_polluting_question(monkeypatc
         y=1,
         model="test",
         provider="codex",
-        viewer_context=(
-            "Viewer cloud/action context:\n"
-            "- Cloud workflow operator summary: 4 action slots; runtime-ready 1; setup-required 0; blocked 0.\n"
-            "- Cloud workflow next step: Cloud CT/MR segmentation: use Upload study to select DICOM stack and run Process CT/MR on cloud GPU; loaded study: CT/MR source volume candidates: Active Local CT.\n"
-            "- Cloud action ready."
-        ),
+        viewer_context=VIEWER_CLOUD_CONTEXT,
     )
 
-    saved = json.loads((data / "sample_asks.json").read_text())["entries"][0]
+    saved = json.loads((workspace.data / "sample_asks.json").read_text())["entries"][0]
     assert result["question"] == "What changed?"
     assert result["contextFingerprint"].startswith("viewer:")
     assert saved["question"] == "What changed?"
     assert saved["contextFingerprint"] == result["contextFingerprint"]
-    assert "Cloud action ready" in prompts[0]
+    assert "Cloud action ready" in workspace.prompts[0]
     assert result["actions"] == [{
         "id": "open-cloud-workflow",
         "label": "Open Cloud GPU",
@@ -281,16 +276,14 @@ def test_ask_viewer_context_reaches_prompt_without_polluting_question(monkeypatc
     }]
     assert saved["actions"] == result["actions"]
 
-def test_ask_viewer_context_adds_cloud_results_action() -> None:
-    actions = ask._ask_actions_for_viewer_context(
-        "\n".join([
-            "Viewer cloud/action context:",
-            "- Completed cloud actions in loaded study: 2.",
-            "- Active completed cloud action: Cloud CT/MR segmentation; series Cloud Segmentation Result; job job_fixture_cloud_123; status partial.",
-            "- Cloud workflow operator summary: 4 action slots; runtime-ready 1; setup-required 0; blocked 0.",
-            "- Cloud workflow next step: Cloud CT/MR segmentation: use Upload study to select DICOM stack and run Process CT/MR on cloud GPU; loaded study: CT/MR source volume candidates: Active Local CT.",
-        ])
-    )
+def test_completed_cloud_work_offers_the_results_action_first() -> None:
+    actions = ask._ask_actions_for_viewer_context("\n".join([
+        "Viewer cloud/action context:",
+        "- Completed cloud actions in loaded study: 2.",
+        "- Active completed cloud action: Cloud CT/MR segmentation; series Cloud Segmentation Result; job job_fixture_cloud_123; status partial.",
+        "- Cloud workflow operator summary: 4 action slots; runtime-ready 1; setup-required 0; blocked 0.",
+        "- Cloud workflow next step: Cloud CT/MR segmentation: use Upload study to select DICOM stack and run Process CT/MR on cloud GPU; loaded study: CT/MR source volume candidates: Active Local CT.",
+    ]))
 
     assert actions[0] == {
         "id": "open-cloud-results",
@@ -299,15 +292,13 @@ def test_ask_viewer_context_adds_cloud_results_action() -> None:
     }
     assert actions[1]["id"] == "open-cloud-workflow"
 
-def test_ask_viewer_context_adds_registration_compare_action_before_workflow_action() -> None:
-    actions = ask._ask_actions_for_viewer_context(
-        "\n".join([
-            "Viewer cloud/action context:",
-            "- Active registration evidence: series Moving; verdict slightly off; displacement 3.25 mm; source data/registration.json; inspect Metadata panel Compare opens fixed/moving compare with Fixed as fixed image.",
-            "- Cloud workflow operator summary: 4 action slots; runtime-ready 1; setup-required 0; blocked 0.",
-            "- Cloud workflow next step: Cloud registration/alignment: use Upload study to select fixed and moving DICOM stacks plus voxellab.source.json.",
-        ])
-    )
+def test_active_registration_evidence_offers_compare_before_the_workflow_action() -> None:
+    actions = ask._ask_actions_for_viewer_context("\n".join([
+        "Viewer cloud/action context:",
+        "- Active registration evidence: series Moving; verdict slightly off; displacement 3.25 mm; source data/registration.json; inspect Metadata panel Compare opens fixed/moving compare with Fixed as fixed image.",
+        "- Cloud workflow operator summary: 4 action slots; runtime-ready 1; setup-required 0; blocked 0.",
+        "- Cloud workflow next step: Cloud registration/alignment: use Upload study to select fixed and moving DICOM stacks plus voxellab.source.json.",
+    ]))
 
     assert actions[0] == {
         "id": "open-registration-compare",

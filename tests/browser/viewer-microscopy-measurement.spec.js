@@ -2,23 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
-import {
-  dropFiles,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+import { clickCanvasPixel, waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
 
-async function clickCanvasPixel(page, x, y) {
-  const canvas = page.locator('#view');
-  const box = await canvas.boundingBox();
-  expect(box).toBeTruthy();
-  const size = await canvas.evaluate((el) => ({ width: el.width, height: el.height }));
-  await page.mouse.click(
-    box.x + (x / size.width) * box.width,
-    box.y + (y / size.height) * box.height,
-  );
-}
 
 test('microscopy ruler stores calibrated micrometer distance and renders without overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -28,10 +14,9 @@ test('microscopy ruler stores calibrated micrometer distance and renders without
   pixels[8 * 16 + 8] = 220;
   await writeCalibratedOmeTiff(omeTiffPath, { pixels });
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
-  await waitForCanvasPaint(page, '#view');
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await waitForSlicePaint(page);
 
   await page.locator('#toolbox-measure .toolbox-trigger').click();
   await page.locator('#btn-measure').click();
