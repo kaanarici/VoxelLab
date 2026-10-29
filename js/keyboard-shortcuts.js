@@ -192,9 +192,16 @@ export function matchCommandShortcutEvent(e, commandId) {
   return getShortcut(commandId) === shortcutFromEvent(e);
 }
 
-export function runShortcutEvent(e) {
+const STUDY_FREE_SECTIONS = new Set(['General', 'Cloud']);
+
+export function isStudyFreeCommand(command) {
+  return STUDY_FREE_SECTIONS.has(command?.section) || command?.id === 'help';
+}
+
+export function runShortcutEvent(e, { studyLoaded = true } = {}) {
   const command = commandForShortcut(shortcutFromEvent(e));
   if (!command?.action) return false;
+  if (!studyLoaded && !isStudyFreeCommand(command)) return false;
   e.preventDefault();
   e.stopPropagation();
   command.action();

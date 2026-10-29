@@ -49,14 +49,20 @@ const NODE_CONTRACT_TESTS = Object.freeze([
   'tests/roi-stats-domain.test.mjs',
   'tests/microscopy-accuracy.test.mjs',
   'tests/roi-results.test.mjs',
+  'tests/roi-results-bundle-import.test.mjs',
   'tests/release-assets-check.test.mjs',
   'tests/readme-handoff.test.mjs',
 ]);
 
 const BROWSER_SPECS = Object.freeze([
   'tests/browser/viewer-nifti-boundaries.spec.js',
-  'tests/browser/viewer-upload-flows.spec.js',
-  'tests/browser/viewer-microscopy-upload.spec.js',
+  'tests/browser/viewer-upload-intake.spec.js',
+  'tests/browser/viewer-upload-local-import.spec.js',
+  'tests/browser/viewer-upload-dicomweb.spec.js',
+  'tests/browser/viewer-upload-cloud.spec.js',
+  'tests/browser/viewer-microscopy-import.spec.js',
+  'tests/browser/viewer-microscopy-roi-sidecars.spec.js',
+  'tests/browser/viewer-microscopy-roi-results.spec.js',
   'tests/browser/viewer-microscopy-format-boundaries.spec.js',
   'tests/browser/viewer-microscopy-workflow.spec.js',
   'tests/browser/viewer-microscopy-time.spec.js',

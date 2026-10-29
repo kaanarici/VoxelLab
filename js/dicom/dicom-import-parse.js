@@ -578,15 +578,16 @@ export async function buildDICOMSeriesResult(inputDatasets, onProgress = () => {
     ? 'display-volume'
     : reconstructionCapabilityForGeometryKind(geometryKind);
 
+  const sliceCountText = `${rawSliceIdx} slice${rawSliceIdx === 1 ? '' : 's'}`;
   let name = seriesDesc;
   if (!name) {
     const parts = [modality];
     if (bodyPart) parts.push(bodyPart);
-    parts.push(`${rawSliceIdx} slices`);
+    parts.push(sliceCountText);
     name = parts.join(' · ');
   }
 
-  let description = `${cols}×${rows} · ${rawSliceIdx} slices`;
+  let description = `${cols}×${rows} · ${sliceCountText}`;
   if (pixelSpacing[0] > 0) description += ` · ${pixelSpacing[0].toFixed(2)} mm`;
   if (sliceSpacing > 0) description += ` / ${sliceSpacing.toFixed(1)} mm`;
   description += ' · local import';

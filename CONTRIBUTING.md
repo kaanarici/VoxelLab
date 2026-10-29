@@ -12,7 +12,7 @@ not through a public issue.
 
 Requirements:
 
-- Node.js 22.12.0, as recorded in `.node-version`
+- Node.js 22.23.4, as recorded in `.node-version`
 - Python 3.13 (setup accepts 3.11 or newer; local lock files and CI use 3.13)
 
 ```bash

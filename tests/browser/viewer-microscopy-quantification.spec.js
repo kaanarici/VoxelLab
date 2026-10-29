@@ -3,41 +3,26 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedChannelTimeOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
-import {
-  dropFiles,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+import { clickCanvasPixel, waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { ensurePanelOpen } from '../helpers/browser/panels.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
 
-async function openPanel(page, selector) {
-  const panel = page.locator(selector);
-  await expect(panel).toBeVisible();
-  if (await panel.evaluate(el => el.classList.contains('collapsed'))) await panel.locator('.sec-title').click();
-}
 
-async function clickCanvasPixel(page, x, y) {
-  const canvas = page.locator('#view');
-  const box = await canvas.boundingBox();
-  const size = await canvas.evaluate(el => ({ width: el.width, height: el.height }));
-  await page.mouse.click(box.x + (x / size.width) * box.width, box.y + (y / size.height) * box.height);
-}
 
 test('microscopy Analyze panel plots an active raw line and reports bounded pixel-wise colocalization', async ({ page }, testInfo) => {
   const path = testInfo.outputPath('quantification.ome.tiff');
   await mkdir(dirname(path), { recursive: true });
   await writeCalibratedChannelTimeOmeTiff(path);
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path, mimeType: 'image/tiff' }]);
-  await waitForCanvasPaint(page, '#view');
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path, mimeType: 'image/tiff' }]);
+  await waitForSlicePaint(page);
 
   await page.locator('#toolbox-measure .toolbox-trigger').click();
   await page.locator('#btn-measure').click();
   await clickCanvasPixel(page, 4, 8);
   await clickCanvasPixel(page, 8, 8);
 
-  await openPanel(page, '#microscopy-analysis-panel');
+  await ensurePanelOpen(page, '#microscopy-analysis-panel');
   await page.locator('#analyze-line-profile-run').click();
   await expect(page.locator('#analyze-line-profile-status')).toContainText('raw samples');
   await expect(page.locator('#analyze-line-profile-plot svg')).toBeVisible();

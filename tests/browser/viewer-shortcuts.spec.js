@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { dismissOnboardingHint } from '../helpers/browser/app.mjs';
+import { localVolumeSeries, routeLocalVolumeStudy } from '../helpers/browser/local-study.mjs';
 
 test('page metadata and Help describe the experimental local-first build', async ({ page }) => {
   await page.route('**/data/manifest.json', async (route) => {
@@ -212,18 +214,14 @@ test('shortcut customizer edits, clears, resets, and blocks duplicate bindings',
     errors.push(message.text());
   });
   await page.addInitScript(() => localStorage.removeItem('voxellab.keyboardShortcuts.v1'));
-  await page.route('**/data/manifest.json', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-    });
-  });
+  await routeLocalVolumeStudy(page, [localVolumeSeries('shortcut_volume', 'Shortcut Volume')]);
 
   const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
   expect(response?.ok()).toBe(true);
   await expect(page.locator('#btn-cmdk-open')).toBeVisible({ timeout: 20_000 });
   await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  await page.locator('#series-list li').first().click();
+  await dismissOnboardingHint(page);
 
   await page.locator('#btn-cmdk-open').click();
   await page.locator('#cmdk-input').fill('shortcuts');

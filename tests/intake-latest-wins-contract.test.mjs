@@ -1,35 +1,22 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { fileURLToPath, URL } from 'node:url';
 import { createLatestDesktopIntakeDrain } from '../js/desktop-bridge.js';
 import { openDesktopOrBrowserFilePicker } from '../js/projects/study-upload-modal.js';
+import { nextTask } from './helpers/node/wait.mjs';
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
 
-function source(relativePath) {
-  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
+installViewerGlobals();
+
+const {
+  applyRecipeSidecarsForActiveSeries,
+  importImageJRoiSidecarsForActiveSeries,
+  importRoiSidecarsForActiveSeries,
+} = await import('../js/projects/microscopy-sidecars.js');
+const { handleLocalImport } = await import('../js/intake/run-local-import.js');
+
+function statusElement() {
+  return { className: '', textContent: '', innerHTML: '', removeAttribute() {} };
 }
-
-test('desktop microscopy sidecar-only intake stays in one actionable dialog', () => {
-  const desktopBridge = source('../js/desktop-bridge.js');
-
-  assert.match(desktopBridge, /showDesktopIntakeDialog\(\s*'Open microscopy image first',[\s\S]*?chooseOtherFiles: true/);
-  assert.doesNotMatch(desktopBridge, /showStudyUploadModal\(selectSeries\);\s+if \(!isCurrentIntake\(\)/);
-});
-
-test('desktop intake preserves a close-blocked cloud job modal', () => {
-  const desktopBridge = source('../js/desktop-bridge.js');
-
-  assert.match(desktopBridge, /uploadModal\.dataset\.closeBlocked !== 'true'/);
-  assert.match(desktopBridge, /voxellab:modal-close-blocked/);
-  assert.match(desktopBridge, /if \(cloudJobBlocksDesktopIntake\(\)\) return;/);
-});
-
-test('desktop retry action restores one error surface when the native picker rejects', () => {
-  const desktopBridge = source('../js/desktop-bridge.js');
-
-  assert.match(desktopBridge, /await desktop\.openFiles\(\);\s*} catch \(error\) {/);
-  assert.match(desktopBridge, /'File open failed'/);
-});
 
 test('desktop upload uses the native picker while browser intake clicks the file input', async () => {
   const calls = [];
@@ -70,7 +57,7 @@ test('desktop intake drain runs only the latest queued payload after active work
   assert.deepEqual(events, ['start:first:true']);
 
   releaseFirst();
-  await new Promise(resolve => setImmediate(resolve));
+  await nextTask();
   assert.deepEqual(events, [
     'start:first:true',
     'finish:first:false',
@@ -81,12 +68,85 @@ test('desktop intake drain runs only the latest queued payload after active work
   assert.equal(busy, false);
 });
 
-test('post-selection microscopy sidecars remain bound to the imported series', () => {
-  const localImport = source('../js/intake/run-local-import.js');
+test('desktop intake drain drops queued payloads and keeps draining after a failure', async () => {
+  const seen = [];
+  let releaseFirst;
+  const firstBlocked = new Promise(resolve => { releaseFirst = resolve; });
+  const enqueue = createLatestDesktopIntakeDrain(async (payload) => {
+    seen.push(payload.id);
+    if (payload.id === 'first') await firstBlocked;
+    if (payload.id === 'boom') throw new Error('import failed');
+  });
 
-  assert.match(localImport, /const isSelectedSeriesActive = \(\) => \(/);
-  assert.match(localImport, /await selectSeries\(selectedIndex\);\s+if \(!isSelectedSeriesActive\(\)\) return;/);
-  assert.match(localImport, /importImageJRoiSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
-  assert.match(localImport, /applyRecipeSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
-  assert.match(localImport, /importRoiSidecarsForActiveSeries\([^;]+isActive: isSelectedSeriesActive/);
+  const inFlight = enqueue({ id: 'first' });
+  await Promise.resolve();
+  const queued = enqueue({ id: 'queued' });
+  const winner = enqueue({ id: 'latest' });
+
+  assert.equal(await queued, false, 'a payload replaced before it starts never runs');
+  releaseFirst();
+  assert.equal(await inFlight, false, 'in-flight work that lost the race reports itself superseded');
+  assert.equal(await winner, true);
+  assert.deepEqual(seen, ['first', 'latest']);
+
+  await assert.rejects(enqueue({ id: 'boom' }), /import failed/);
+  assert.equal(await enqueue({ id: 'after-failure' }), true, 'a failed intake must not wedge the drain');
+  assert.deepEqual(seen, ['first', 'latest', 'boom', 'after-failure']);
+});
+
+test('a superseded local import stops before touching status, busy state, or the file list', async () => {
+  const status = statusElement();
+  const busyEvents = [];
+  let readFiles = 0;
+  const sidecar = {
+    name: 'workflow.json',
+    async text() {
+      readFiles += 1;
+      return JSON.stringify({ schema: 'voxellab.microscopyWorkflowRecipe.v1' });
+    },
+  };
+
+  await handleLocalImport(
+    [sidecar],
+    status,
+    null,
+    async () => { throw new Error('a superseded import must not select a series'); },
+    value => busyEvents.push(value),
+    { isActive: () => false },
+  );
+
+  assert.equal(readFiles, 0);
+  assert.equal(status.textContent, '');
+  assert.deepEqual(busyEvents, []);
+});
+
+test('sidecar imports report stale instead of applying to a series that changed', async () => {
+  const roiSidecar = { name: 'rois.json', bundle: { schema: 'voxellab.roiResults.v1', rows: [] } };
+  const recipeSidecar = { name: 'workflow.json', recipe: { schema: 'voxellab.microscopyWorkflowRecipe.v1' } };
+  const imageJSidecar = { name: 'cell.roi', rois: [] };
+  const isActive = () => false;
+
+  assert.deepEqual(
+    await importRoiSidecarsForActiveSeries([roiSidecar], { isActive }),
+    { applied: 0, skipped: 0, stale: true },
+  );
+  assert.deepEqual(
+    await applyRecipeSidecarsForActiveSeries([recipeSidecar], { isActive }),
+    { applied: 0, skipped: 0, stale: true },
+  );
+  assert.deepEqual(
+    await importImageJRoiSidecarsForActiveSeries([imageJSidecar], { isActive }),
+    { applied: 0, skipped: 0, stale: true },
+  );
+});
+
+test('sidecar imports stay inert with nothing to apply and never report staleness', async () => {
+  for (const importSidecars of [
+    importRoiSidecarsForActiveSeries,
+    applyRecipeSidecarsForActiveSeries,
+    importImageJRoiSidecarsForActiveSeries,
+  ]) {
+    assert.deepEqual(await importSidecars([], { isActive: () => true }), { applied: 0, skipped: 0 });
+    assert.deepEqual(await importSidecars(), { applied: 0, skipped: 0 });
+  }
 });

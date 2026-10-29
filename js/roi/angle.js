@@ -55,15 +55,6 @@ function anglesHere() {
   return series ? angleEntriesForSlice(state, series, state.sliceIdx) : [];
 }
 
-function currentMicroscopyScope() {
-  const series = state.manifest.series[state.seriesIdx];
-  if (series?.imageDomain !== 'microscopy') return null;
-  return {
-    channelIndex: Number(series.microscopy?.channelIndex || 0),
-    channelName: series.microscopy?.channelName || '',
-    timeIndex: Number(series.microscopy?.timeIndex || 0),
-  };
-}
 
 function angleVisibleInCurrentScope(angle) {
   const scope = currentMicroscopyScope();
@@ -104,6 +95,16 @@ export function onAngleClick(ev) {
   }
 }
 
+export function currentMicroscopyScope() {
+  const series = state.manifest.series[state.seriesIdx];
+  if (series?.imageDomain !== 'microscopy') return null;
+  return {
+    channelIndex: Number(series.microscopy?.channelIndex || 0),
+    channelName: series.microscopy?.channelName || '',
+    timeIndex: Number(series.microscopy?.timeIndex || 0),
+  };
+}
+
 function physicalAxes(series) {
   const spacing = inPlanePixelSpacing(series);
   return {
@@ -120,7 +121,7 @@ function physicalDelta(point, vertex, series) {
   };
 }
 
-function computeAngle(p1, vertex, p3, series) {
+export function computeAngle(p1, vertex, p3, series) {
   const { dx: dx1, dy: dy1 } = physicalDelta(p1, vertex, series);
   const { dx: dx2, dy: dy2 } = physicalDelta(p3, vertex, series);
   const dot = dx1 * dx2 + dy1 * dy2;

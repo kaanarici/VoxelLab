@@ -1,42 +1,37 @@
 import { expect, test } from '@playwright/test';
 
-async function routeConfig(page, override = {}) {
-  await page.route(/\/config(?:\.local)?\.json$/, route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      modalWebhookBase: '',
-      r2PublicUrl: '',
-      trustedUploadOrigins: [],
-      localApiToken: '',
-      localAiAvailable: true,
-      ai: { enabled: true, provider: 'local', ready: true, issues: [] },
-      siteName: 'VoxelLab',
-      disclaimer: 'Not for clinical use. For research and educational purposes only.',
-      features: { cloudProcessing: true, aiAnalysis: true },
-      ...override,
-    }),
-  }));
+import {
+  openAdvancedOptions,
+  openEmptyStudyUploadModal,
+  reopenUploadModal,
+  routeConfig,
+  routeManifest,
+} from '../helpers/browser/app.mjs';
+import { settleFrames } from '../helpers/browser/canvas.mjs';
+import {
+  desktopFile,
+  desktopOpenFilesCalls,
+  dispatchDesktopOpen,
+  expectDesktopReadStarted,
+  installDesktopBridgeStub,
+  releaseDesktopRead,
+  tinyNiftiByteArray,
+  waitForDesktopBridge,
+} from '../helpers/browser/desktop-bridge.mjs';
+
+const LOCAL_AI_CONFIG = { ai: { enabled: true, provider: 'local', ready: true, issues: [] } };
+
+async function openLifecycleUploadModal(page, override = {}) {
+  await routeConfig(page, { ...LOCAL_AI_CONFIG, ...override });
+  await openEmptyStudyUploadModal(page);
 }
 
-async function openAdvancedOptions(page) {
-  const advanced = page.locator('#upload-advanced-options');
-  if (!await advanced.evaluate(element => element.open)) {
-    await advanced.locator('summary').click();
-  }
-}
-
-async function openUploadModal(page) {
-  await page.route('**/data/manifest.json', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-  }));
+async function openDesktopViewer(page, stubOptions = {}) {
+  await routeConfig(page, LOCAL_AI_CONFIG);
+  await installDesktopBridgeStub(page, stubOptions);
+  await routeManifest(page);
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
-  await page.locator('#btn-upload').click();
-  await expect(page.locator('#upload-modal')).toBeVisible();
-  await openAdvancedOptions(page);
+  await waitForDesktopBridge(page);
 }
 
 async function startDelayedFolderDrop(page, key, { fileName, type }) {
@@ -83,101 +78,97 @@ async function startDelayedFolderDrop(page, key, { fileName, type }) {
   )).toBe(true);
 }
 
+async function resolveDelayedFolderDrop(page, key) {
+  await page.evaluate(dropKey => window.__delayedFolderDrops[dropKey].resolve(), key);
+  await expect.poll(() => page.evaluate(
+    dropKey => window.__delayedFolderDrops[dropKey].fileRead,
+    key,
+  )).toBe(true);
+  await settleFrames(page);
+}
+
+async function dropTinyNiftiFile(page, fileName) {
+  await page.locator('#upload-zone').evaluate((target, payload) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(payload.bytes)], payload.fileName));
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: transfer });
+    target.dispatchEvent(event);
+  }, { bytes: tinyNiftiByteArray(), fileName });
+}
+
 test('the newest drop wins even when an older folder traversal resolves later', async ({ page }) => {
-  await routeConfig(page, {
+  await openLifecycleUploadModal(page, {
     modalWebhookBase: 'https://voxellab.example.modal.run',
     r2PublicUrl: 'https://voxellab.example.r2.dev',
     trustedUploadOrigins: ['https://account.r2.cloudflarestorage.com'],
   });
-  await openUploadModal(page);
   await startDelayedFolderDrop(page, 'older', { fileName: 'older.dcm', type: 'application/dicom' });
-
-  await page.locator('#upload-zone').evaluate((target) => {
-    const bytes = new Uint8Array(360);
-    const view = new DataView(bytes.buffer);
-    view.setInt32(0, 348, true);
-    view.setInt16(40, 3, true);
-    view.setInt16(42, 2, true);
-    view.setInt16(44, 2, true);
-    view.setInt16(46, 2, true);
-    view.setInt16(70, 2, true);
-    view.setInt16(72, 8, true);
-    view.setFloat32(80, 1, true);
-    view.setFloat32(84, 1, true);
-    view.setFloat32(88, 1, true);
-    view.setFloat32(108, 352, true);
-    view.setUint8(123, 2);
-    bytes.set([0x6e, 0x2b, 0x31, 0], 344);
-    const transfer = new DataTransfer();
-    transfer.items.add(new File([bytes], 'newer.nii'));
-    const event = new Event('drop', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'dataTransfer', { value: transfer });
-    target.dispatchEvent(event);
-  });
+  await dropTinyNiftiFile(page, 'newer.nii');
 
   const status = page.locator('#upload-status');
   await expect(status).toContainText('Opened (NIfTI)');
-  await page.evaluate(() => window.__delayedFolderDrops.older.resolve());
-  await expect.poll(() => page.evaluate(() => window.__delayedFolderDrops.older.fileRead)).toBe(true);
-  await page.waitForTimeout(100);
+  await resolveDelayedFolderDrop(page, 'older');
   await expect(status).toContainText('Opened (NIfTI)');
   await expect(status).not.toContainText('DICOM');
 });
 
 test('dismissed upload sessions ignore delayed folder traversal after reopen', async ({ page }) => {
-  await routeConfig(page, {
+  await openLifecycleUploadModal(page, {
     modalWebhookBase: 'https://voxellab.example.modal.run',
     r2PublicUrl: 'https://voxellab.example.r2.dev',
   });
-  await openUploadModal(page);
   await page.evaluate(() => { window.__dismissedUploadStatus = document.getElementById('upload-status'); });
   await startDelayedFolderDrop(page, 'dismissed', { fileName: 'dismissed.dcm', type: 'application/dicom' });
 
   await page.keyboard.press('Escape');
-  await page.locator('#btn-upload').click();
-  await page.evaluate(() => window.__delayedFolderDrops.dismissed.resolve());
-  await expect.poll(() => page.evaluate(() => window.__delayedFolderDrops.dismissed.fileRead)).toBe(true);
-  await page.waitForTimeout(100);
+  await reopenUploadModal(page);
+  await resolveDelayedFolderDrop(page, 'dismissed');
 
   await expect.poll(() => page.evaluate(() => window.__dismissedUploadStatus.textContent)).toBe('');
   await expect(page.locator('#upload-status')).toHaveText('');
 });
 
 test('dismissed DICOMweb work cannot mutate a reopened upload session', async ({ page }) => {
-  await routeConfig(page);
-  let releaseStudyDiscovery;
-  let markStudyStarted;
-  const studyStarted = new Promise(resolve => { markStudyStarted = resolve; });
-  const studyGate = new Promise(resolve => { releaseStudyDiscovery = resolve; });
-  let releaseMetadata;
-  let markMetadataStarted;
-  const metadataStarted = new Promise(resolve => { markMetadataStarted = resolve; });
-  const metadataGate = new Promise(resolve => { releaseMetadata = resolve; });
+  const gate = () => {
+    const marks = {};
+    marks.started = new Promise(resolve => { marks.markStarted = resolve; });
+    marks.open = new Promise(resolve => { marks.release = resolve; });
+    marks.delivered = new Promise(resolve => { marks.markDelivered = resolve; });
+    return marks;
+  };
+  const studies = gate();
+  const metadata = gate();
+  const deliver = async (marks, route, body) => {
+    marks.markStarted();
+    await marks.open;
+    try {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    } catch {
+      marks.markDelivered();
+      return;
+    }
+    marks.markDelivered();
+  };
   await page.route('https://pacs.example/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/studies') {
-      markStudyStarted();
-      await studyGate;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ '0020000D': { vr: 'UI', Value: ['stale.study'] } }]) });
-    }
-    if (path.endsWith('/metadata')) {
-      markMetadataStarted();
-      await metadataGate;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ '00080060': { vr: 'CS', Value: ['CT'] } }]) });
-    }
+    if (path === '/studies') return deliver(studies, route, [{ '0020000D': { vr: 'UI', Value: ['stale.study'] } }]);
+    if (path.endsWith('/metadata')) return deliver(metadata, route, [{ '00080060': { vr: 'CS', Value: ['CT'] } }]);
     throw new Error(`Unhandled DICOMweb request: ${path}`);
   });
 
-  await openUploadModal(page);
+  await openLifecycleUploadModal(page);
   await page.locator('#dicomweb-base').fill('https://pacs.example');
   await page.evaluate(() => { window.__dismissedDicomwebStudyInput = document.getElementById('dicomweb-study'); });
   await page.locator('#dicomweb-find-studies-btn').click();
-  await studyStarted;
+  await studies.started;
   await page.keyboard.press('Escape');
-  await page.locator('#btn-upload').click();
+  await reopenUploadModal(page);
   await openAdvancedOptions(page);
-  releaseStudyDiscovery();
-  await page.waitForTimeout(100);
+
+  studies.release();
+  await studies.delivered;
+  await settleFrames(page);
   await expect.poll(() => page.evaluate(() => window.__dismissedDicomwebStudyInput.value)).toBe('');
   await expect(page.locator('#dicomweb-study')).toHaveValue('');
 
@@ -186,12 +177,14 @@ test('dismissed DICOMweb work cannot mutate a reopened upload session', async ({
   await page.locator('#dicomweb-study').fill('1.2.study');
   await page.locator('#dicomweb-series').fill('1.2.series');
   await page.locator('#upload-dicomweb-btn').click();
-  await metadataStarted;
+  await metadata.started;
   await page.keyboard.press('Escape');
-  await page.locator('#btn-upload').click();
+  await reopenUploadModal(page);
   await openAdvancedOptions(page);
-  releaseMetadata();
-  await page.waitForTimeout(100);
+
+  metadata.release();
+  await metadata.delivered;
+  await settleFrames(page);
 
   await expect(page.locator('#series-list li')).toHaveCount(0);
   await expect(page.locator('#upload-status')).toHaveText('');
@@ -199,63 +192,14 @@ test('dismissed DICOMweb work cannot mutate a reopened upload session', async ({
 });
 
 test('dismissed desktop intake cannot import into a reopened upload session', async ({ page }) => {
-  await routeConfig(page);
-  await page.addInitScript(() => {
-    const bytes = new ArrayBuffer(360);
-    const view = new DataView(bytes);
-    view.setInt32(0, 348, true);
-    new Uint8Array(bytes).set([0x6e, 0x2b, 0x31, 0], 344);
-    view.setInt16(40, 3, true);
-    view.setInt16(42, 2, true);
-    view.setInt16(44, 2, true);
-    view.setInt16(46, 2, true);
-    view.setInt16(70, 2, true);
-    view.setInt16(72, 8, true);
-    view.setFloat32(80, 1, true);
-    view.setFloat32(84, 1, true);
-    view.setFloat32(88, 1, true);
-    view.setFloat32(108, 352, true);
-    view.setUint8(123, 2);
-    let releaseRead;
-    const readGate = new Promise(resolve => { releaseRead = resolve; });
-    window.__releaseDesktopRead = releaseRead;
-    window.voxellabDesktop = {
-      onMenuCommand() {},
-      onOpenPaths(handler) { window.__dispatchDesktopOpen = handler; },
-      async rendererReady() {},
-      async getCloudSettings() { return {}; },
-      async saveCloudSettings() {},
-      async openFolder() {},
-      async getConverterCapabilities() { return { tools: [] }; },
-      async readFileRange(_path, { start = 0, end = bytes.byteLength } = {}) {
-        window.__desktopReadStarted = true;
-        await readGate;
-        window.__desktopReadFinished = true;
-        return { bytes: bytes.slice(start, end) };
-      },
-    };
-  });
-  await page.route('**/data/manifest.json', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-  }));
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__dispatchDesktopOpen instanceof Function);
+  await openDesktopViewer(page, { gateReads: true });
 
-  await page.evaluate(() => {
-    void window.__dispatchDesktopOpen({
-      supported: [{ kind: 'file', name: 'dismissed.nii', path: '/tmp/dismissed.nii', size: 360 }],
-      unsupported: [],
-      convertible: [],
-    });
-  });
+  await dispatchDesktopOpen(page, { supported: [desktopFile('dismissed.nii')] });
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__desktopReadStarted)).toBe(true);
+  await expectDesktopReadStarted(page);
   await page.keyboard.press('Escape');
-  await page.locator('#btn-upload').click();
-  await page.evaluate(() => window.__releaseDesktopRead());
-  await expect.poll(() => page.evaluate(() => window.__desktopReadFinished)).toBe(true);
+  await reopenUploadModal(page);
+  await releaseDesktopRead(page);
 
   await expect(page.locator('#series-list li')).toHaveCount(0);
   await expect(page.locator('#upload-modal')).toBeVisible();
@@ -263,7 +207,6 @@ test('dismissed desktop intake cannot import into a reopened upload session', as
 });
 
 test('newer desktop intake supersedes an older intake during modal setup', async ({ page }) => {
-  await routeConfig(page);
   let markTemplateStarted;
   let releaseTemplate;
   const templateStarted = new Promise(resolve => { markTemplateStarted = resolve; });
@@ -273,58 +216,11 @@ test('newer desktop intake supersedes an older intake during modal setup', async
     await templateGate;
     await route.continue();
   });
-  await page.addInitScript(() => {
-    const bytes = new ArrayBuffer(360);
-    const view = new DataView(bytes);
-    view.setInt32(0, 348, true);
-    new Uint8Array(bytes).set([0x6e, 0x2b, 0x31, 0], 344);
-    view.setInt16(40, 3, true);
-    view.setInt16(42, 2, true);
-    view.setInt16(44, 2, true);
-    view.setInt16(46, 2, true);
-    view.setInt16(70, 2, true);
-    view.setInt16(72, 8, true);
-    view.setFloat32(80, 1, true);
-    view.setFloat32(84, 1, true);
-    view.setFloat32(88, 1, true);
-    view.setFloat32(108, 352, true);
-    view.setUint8(123, 2);
-    window.voxellabDesktop = {
-      onMenuCommand() {},
-      onOpenPaths(handler) { window.__dispatchDesktopOpen = handler; },
-      async rendererReady() {},
-      async getCloudSettings() { return {}; },
-      async saveCloudSettings() {},
-      async openFolder() {},
-      async getConverterCapabilities() { return { tools: [] }; },
-      async readFileRange(_path, { start = 0, end = bytes.byteLength } = {}) {
-        return { bytes: bytes.slice(start, end) };
-      },
-    };
-  });
-  await page.route('**/data/manifest.json', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-  }));
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__dispatchDesktopOpen instanceof Function);
+  await openDesktopViewer(page);
 
-  await page.evaluate(() => {
-    void window.__dispatchDesktopOpen({
-      supported: [{ kind: 'file', name: 'older.nii', path: '/tmp/older.nii', size: 360 }],
-      unsupported: [],
-      convertible: [],
-    });
-  });
+  await dispatchDesktopOpen(page, { supported: [desktopFile('older.nii')] });
   await templateStarted;
-  await page.evaluate(() => {
-    void window.__dispatchDesktopOpen({
-      supported: [{ kind: 'file', name: 'newer.nii', path: '/tmp/newer.nii', size: 360 }],
-      unsupported: [],
-      convertible: [],
-    });
-  });
+  await dispatchDesktopOpen(page, { supported: [desktopFile('newer.nii')] });
   releaseTemplate();
 
   await expect(page.locator('#series-list li')).toHaveCount(1);
@@ -334,63 +230,62 @@ test('newer desktop intake supersedes an older intake during modal setup', async
 });
 
 test('newer desktop intake dismisses an already-visible sidecar-only warning', async ({ page }) => {
-  await routeConfig(page);
-  await page.addInitScript(() => {
-    const bytes = new ArrayBuffer(360);
-    const view = new DataView(bytes);
-    view.setInt32(0, 348, true);
-    new Uint8Array(bytes).set([0x6e, 0x2b, 0x31, 0], 344);
-    view.setInt16(40, 3, true);
-    view.setInt16(42, 2, true);
-    view.setInt16(44, 2, true);
-    view.setInt16(46, 2, true);
-    view.setInt16(70, 2, true);
-    view.setInt16(72, 8, true);
-    view.setFloat32(80, 1, true);
-    view.setFloat32(84, 1, true);
-    view.setFloat32(88, 1, true);
-    view.setFloat32(108, 352, true);
-    view.setUint8(123, 2);
-    window.voxellabDesktop = {
-      onMenuCommand() {},
-      onOpenPaths(handler) { window.__dispatchDesktopOpen = handler; },
-      async rendererReady() {},
-      async getCloudSettings() { return {}; },
-      async saveCloudSettings() {},
-      async openFolder() {},
-      async getConverterCapabilities() { return { tools: [] }; },
-      async readFileRange(_path, { start = 0, end = bytes.byteLength } = {}) {
-        return { bytes: bytes.slice(start, end) };
-      },
-    };
-  });
-  await page.route('**/data/manifest.json', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-  }));
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__dispatchDesktopOpen instanceof Function);
+  await openDesktopViewer(page);
 
-  await page.evaluate(() => {
-    void window.__dispatchDesktopOpen({
-      supported: [{ kind: 'file', name: 'workflow.json', path: '/tmp/workflow.json', size: 2 }],
-      unsupported: [],
-      convertible: [],
-    });
-  });
+  await dispatchDesktopOpen(page, { supported: [desktopFile('workflow.json', 2)] });
   await expect(page.locator('#confirm-modal')).toBeVisible();
   await expect(page.locator('#confirm-title')).toHaveText('Open microscopy image first');
+  await expect(page.locator('#confirm-modal').getByRole('button', { name: 'Choose other files' })).toBeVisible();
 
-  await page.evaluate(() => {
-    void window.__dispatchDesktopOpen({
-      supported: [{ kind: 'file', name: 'newer.nii', path: '/tmp/newer.nii', size: 360 }],
-      unsupported: [],
-      convertible: [],
-    });
-  });
+  await dispatchDesktopOpen(page, { supported: [desktopFile('newer.nii')] });
 
   await expect(page.locator('#series-list li')).toHaveCount(1);
   await expect(page.locator('#series-name')).toHaveText('newer');
   await expect(page.locator('#confirm-modal')).toBeHidden();
+});
+
+test('an active close-blocked cloud job refuses desktop intake and explains why', async ({ page }) => {
+  await openDesktopViewer(page);
+
+  await page.locator('#btn-upload').click();
+  await expect(page.locator('#upload-modal')).toBeVisible();
+  await page.locator('#upload-modal').evaluate((modal) => { modal.dataset.closeBlocked = 'true'; });
+
+  await dispatchDesktopOpen(page, { supported: [desktopFile('blocked.nii')] });
+
+  await expect(page.locator('[data-notify-id="desktop-cloud-job-block"]'))
+    .toContainText('Stop the active cloud job before opening another study.');
+  await expect(page.locator('#upload-status'))
+    .toHaveText('Cloud job is running. Stop waiting before closing this modal.');
+  await expect(page.locator('#upload-status')).toHaveClass(/is-warning/);
+  await expect(page.locator('#upload-modal')).toBeVisible();
+  await expect(page.locator('#confirm-modal')).toBeHidden();
+  await expect(page.locator('#series-list li')).toHaveCount(0);
+
+  await page.locator('#upload-modal').evaluate((modal) => { delete modal.dataset.closeBlocked; });
+  await dispatchDesktopOpen(page, { supported: [desktopFile('unblocked.nii')] });
+  await expect(page.locator('#series-list li')).toHaveCount(1);
+  await expect(page.locator('#series-name')).toHaveText('unblocked');
+});
+
+test('a rejected native picker leaves exactly one File open failed dialog', async ({ page }) => {
+  await openDesktopViewer(page, { openFilesError: 'native picker unavailable' });
+
+  await dispatchDesktopOpen(page, { supported: [desktopFile('workflow.json', 2)] });
+  await expect(page.locator('#confirm-modal')).toBeVisible();
+  await expect(page.locator('#confirm-title')).toHaveText('Open microscopy image first');
+
+  await page.locator('#desktop-intake-choose-files').click();
+  await expect(page.locator('#confirm-title')).toHaveText('File open failed');
+  await expect(page.locator('#confirm-body')).toContainText('native picker unavailable');
+  expect(await desktopOpenFilesCalls(page)).toBe(1);
+  await expect(page.locator('#confirm-modal')).toHaveCount(1);
+  await expect(page.locator('#confirm-modal.visible')).toHaveCount(1);
+  await expect(page.locator('#confirm-body #desktop-intake-choose-files')).toHaveCount(1);
+
+  await page.locator('#desktop-intake-choose-files').click();
+  await expect.poll(() => desktopOpenFilesCalls(page)).toBe(2);
+  await expect(page.locator('#confirm-title')).toHaveText('File open failed');
+  await expect(page.locator('#confirm-modal.visible')).toHaveCount(1);
+  await expect(page.locator('#desktop-intake-choose-files')).toHaveCount(1);
 });

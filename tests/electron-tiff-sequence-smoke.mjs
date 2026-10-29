@@ -6,17 +6,11 @@ import { test } from 'node:test';
 import {
   assertShellFits,
   closeApp,
+  ensurePanelOpen,
   launchVoxelLab,
+  waitForSeriesName,
   writeTinySequenceTiff,
 } from './fixtures/electron-runtime-smoke-helpers.mjs';
-
-async function ensurePanelOpen(page, panelSelector, visibleSelector) {
-  const panel = page.locator(panelSelector);
-  if (await panel.evaluate(element => element.classList.contains('collapsed')).catch(() => false)) {
-    await panel.locator('.sec-title').click();
-  }
-  await page.locator(visibleSelector).waitFor({ state: 'visible', timeout: 10_000 });
-}
 
 test('Electron runtime opens local TIFF sequence with provenance and manual calibration', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'voxellab-electron-tiff-sequence-'));
@@ -31,7 +25,7 @@ test('Electron runtime opens local TIFF sequence with provenance and manual cali
 
   const { app, page, pageErrors } = await launchVoxelLab(sequencePaths);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'seq_z', null, { timeout: 20_000 });
+    await waitForSeriesName(page, 'seq_z', 20_000);
     await page.waitForFunction(() => document.getElementById('slice-tot')?.textContent === '3', null, { timeout: 10_000 });
     await page.waitForFunction(() => document.getElementById('microscopy-calibration')?.textContent === 'XY uncalibrated · 2 warnings', null, { timeout: 10_000 });
     const beforeCalibration = await page.evaluate(async () => {

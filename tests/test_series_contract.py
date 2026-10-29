@@ -9,52 +9,7 @@ from series_contract import (
     validate_projection_set,
 )
 
-def fixture_manifest() -> dict:
-    return {
-        "patient": "fixture",
-        "studyDate": "2026-04-09",
-        "series": [
-            {
-                "slug": "sample",
-                "name": "Sample",
-                "description": "Tiny fixture stack",
-                "slices": 2,
-                "width": 2,
-                "height": 1,
-                "pixelSpacing": [0.5, 0.5],
-                "sliceThickness": 1.0,
-                "hasBrain": False,
-                "hasSeg": True,
-                "hasRaw": False,
-            }
-        ],
-    }
-
-def modal_entry(**overrides) -> dict:
-    entry = {
-        "slug": "cloud_job12345",
-        "name": "Cloud CT",
-        "description": "2 slices - cloud processed",
-        "modality": "CT",
-        "slices": 2,
-        "width": 4,
-        "height": 4,
-        "pixelSpacing": [0.7, 0.7],
-        "sliceThickness": 1.5,
-        "group": None,
-        "hasBrain": False,
-        "hasSeg": False,
-        "hasSym": False,
-        "hasRegions": False,
-        "hasStats": False,
-        "hasAnalysis": False,
-        "hasMaskRaw": False,
-        "hasRaw": True,
-        "rawUrl": "https://r2.example/cloud_job12345.raw.zst",
-        "sliceUrlBase": "https://r2.example/data/cloud_job12345",
-    }
-    entry.update(overrides)
-    return entry
+from tests.helpers.python.manifests import cloud_manifest, modal_entry
 
 def test_normalize_series_entry_backfills_urls_and_compare_group() -> None:
     entry = normalize_series_entry(
@@ -99,7 +54,7 @@ def test_validate_modal_series_entry_requires_cloud_urls() -> None:
 
 def test_merge_manifest_series_upserts_projection_registry() -> None:
     merged, action, index = merge_manifest_series(
-        fixture_manifest(),
+        cloud_manifest(),
         modal_entry(
             geometryKind="derivedVolume",
             reconstructionCapability="display-volume",

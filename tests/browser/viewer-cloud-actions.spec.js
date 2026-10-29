@@ -2,9 +2,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 import dcmjs from 'dcmjs';
-import { openUploadModal as openUploadModalBase, routeConfig } from './microscopy-upload-helpers.mjs';
+import { openUploadModal as openUploadModalBase, routeConfig, routeManifest } from '../helpers/browser/app.mjs';
 
 async function openUploadModal(page) {
+  await routeManifest(page);
   await openUploadModalBase(page);
   await page.locator('#upload-advanced-options > summary').click();
 }

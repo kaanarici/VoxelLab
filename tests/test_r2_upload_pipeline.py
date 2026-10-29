@@ -2,19 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from upload_to_r2 import compressed_path_for_entry, patch_manifest_urls, public_object_url
 
-def test_r2_upload_index_paths_cannot_escape_compressed_root(tmp_path: Path) -> None:
+def test_r2_upload_index_paths_resolve_inside_the_compressed_root(tmp_path: Path) -> None:
     inside = compressed_path_for_entry(tmp_path, {"compressed": "nested/volume.raw.zst"})
+
     assert inside == (tmp_path / "nested" / "volume.raw.zst").resolve()
 
-    for value in ("../secret", "/tmp/secret", "nested/../../secret", ""):
-        try:
-            _ = compressed_path_for_entry(tmp_path, {"compressed": value})
-        except ValueError as error:
-            assert "inside data_compressed" in str(error)
-        else:
-            raise AssertionError(f"expected path rejection for {value!r}")
+@pytest.mark.parametrize(
+    "compressed",
+    ["../secret", "/tmp/secret", "nested/../../secret", ""],
+    ids=["parent-relative", "absolute", "escaping-traversal", "empty"],
+)
+def test_r2_upload_index_paths_cannot_escape_the_compressed_root(tmp_path: Path, compressed: str) -> None:
+    with pytest.raises(ValueError, match="inside data_compressed"):
+        _ = compressed_path_for_entry(tmp_path, {"compressed": compressed})
 
 def test_r2_manifest_patch_publishes_only_objects_confirmed_available() -> None:
     manifest = {"series": [{"slug": "scan"}, {"slug": "other"}]}

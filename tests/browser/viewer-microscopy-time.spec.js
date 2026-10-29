@@ -1,12 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedTimeSeriesOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
-import {
-  dropFiles,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+import { waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
 
 async function canvasChecksum(page) {
   return page.locator('#view').evaluate((canvas) => {
@@ -26,17 +22,16 @@ test('OME-TIFF time-series import switches T without changing series or Z', asyn
   const omeTiffPath = testInfo.outputPath('cells-time.ome.tiff');
   await writeCalibratedTimeSeriesOmeTiff(omeTiffPath);
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page);
   const initialCount = await page.locator('#series-list li').count();
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
 
   await expect(page.locator('#series-name')).toHaveText('cells-time');
   await expect(page.locator('#series-desc')).toContainText('OME-TIFF');
   await expect(page.locator('#slice-tot')).toHaveText('1');
   await expect(page.locator('#series-list li')).toHaveCount(initialCount + 1);
   await expect(page.locator('#meta')).toContainText('Z 1 · C 1 · T 2');
-  await waitForCanvasPaint(page, '#view');
+  await waitForSlicePaint(page);
 
   const timeSelect = page.locator('#microscopy-time-select');
   const stackStatus = page.locator('#microscopy-stack-controls .hyperstack-status');

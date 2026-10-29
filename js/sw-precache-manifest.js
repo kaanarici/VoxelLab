@@ -12,6 +12,7 @@ export const PRECACHE_LOCAL = [
   './css/viewer.css',
   './index.html',
   './js/adc.js',
+  './js/agent-api.js',
   './js/analysis-findings.js',
   './js/ask-envelopes.js',
   './js/ask-mode.js',

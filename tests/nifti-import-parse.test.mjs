@@ -1,30 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
+import { createCanvasStub, withCanvasDocument as withDocumentStub } from './helpers/node/canvas-stub.mjs';
 
 const { parseNIfTI, parseNIfTISeries } = await import('../js/dicom/nifti-import-parse.js');
 const { calibratedScaleBarModel } = await import('../js/overlay/scale-bar.js');
-
-function createCanvasStub() {
-  const context = {
-    createImageData(width, height) {
-      return { width, height, data: new Uint8ClampedArray(width * height * 4) };
-    },
-    putImageData() {},
-  };
-  return { width: 0, height: 0, getContext: () => context };
-}
-
-function withDocumentStub(fn) {
-  const previousDocument = globalThis.document;
-  globalThis.document = {
-    createElement(tag) {
-      if (tag === 'canvas') return createCanvasStub();
-      throw new Error(`unexpected element: ${tag}`);
-    },
-  };
-  return Promise.resolve(fn()).finally(() => { globalThis.document = previousDocument; });
-}
 
 function tinyNiftiFile({
   littleEndian = true,

@@ -1,3 +1,7 @@
+import { expect } from '@playwright/test';
+import { waitForControlsReady } from './app.mjs';
+import { waitForCanvasPaint } from './canvas.mjs';
+
 export function localVolumeSeries(slug, name, options = {}) {
   const slices = options.slices ?? 16;
   return {
@@ -76,4 +80,62 @@ export async function routeLocalVolumeStudy(page, series, { registration = {} } 
     });
   }
   return series;
+}
+
+export async function openLocalStudy(page, series, { path = '/?localBackend=1', viewport = null } = {}) {
+  if (viewport) await page.setViewportSize(viewport);
+  await routeLocalVolumeStudy(page, series);
+  const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
+  expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
+  await waitForControlsReady(page);
+  return series;
+}
+
+export async function fetchStudyManifest(page) {
+  return page.evaluate(() => fetch('/data/manifest.json').then(response => response.json()));
+}
+
+export function primaryVolumeIndex(manifest) {
+  return Math.max(0, manifest.series.findIndex((series) => (
+    !series?.sliceUrlBase
+    && (series?.reconstructionCapability === 'display-volume' || series?.geometryKind === 'volumeStack')
+  )));
+}
+
+export async function openPerfViewer(page, path = '/?perf=1') {
+  const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
+  expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
+  return fetchStudyManifest(page);
+}
+
+export async function selectVolumeSeries(page, manifest) {
+  const volumeSeriesIndex = primaryVolumeIndex(manifest);
+  const volumeSeries = manifest.series[volumeSeriesIndex];
+  await expect(page.locator('#series-list li')).toHaveCount(manifest.series.length, { timeout: 20_000 });
+  const currentName = await page.locator('#series-name').textContent();
+  if ((currentName || '').trim() !== volumeSeries.name) {
+    await page.locator('#series-list li').nth(volumeSeriesIndex).click();
+  }
+  await waitForCanvasPaint(page, '#view');
+  return { volumeSeries, volumeSeriesIndex };
+}
+
+export async function openPerfVolumeFixture(page) {
+  await routeLocalVolumeStudy(page, [
+    localVolumeSeries('perf_volume', 'Performance Volume Fixture', {
+      description: 'self-contained browser performance fixture',
+      slices: 3,
+    }),
+  ]);
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const manifest = await openPerfViewer(page, attempt ? `/?perf=1&testReload=${Date.now()}` : '/?perf=1');
+    try {
+      await selectVolumeSeries(page, manifest);
+      return manifest;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }

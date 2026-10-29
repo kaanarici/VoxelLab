@@ -217,9 +217,11 @@
     fill: #ffffff; font-weight: 500;
     font-family: -apple-system, system-ui, sans-serif;
     paint-order: stroke; stroke: rgba(0,0,0,0.85); stroke-width: 3px;
+    vector-effect: non-scaling-stroke;
     pointer-events: none;
   }
 
+  .m-del-bg, .m-del-x { vector-effect: non-scaling-stroke; }
   .m-del-bg { fill: rgba(0, 0, 0, 0.65); stroke: rgba(255, 255, 255, 0.4); stroke-width: 1; pointer-events: none; opacity: 0.92; transition: fill var(--dur-quick) var(--ease-swap); }
   .m-del-x  { stroke: #ffffff; stroke-width: 1.6; stroke-linecap: round; pointer-events: none; opacity: 0.92; transition: opacity var(--dur-quick) var(--ease-swap); }
   .m-del-hit { fill: rgba(0, 0, 0, 0.01); pointer-events: all; cursor: pointer; opacity: 1; }
@@ -703,7 +705,8 @@
   .canvas-wrap.no-series .view-stage,
   .canvas-wrap.no-series #three-container,
   .canvas-wrap.no-series #zoom-badge,
-  .canvas-wrap.no-series #scale-bar {
+  .canvas-wrap.no-series #scale-bar,
+  main:has(.canvas-wrap.no-series) .viewer-header-actions > :not(#btn-help) {
     visibility: hidden;
   }
   .empty-state-icon {
@@ -874,6 +877,7 @@
     border-color: #1e1e1e;
   }
 
+  main:has(.canvas-wrap.no-series) #toolbar-root { display: none; }
   #toolbar-root {
     position: relative;
     z-index: var(--z-header);

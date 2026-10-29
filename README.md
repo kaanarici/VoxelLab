@@ -15,12 +15,12 @@ is no account, and local files are not uploaded unless you start a cloud job.
 
 ## Download
 
-Download [VoxelLab v1.2.4](https://github.com/kaanarici/VoxelLab/releases/latest).
+Download [VoxelLab v1.3.0](https://github.com/kaanarici/VoxelLab/releases/latest).
 
 | Platform | File | First launch |
 |---|---|---|
-| macOS on Apple Silicon | `VoxelLab-1.2.4-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
-| Windows 10 or 11 on x64 | `VoxelLab-1.2.4-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
+| macOS on Apple Silicon | `VoxelLab-1.3.0-macOS-arm64.dmg` | The app is unsigned and not notarized. Right-click VoxelLab in Applications, select **Open**, then confirm. |
+| Windows 10 or 11 on x64 | `VoxelLab-1.3.0-Windows-x64.exe` | The installer is unsigned, so Windows may show a SmartScreen warning. |
 
 There is no Linux or Intel Mac installer. Use [Run From Source](#run-from-source)
 on those machines.
@@ -87,7 +87,7 @@ configuration file.
 
 ## Run From Source
 
-Requirements: Node.js 22.12.0 and Python 3.11 or newer. CI and lock files use
+Requirements: Node.js 22.23.4 and Python 3.11 or newer. CI and lock files use
 Python 3.13.
 
 ```bash
@@ -114,6 +114,38 @@ npm run setup -- --rtk
 Cloud GPU setup is documented in [R2 setup](R2_SETUP.md). Contributors should
 run `npm run check`; see [Contributing](CONTRIBUTING.md) for focused checks and
 project rules.
+
+## Use With AI Agents
+
+`voxellab-agent` drives a headless VoxelLab so Claude Code, Codex, or any
+script can open scans, look at them, and measure through the same code paths as
+the UI. Coordinates are image pixels of the active slice; lengths and areas come
+back in calibrated millimetres when the series has trusted spacing. Results are
+research measurements, not diagnoses.
+
+As an MCP server (screenshots return as images):
+
+```bash
+claude mcp add voxellab -- node /path/to/VoxelLab/scripts/voxellab-agent.mjs mcp
+```
+
+```bash
+codex mcp add voxellab -- node /path/to/VoxelLab/scripts/voxellab-agent.mjs mcp
+```
+
+From a shell, one warm viewer serves every call in milliseconds:
+
+```bash
+npm run agent -- open ./scan.nii.gz
+npm run agent -- set_view --slice=40 --preset=lung
+npm run agent -- measure 120 200 260 200
+npm run agent -- roi ellipse 180 220 25
+npm run agent -- screenshot view.png
+npm run agent -- stop
+```
+
+`npm run agent -- tools` lists every tool with its JSON schema. Inside the page,
+`window.voxellab.call(name, params)` exposes the same tools to Playwright.
 
 ## Project Status
 

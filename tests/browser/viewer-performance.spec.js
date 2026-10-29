@@ -1,195 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { VIEWER_PERF_BUDGET } from '../fixtures/performance-budget.mjs';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import {
+  localVolumeSeries,
+  openPerfViewer,
+  openPerfVolumeFixture,
+  routeLocalVolumeStudy,
+} from '../helpers/browser/local-study.mjs';
+import { canvasChecksum, waitForCanvasPaint } from '../helpers/browser/canvas.mjs';
 
 test.setTimeout(90_000);
-
-test('cold shell stays within the established module and byte budgets', async ({ page }) => {
-  await routeLocalVolumeStudy(page, [localVolumeSeries('startup_volume', 'Startup Volume')]);
-  const responses = [];
-  page.on('response', response => {
-    if (response.request().resourceType() !== 'image') responses.push(response);
-  });
-  await page.goto('/?localBackend=1', { waitUntil: 'networkidle' });
-  const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => ({
-    name: entry.name,
-    transferSize: entry.transferSize,
-    decodedBodySize: entry.decodedBodySize,
-  })));
-  const scriptCount = resources.filter(entry => /\.(?:m?js)(?:\?|$)/.test(entry.name)).length;
-  const decodedBytes = resources.reduce((sum, entry) => sum + entry.decodedBodySize, 0);
-
-  expect(scriptCount, `cold shell loaded ${scriptCount} script modules`).toBeLessThanOrEqual(180);
-  expect(decodedBytes, `cold shell decoded ${decodedBytes} bytes`).toBeLessThanOrEqual(1_500_000);
-  expect(responses.length).toBeGreaterThan(0);
-});
-
-test('repeated 3D mode cycles reuse one renderer canvas', async ({ page }) => {
-  await openLocalVolumeFixture(page);
-  await page.locator('#btn-3d').click();
-  await expect(page.locator('#three-container.active canvas')).toBeVisible();
-  await expect.poll(() => page.evaluate(async () => (
-    Boolean((await import('/js/runtime/viewer-runtime.js')).getThreeRuntime().mesh)
-  ))).toBe(true);
-  if (await page.locator('#panel-3d').evaluate(panel => panel.classList.contains('collapsed'))) {
-    await page.locator('#panel-3d .sec-title').click();
-  }
-  const renderer = await page.evaluate(async () => {
-    const { getThreeRuntime } = await import('/js/runtime/viewer-runtime.js');
-    const runtime = getThreeRuntime();
-    return {
-      orthographic: runtime.camera?.isOrthographicCamera === true,
-      pixelRatio: runtime.renderer?.getPixelRatio(),
-      position: runtime.camera?.position.toArray(),
-    };
-  });
-  expect(renderer.orthographic).toBe(true);
-  expect(renderer.pixelRatio).toBeLessThanOrEqual(1.5);
-  const sampling = await page.evaluate(async () => {
-    const { getThreeRuntime } = await import('/js/runtime/viewer-runtime.js');
-    const runtime = getThreeRuntime();
-    const before = runtime.mesh.material.uniforms.uSteps.value;
-    runtime.controls.dispatchEvent({ type: 'start' });
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const during = runtime.mesh.material.uniforms.uSteps.value;
-    runtime.controls.dispatchEvent({ type: 'end' });
-    return { before, during };
-  });
-  expect(sampling.during).toBe(sampling.before);
-
-  await page.locator('#three-turntable').click();
-  await expect(page.locator('#three-turntable')).toHaveAttribute('aria-pressed', 'true');
-  const turnStart = await page.evaluate(async () => (
-    (await import('/js/runtime/viewer-runtime.js')).getThreeRuntime().camera?.position.toArray()
-  ));
-  await page.waitForTimeout(180);
-  const turning = await page.evaluate(async () => {
-    const { getThreeRuntime } = await import('/js/runtime/viewer-runtime.js');
-    const runtime = getThreeRuntime();
-    return {
-      pixelRatio: runtime.renderer?.getPixelRatio(),
-      position: runtime.camera?.position.toArray(),
-    };
-  });
-  expect(turning.pixelRatio).toBeLessThanOrEqual(1);
-  expect(turning.position).not.toEqual(turnStart);
-  await page.locator('.preset-btn[data-view="reset"]').click();
-  await expect(page.locator('#three-turntable')).toHaveAttribute('aria-pressed', 'false');
-
-  await page.locator('#render-mode .pill[data-mode="mip"]').click();
-  await expect(page.locator('#s-gain')).toBeDisabled();
-  await page.locator('#render-mode .pill[data-mode="alpha"]').click();
-  await expect(page.locator('#s-gain')).toBeEnabled();
-  await page.evaluate(() => { globalThis.__voxellabSoakCanvas = document.querySelector('#three-container canvas'); });
-  for (let index = 0; index < 12; index += 1) {
-    await page.locator('#btn-3d').click();
-    await page.locator('#btn-3d').click();
-    await expect(page.locator('#three-container.active canvas')).toBeVisible();
-  }
-  const result = await page.evaluate(() => ({
-    canvasCount: document.querySelectorAll('#three-container canvas').length,
-    reused: globalThis.__voxellabSoakCanvas === document.querySelector('#three-container canvas'),
-  }));
-  expect(result).toEqual({ canvasCount: 1, reused: true });
-});
-
-test('3D renderer failure returns to a supported view without an unhandled rejection', async ({ page }) => {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function getContext(type, ...args) {
-      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
-      return original.call(this, type, ...args);
-    };
-  });
-  const pageErrors = [];
-  page.on('pageerror', error => pageErrors.push(error.message));
-  await openLocalVolumeFixture(page);
-
-  await page.locator('#btn-3d').click();
-
-  await expect(page.locator('#btn-3d')).not.toHaveClass(/active/);
-  await expect(page.locator('#three-container')).not.toHaveClass(/active/);
-  await expect(page.locator('[data-notify-id="three-renderer-unavailable"]')).toContainText('3D rendering is unavailable');
-  await expect.poll(() => page.evaluate(async () => (await import('/js/core/state.js')).state.mode)).toBe('2d');
-  expect(pageErrors).toEqual([]);
-});
-
-test('entering 3D preserves the review slice and keeps a full volume until a scrubber cuts it', async ({ page }) => {
-  await openLocalVolumeFixture(page);
-  await page.locator('#scrub').fill('1');
-  await page.locator('#btn-mpr').click();
-  await expect.poll(() => page.evaluate(async () => (await import('/js/core/state.js')).state.sliceIdx)).toBe(1);
-
-  await page.locator('#btn-3d').click();
-
-  await expect(page.locator('#btn-3d')).toHaveClass(/active/);
-  await expect.poll(() => page.evaluate(async () => (await import('/js/core/state.js')).state.sliceIdx)).toBe(1);
-  await expect.poll(() => page.evaluate(async () => {
-    const { state } = await import('/js/core/state.js');
-    return { slice: state.sliceIdx, clipZ: state.three.clipMax[2] };
-  })).toEqual({ slice: 1, clipZ: 1 });
-  await expect(page.locator('#s-zscrub')).toHaveValue('2');
-  await page.locator('#s-zscrub').evaluate(element => {
-    element.value = '0';
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await expect.poll(() => page.evaluate(async () => {
-    const { state } = await import('/js/core/state.js');
-    return { slice: state.sliceIdx, clipZ: state.three.clipMax[2] };
-  })).toEqual({ slice: 0, clipZ: 1 / 3 });
-  await page.locator('#scrub').evaluate(element => {
-    element.value = '1';
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await expect.poll(() => page.evaluate(async () => {
-    const { state } = await import('/js/core/state.js');
-    return { slice: state.sliceIdx, clipZ: state.three.clipMax[2] };
-  })).toEqual({ slice: 1, clipZ: 2 / 3 });
-});
-
-test('3D keeps a supported preview when the full volume exceeds the live GPU texture limit', async ({ page }) => {
-  await page.addInitScript(() => {
-    const original = WebGL2RenderingContext.prototype.getParameter;
-    WebGL2RenderingContext.prototype.getParameter = function getParameter(parameter) {
-      return parameter === 0x8073 ? 256 : original.call(this, parameter);
-    };
-  });
-  const series = localVolumeSeries('preview_only_volume', 'Preview-only Volume', {
-    width: 512,
-    height: 792,
-    slices: 192,
-    pixelSpacing: [0.5, 1],
-  });
-  series.sliceSpacing = 3;
-  series.lastIPP = [0, 0, 573];
-  series.hasPreview = true;
-  series.previewDims = [16, 24, 8];
-  await routeLocalVolumeStudy(page, [series]);
-  await page.route('**/data/preview_only_volume_preview.raw', route => route.fulfill({
-    status: 200,
-    contentType: 'application/octet-stream',
-    body: Buffer.alloc(16 * 24 * 8, 180),
-  }));
-  await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
-  await selectLocalVolumeSeries(page, { series: [series] });
-  await page.locator('#btn-3d').click();
-  await expect(page.locator('#three-container.active canvas')).toBeVisible();
-  await expect.poll(() => page.evaluate(async () => {
-    const { getThreeRuntime } = await import('/js/runtime/viewer-runtime.js');
-    const runtime = getThreeRuntime();
-    return {
-      preview: runtime.previewShown,
-      materialPreview: runtime.mesh?.material?.userData?.preview,
-      textureDims: runtime.mesh?.material?.userData?.textureDims,
-      densityScale: runtime.mesh?.material?.uniforms?.uVolSize?.value?.toArray(),
-    };
-  }), { timeout: 10_000 }).toEqual({
-    preview: true,
-    materialPreview: true,
-    textureDims: { width: 16, height: 24, depth: 8 },
-    densityScale: [1024, 792, 1152],
-  });
-});
 
 const ONE_PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6p2ioAAAAASUVORK5CYII=',
@@ -200,48 +19,30 @@ async function clearPerf(page) {
   await page.evaluate(() => globalThis.__voxellabPerf?.clear?.());
 }
 
-async function perfEvents(page, name) {
-  return page.evaluate((traceName) => {
-    const history = globalThis.__voxellabPerf?.history || [];
-    return history.filter((entry) => entry.name === traceName);
-  }, name);
+async function waitForPerfEvent(page, name, timeout = 12_000) {
+  try {
+    const handle = await page.waitForFunction((traceName) => {
+      const matches = (globalThis.__voxellabPerf?.history || []).filter((entry) => entry.name === traceName);
+      return matches.length ? matches[matches.length - 1] : null;
+    }, name, { timeout, polling: 100 });
+    return await handle.jsonValue();
+  } catch {
+    return null;
+  }
 }
 
-async function waitForPerfEvent(page, name, timeout = 12_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const events = await perfEvents(page, name);
-    if (events.length) return events[events.length - 1];
-    await page.waitForTimeout(100);
-  }
-  return null;
+async function mprQuality(page) {
+  return page.evaluate(async () => (await import('/js/core/state.js')).state.mpr.quality);
 }
 
 async function pendingPerfCount(page, name) {
-  return page.evaluate((traceName) => {
-    const pending = globalThis.__voxellabPerf?.pending || [];
-    return pending.find((entry) => entry.name === traceName)?.count || 0;
-  }, name);
-}
-
-async function waitForCanvasPaint(page, selector) {
-  for (let i = 0; i < 60; i += 1) {
-    const painted = await page.locator(selector).evaluate((canvas) => {
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx || canvas.width === 0 || canvas.height === 0) return false;
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      for (let p = 0; p < data.length; p += 4) {
-        if (data[p] || data[p + 1] || data[p + 2]) return true;
-      }
-      return false;
-    });
-    if (painted) return;
-    await page.waitForTimeout(100);
-  }
+  return page.evaluate((traceName) => (
+    (globalThis.__voxellabPerf?.pending || []).find((entry) => entry.name === traceName)?.count || 0
+  ), name);
 }
 
 async function scrubBurst(page, count = 48) {
-  return page.evaluate(async ({ count: iterations }) => {
+  return page.evaluate(async (iterations) => {
     const scrub = document.querySelector('#scrub');
     const max = Number(scrub?.max || 0);
     const start = performance.now();
@@ -251,7 +52,7 @@ async function scrubBurst(page, count = 48) {
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return performance.now() - start;
-  }, { count });
+  }, count);
 }
 
 function average(values) {
@@ -264,7 +65,6 @@ function roundMs(value) {
 }
 
 function budgetReport(metrics) {
-
   return Object.fromEntries(
     Object.entries(metrics).map(([name, value]) => {
       const actualMs = roundMs(value);
@@ -327,21 +127,6 @@ async function wheelMprAxesAndSnapshotOblique(page, moves) {
   }, moves);
 }
 
-async function canvasChecksum(page, selector) {
-  return page.locator(selector).evaluate((canvas) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx || canvas.width === 0 || canvas.height === 0) return 'blank';
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    let hash = 2166136261;
-    const stride = Math.max(4, Math.floor(data.length / 4096));
-    for (let index = 0; index < data.length; index += stride) {
-      hash ^= data[index];
-      hash = Math.imul(hash, 16777619) >>> 0;
-    }
-    return `${canvas.width}x${canvas.height}:${hash}`;
-  });
-}
-
 async function obliqueSnapshot(page) {
   return page.locator('#mpr-ob').evaluate(async (canvas) => {
     const { state } = await import('/js/core/state.js');
@@ -398,6 +183,10 @@ async function obliqueSliderAndSnapshot(page, selector, value) {
   return obliqueSnapshot(page);
 }
 
+function stableObliqueLayout({ backing, display, aspectDelta, physicalAspectDelta }) {
+  return { backing, display, aspectDelta, physicalAspectDelta };
+}
+
 async function routePerfCloudFixture(page, { overlayDelayMs = 900 } = {}) {
   const slug = 'cloud_perf_sym';
   const series = {
@@ -439,11 +228,7 @@ async function routePerfCloudFixture(page, { overlayDelayMs = 900 } = {}) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        patient: 'anonymous',
-        studyDate: '',
-        series: [series],
-      }),
+      body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [series] }),
     });
   });
   await page.route(`https://cloud-perf.example/base/${slug}/*.png`, async (route) => {
@@ -455,556 +240,54 @@ async function routePerfCloudFixture(page, { overlayDelayMs = 900 } = {}) {
   });
 }
 
-async function routeFusionPeerFixture(page) {
-  const series = [
-    {
-      slug: 'fusion_source',
-      name: 'Fusion Source',
-      modality: 'MR',
-      group: 'fusion-fixture',
-      slices: 2,
-      width: 1,
-      height: 1,
-      pixelSpacing: [1, 1],
-      sliceThickness: 1,
-      firstIPP: [0, 0, 0],
-      lastIPP: [0, 0, 1],
-    },
-    {
-      slug: 'fusion_peer',
-      name: 'Fusion Peer',
-      modality: 'MR',
-      group: 'fusion-fixture',
-      slices: 2,
-      width: 1,
-      height: 1,
-      pixelSpacing: [1, 1],
-      sliceThickness: 1,
-      firstIPP: [0, 0, 0],
-      lastIPP: [0, 0, 1],
-    },
-  ];
-  await page.route('**/data/manifest.json', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ patient: 'anonymous', studyDate: '', series }),
-    });
+test('cold shell stays within the established module and byte budgets', async ({ page }) => {
+  await routeLocalVolumeStudy(page, [localVolumeSeries('startup_volume', 'Startup Volume')]);
+  const responses = [];
+  page.on('response', response => {
+    if (response.request().resourceType() !== 'image') responses.push(response);
   });
-  for (const item of series) {
-    await page.route(`**/data/${item.slug}/*.png`, async (route) => {
-      await route.fulfill({ status: 200, contentType: 'image/png', body: ONE_PIXEL_PNG });
-    });
-  }
-}
+  await page.goto('/?localBackend=1', { waitUntil: 'networkidle' });
+  const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => ({
+    name: entry.name,
+    transferSize: entry.transferSize,
+    decodedBodySize: entry.decodedBodySize,
+  })));
+  const scriptCount = resources.filter(entry => /\.(?:m?js)(?:\?|$)/.test(entry.name)).length;
+  const decodedBytes = resources.reduce((sum, entry) => sum + entry.decodedBodySize, 0);
 
-async function openPerfViewer(page, path = '/?perf=1') {
-  const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
-  expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
-  const manifest = await page.evaluate(() => fetch('/data/manifest.json').then(r => r.json()));
-  return manifest;
-}
-
-async function openLocalVolumeFixture(page) {
-  await routeLocalVolumeStudy(page, [
-    localVolumeSeries('perf_volume', 'Performance Volume Fixture', {
-      description: 'self-contained browser performance fixture',
-      slices: 3,
-    }),
-  ]);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const manifest = await openPerfViewer(page, attempt ? `/?perf=1&testReload=${Date.now()}` : '/?perf=1');
-    try {
-      await selectLocalVolumeSeries(page, manifest);
-      return manifest;
-    } catch (error) {
-      if (attempt) throw error;
-    }
-  }
-  throw new Error('unreachable local volume fixture retry state');
-}
-
-async function selectLocalVolumeSeries(page, manifest) {
-  const volumeSeriesIndex = Math.max(0, manifest.series.findIndex((series) =>
-    !series?.sliceUrlBase
-    && (series?.reconstructionCapability === 'display-volume' || series?.geometryKind === 'volumeStack')
-  ));
-  const volumeSeries = manifest.series[volumeSeriesIndex];
-  await expect(page.locator('#series-list li')).toHaveCount(manifest.series.length, { timeout: 20_000 });
-  const currentName = await page.locator('#series-name').textContent();
-  if ((currentName || '').trim() !== volumeSeries.name) {
-    await page.locator('#series-list li').nth(volumeSeriesIndex).click();
-  }
-  await waitForCanvasPaint(page, '#view');
-  return { volumeSeries, volumeSeriesIndex };
-}
-
-test('viewer defers GPU MPR module until MPR opens', async ({ page }) => {
-  const gpuRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/mpr/mpr-gpu.js')) gpuRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(gpuRequests).toEqual([]);
-
-  await page.locator('#btn-mpr').click();
-  await expect.poll(() => gpuRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
+  expect(scriptCount, `cold shell loaded ${scriptCount} script modules`).toBeLessThanOrEqual(180);
+  expect(decodedBytes, `cold shell decoded ${decodedBytes} bytes`).toBeLessThanOrEqual(1_500_000);
+  expect(responses.length).toBeGreaterThan(0);
 });
 
-test('viewer defers SlimSAM integration until the menu opens', async ({ page }) => {
-  const slimsamRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/overlay/slimsam.js')) slimsamRequests.push(request.url());
-  });
-
-  const series = localVolumeSeries('perf_volume', 'Performance Volume Fixture', {
-    description: 'self-contained browser performance fixture',
-    slices: 3,
-  });
-  await routeLocalVolumeStudy(page, [series]);
-  await page.route('**/api/cloud-settings', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        source: 'local-env',
-        storagePath: '/tmp/voxellab/.env',
-        modalWebhookBase: '',
-        r2PublicUrl: '',
-        trustedUploadOrigins: [],
-        cloudProcessing: true,
-        hasModalAuthToken: false,
-        configured: false,
-      }),
-    });
-  });
-  const response = await page.goto('/?perf=1', { waitUntil: 'domcontentloaded' });
-  expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
-  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
-  await expect(page.locator('#btn-slimsam')).toBeVisible();
-  await page.evaluate(async (fixtureSeries) => {
-    const { state } = await import('/js/core/state.js');
-    state.manifest = { patient: 'anonymous', studyDate: '', series: [fixtureSeries] };
-    state.seriesIdx = 0;
-    state.mode = '2d';
-  }, series);
-  await page.waitForTimeout(250);
-  expect(slimsamRequests).toEqual([]);
-
-  await page.locator('#btn-slimsam').click();
-  await expect(page.locator('#slimsam-menu')).toBeVisible();
-  await expect(page.locator('#slimsam-title')).toHaveText('Segmentation');
-  await expect(page.locator('#segmentation-engine-list')).toContainText('SlimSAM');
-  await expect(page.locator('#slimsam-state-pill')).not.toHaveText('Blocked');
-  await expect(page.locator('#slimsam-status')).toContainText('does not have local click-to-segment embeddings yet');
-  await expect(page.locator('#slimsam-command-code')).toContainText('python3 python/slimsam_embed.py');
-  await expect(page.locator('label.slimsam-toggle.ui-checkbox #slimsam-smooth.ui-checkbox-input')).toBeChecked();
-  await expect(page.locator('label.slimsam-toggle .ui-checkbox-box')).toBeVisible();
-  await page.locator('#segmentation-cloud-settings').click();
-  await expect(page.locator('#cloud-settings-modal')).toBeVisible();
-  await expect(page.locator('#cloud-settings-status')).toContainText('Enter Modal webhook base');
-  await expect.poll(() => slimsamRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('segmentation catalog cloud action opens the upload workflow lazily', async ({ page }) => {
-  const uploadRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/projects/study-upload-modal.js')) uploadRequests.push(request.url());
-  });
-
-  const series = localVolumeSeries('ct_seg_source', 'CT Segmentation Source', {
-    description: 'CT chest volume',
-    modality: 'CT',
-    bodyPart: 'CHEST',
-    slices: 3,
-  });
-  await page.addInitScript(() => localStorage.setItem('voxellab:interaction-hint-seen', '1'));
-  await routeLocalVolumeStudy(page, [series]);
-  const response = await page.goto('/?segmentationAction=1', { waitUntil: 'domcontentloaded' });
-  expect(response && response.ok(), `root response status: ${response && response.status()}`).toBe(true);
-  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
-  await expect(page.locator('#btn-slimsam')).toBeVisible();
-  await page.locator('#btn-slimsam').click();
-  await expect(page.locator('#slimsam-menu')).toBeVisible();
-  const totalSegmentator = page.locator('.segmentation-engine[data-engine="totalsegmentator"]');
-  await expect(totalSegmentator).toContainText('TotalSegmentator');
-  await expect(totalSegmentator.locator('.segmentation-engine-action')).toHaveText('Run on Cloud GPU');
-  expect(uploadRequests).toEqual([]);
-
-  await totalSegmentator.locator('.segmentation-engine-action').scrollIntoViewIfNeeded();
-  await totalSegmentator.locator('.segmentation-engine-action').click();
-  await expect(page.locator('#upload-modal')).toBeVisible();
-  await expect(page.locator('#upload-context-hint')).toContainText('TotalSegmentator · Cloud GPU');
-  await expect(page.locator('#upload-context-hint')).toContainText('Select the original CT/MR DICOM stack');
-  await expect.poll(() => uploadRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('command palette cloud action opens the upload workflow with cloud context', async ({ page }) => {
-  const uploadRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/projects/study-upload-modal.js')) uploadRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(uploadRequests).toEqual([]);
-
-  await page.locator('#btn-cmdk-open').click();
-  await page.locator('#cmdk-input').fill('cloud gpu');
-  await page.getByRole('button', { name: /Cloud GPU processing/ }).click();
-  await expect(page.locator('#upload-modal')).toBeVisible();
-  await expect(page.locator('#upload-context-hint')).toContainText('Cloud GPU processing');
-  await expect(page.locator('#upload-context-hint')).toContainText('VoxelLab checks eligibility before any upload');
-  await expect.poll(() => uploadRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('viewer defers upload workflow module until upload opens', async ({ page }) => {
-  const uploadRequests = [];
-  const dicomDerivedRequests = [];
-  const dicomImportRequests = [];
-  const dicomwebImportRequests = [];
-  const dicomwebRequests = [];
-  const microscopyImportRequests = [];
-  const microscopyWorkflowRecipeRequests = [];
-  page.on('request', (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (pathname.endsWith('/js/projects/study-upload-modal.js')) uploadRequests.push(request.url());
-    if (pathname.endsWith('/js/dicom/dicom-derived-import.js')) dicomDerivedRequests.push(request.url());
-    if (pathname.endsWith('/js/dicom/dicom-import.js')) dicomImportRequests.push(request.url());
-    if (pathname.endsWith('/js/dicom/dicomweb-import.js')) dicomwebImportRequests.push(request.url());
-    if (pathname.endsWith('/js/dicom/dicomweb/dicomweb-source.js')) dicomwebRequests.push(request.url());
-    if (pathname.endsWith('/js/microscopy/microscopy-import.js')) microscopyImportRequests.push(request.url());
-    if (pathname.endsWith('/js/microscopy/microscopy-workflow-recipe.js')) microscopyWorkflowRecipeRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(uploadRequests).toEqual([]);
-  expect(dicomImportRequests).toEqual([]);
-  expect(dicomwebImportRequests).toEqual([]);
-  expect(dicomwebRequests).toEqual([]);
-  expect(microscopyImportRequests).toEqual([]);
-  expect(microscopyWorkflowRecipeRequests).toEqual([]);
-
-  await page.locator('#btn-upload').click();
-  await expect(page.locator('#upload-modal')).toHaveClass(/visible/);
-  await expect.poll(() => uploadRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-  await page.waitForTimeout(250);
-  expect(dicomDerivedRequests).toEqual([]);
-  expect(dicomImportRequests).toEqual([]);
-  expect(dicomwebImportRequests).toEqual([]);
-  expect(dicomwebRequests).toEqual([]);
-  expect(microscopyImportRequests).toEqual([]);
-  expect(microscopyWorkflowRecipeRequests).toEqual([]);
-});
-
-test('viewer defers DICOM SR exporter until export is requested', async ({ page }) => {
-  const srRequests = [];
-  const legacyScriptRequests = [];
-  page.on('request', (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (pathname.endsWith('/js/dicom/dicom-sr.js')) srRequests.push(request.url());
-    if (pathname.endsWith('/dcmjs.js') || pathname.endsWith('/dcmjs.min.js')) legacyScriptRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(srRequests).toEqual([]);
-  expect(legacyScriptRequests).toEqual([]);
-
-  await page.evaluate(async () => {
-    const { state } = await import('/js/core/state.js');
-    const { setRoiEntriesForSlice } = await import('/js/overlay/annotation-graph.js');
-    const { renderRoiResults } = await import('/js/roi/roi-results.js');
-    const series = state.manifest.series[state.seriesIdx];
-    const sliceIdx = state.sliceIdx || 0;
-    setRoiEntriesForSlice(series.slug, sliceIdx, [{
-      id: 1,
-      "shape": 'polygon',
-      label: 'sr-export-check',
-      pts: [[1, 1], [12, 1], [12, 12], [1, 12]],
-      stats: { area_mm2: 121, mean: 42, std: 3 },
-      createdAt: Date.now(),
-    }]);
-    renderRoiResults(state);
-  });
-  const downloadPromise = page.waitForEvent('download');
-  await page.locator('#btn-sr').click();
-  await downloadPromise;
-  await expect(page.locator('#confirm-modal')).toHaveClass(/visible/);
-  await expect(page.locator('#confirm-modal')).toContainText('DICOM SR exported');
-  await expect.poll(() => srRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-  expect(legacyScriptRequests).toEqual([]);
-});
-
-test('viewer defers Ask/Consult API module until an AI action opens', async ({ page }) => {
-  const consultRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/consult-ask.js')) consultRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(consultRequests).toEqual([]);
-
-  const consultButton = page.locator('#btn-consult');
-  test.skip(await consultButton.evaluate((button) => button.classList.contains('hidden')), 'Local AI actions are disabled.');
-  await consultButton.click();
-  await expect(page.locator('#consult-modal')).toHaveClass(/visible/);
-  await expect.poll(() => consultRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('viewer defers Electron path-backed file adapter outside native path opens', async ({ page }) => {
-  await routeFusionPeerFixture(page);
-  const desktopPathRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/desktop-path-file.js')) desktopPathRequests.push(request.url());
-  });
-
-  const manifest = await openPerfViewer(page);
-  await expect(page.locator('#series-list li')).toHaveCount(manifest.series.length, { timeout: 20_000 });
-  await waitForCanvasPaint(page, '#view');
-  await page.waitForTimeout(250);
-  expect(desktopPathRequests).toEqual([]);
-});
-
-test('viewer defers Electron window chrome module outside desktop runtime', async ({ page }) => {
-  await routeFusionPeerFixture(page);
-  const desktopChromeRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/shell/desktop-window-chrome.js')) desktopChromeRequests.push(request.url());
-  });
-
-  const manifest = await openPerfViewer(page);
-  await expect(page.locator('#series-list li')).toHaveCount(manifest.series.length, { timeout: 20_000 });
-  await waitForCanvasPaint(page, '#view');
-  await page.waitForTimeout(250);
-  expect(desktopChromeRequests).toEqual([]);
-});
-
-test('viewer defers fusion peer loader until a fusion peer is selected', async ({ page }) => {
-  await routeFusionPeerFixture(page);
-  const fusionLoaderRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/fusion-loader.js')) fusionLoaderRequests.push(request.url());
-  });
-
-  const manifest = await openPerfViewer(page);
-  await expect(page.locator('#series-list li')).toHaveCount(manifest.series.length, { timeout: 20_000 });
-  await expect(page.locator('#fusion-select option[value="fusion_peer"]')).toHaveCount(1);
-  await waitForCanvasPaint(page, '#view');
-  await page.waitForTimeout(250);
-  expect(fusionLoaderRequests).toEqual([]);
-
-  await page.locator('#fusion-select').selectOption('fusion_peer');
-  await expect.poll(() => fusionLoaderRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('viewer defers screenshot exporter until export is requested', async ({ page }) => {
-  const screenshotRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/screenshot.js')) screenshotRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(screenshotRequests).toEqual([]);
-
-  const downloadPromise = page.waitForEvent('download');
-  await page.locator('#btn-shot').click();
-  await downloadPromise;
-  await expect.poll(() => screenshotRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('viewer defers ImageJ ROI codec until ROI ZIP export is requested', async ({ page }) => {
-  const imagejRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/microscopy/imagej-roi.js')) imagejRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(imagejRequests).toEqual([]);
-
-  await page.evaluate(async () => {
-    const { state } = await import('/js/core/state.js');
-    const { setRoiEntriesForSlice } = await import('/js/overlay/annotation-graph.js');
-    const { renderRoiResults } = await import('/js/roi/roi-results.js');
-    const series = state.manifest.series[state.seriesIdx];
-    const sliceIdx = state.sliceIdx || 0;
-    setRoiEntriesForSlice(series.slug, sliceIdx, [{
-      id: 1,
-      "shape": 'polygon',
-      label: 'startup-check',
-      pts: [[1, 1], [12, 1], [12, 12], [1, 12]],
-      stats: { pixels: 121, count: 121 },
-      createdAt: Date.now(),
-    }]);
-    renderRoiResults(state);
-  });
-
-  await expect(page.locator('#roi-results-imagej-export')).toBeEnabled();
-  await page.locator('#roi-results-imagej-export').evaluate((button) => button.click());
-  await expect.poll(() => imagejRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('viewer defers shortcut customizer until requested', async ({ page }) => {
-  const shortcutRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/shortcuts-modal.js')) shortcutRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(shortcutRequests).toEqual([]);
-
-  await page.locator('#btn-cmdk-open').click();
-  await page.locator('#cmdk-input').fill('shortcuts');
-  await page.getByRole('button', { name: /Customize shortcuts/ }).click();
-  await expect(page.locator('#shortcuts-modal')).toHaveClass(/visible/);
-  await expect.poll(() => shortcutRequests.length, { timeout: 3_000 }).toBeGreaterThan(0);
-});
-
-test('viewer defers DICOM-derived hydration when no persisted objects exist', async ({ page }) => {
-  const derivedRequests = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname.endsWith('/js/dicom/dicom-derived-import.js')) derivedRequests.push(request.url());
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(derivedRequests).toEqual([]);
-});
-
-test('viewer defers microscopy controls, analysis, and recipe modules outside microscopy workflows', async ({ page }) => {
-  const microscopyWorkflowRequests = [];
-  page.on('request', (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (
-      pathname.endsWith('/js/microscopy/microscopy-hyperstack-controls.js')
-      || pathname.endsWith('/js/microscopy/microscopy-analysis.js')
-      || pathname.endsWith('/js/microscopy/microscopy-analysis-panel.js')
-      || pathname.endsWith('/js/microscopy/microscopy-workflow-recipe.js')
-    ) {
-      microscopyWorkflowRequests.push(request.url());
-    }
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(microscopyWorkflowRequests).toEqual([]);
-});
-
-test('viewer defers the Three.js renderer stack until 3D opens', async ({ page }) => {
-  const threeRequests = [];
-  page.on('request', (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (
-      pathname.endsWith('/js/volume/vendor-three.js')
-      || pathname.endsWith('/js/volume/vendor-trackball-controls.js')
-      || pathname.endsWith('/js/volume/volume-three-bootstrap.js')
-      || pathname.endsWith('/js/volume/volume-raycast-material.js')
-    ) {
-      threeRequests.push(pathname);
-    }
-  });
-
-  await openLocalVolumeFixture(page);
-  await page.waitForTimeout(250);
-  expect(threeRequests).toEqual([]);
-
-  await page.locator('#btn-3d').click();
-  await expect(page.locator('#three-container.active canvas')).toBeVisible();
-  await expect.poll(() => threeRequests.length, { timeout: 4_000 }).toBeGreaterThan(0);
-});
-
-test('viewer runtime paths keep emitting performance milestones', async ({ page }, testInfo) => {
-  const manifest = await openLocalVolumeFixture(page);
-  const volumeSeriesIndex = 0;
-  const volumeSeries = manifest.series[volumeSeriesIndex];
-
-  const results = {
-    selectSeries2dMs: null,
-    scrub2dMs: [],
-    overlayScrubMs: [],
-    compareScrubMs: [],
-    enter3dMs: null,
-  };
+test('viewer runtime paths keep emitting performance milestones within budget', async ({ page }, testInfo) => {
+  await openPerfVolumeFixture(page);
 
   const selectSeriesEvent = await waitForPerfEvent(page, 'select-series-2d');
   expect(selectSeriesEvent, 'missing select-series-2d trace').toBeTruthy();
-  results.selectSeries2dMs = selectSeriesEvent.duration;
   expectWithinBudget('selectSeries2dMs', selectSeriesEvent.duration);
 
   await clearPerf(page);
-  results.scrub2dMs.push(await scrubBurst(page));
-  results.scrub2dMs.push(await scrubBurst(page));
-  const scrub2dAvgMs = average(results.scrub2dMs);
+  const scrub2dMs = [await scrubBurst(page), await scrubBurst(page)];
+  const scrub2dAvgMs = average(scrub2dMs);
   expect(scrub2dAvgMs).not.toBeNull();
   expectWithinBudget('scrub2dAvgMs', scrub2dAvgMs);
-
-  const hasSym = !!volumeSeries.hasSym;
-  const hasRegions = !!volumeSeries.hasRegions;
-  if (hasSym) await page.locator('#btn-sym').click();
-  if (hasRegions) await page.locator('#btn-regions').click();
-  if (hasSym || hasRegions) {
-    const overlayEvent = await waitForPerfEvent(page, 'overlay-toggle-paint');
-    expect(overlayEvent, 'missing overlay-toggle-paint trace').toBeTruthy();
-    results.overlayScrubMs.push(await scrubBurst(page, 32));
-    results.overlayScrubMs.push(await scrubBurst(page, 32));
-    const overlayScrubAvgMs = average(results.overlayScrubMs);
-    expect(overlayScrubAvgMs).not.toBeNull();
-    expectWithinBudget('overlayScrubAvgMs', overlayScrubAvgMs);
-  }
-
-  const groupCounts = manifest.series.reduce((map, series) => {
-    const key = series.compareGroup ?? series.group ?? null;
-    if (key == null) return map;
-    map.set(key, (map.get(key) || 0) + 1);
-    return map;
-  }, new Map());
-  const compareGroup = [...groupCounts.entries()].find(([key, count]) => {
-    if (count < 2) return false;
-    const peers = manifest.series.filter((series) => (series.compareGroup ?? series.group ?? null) === key);
-    return peers.every((series) => !series.sliceUrlBase);
-  })?.[0];
-  if (compareGroup != null) {
-    const compareIndex = manifest.series.findIndex((series) => (series.compareGroup ?? series.group ?? null) === compareGroup);
-    if (compareIndex >= 0 && compareIndex !== volumeSeriesIndex) {
-      await page.locator('#series-list li').nth(compareIndex).click();
-      await waitForCanvasPaint(page, '#view');
-    }
-    await page.locator('#btn-compare').click();
-    await page.waitForTimeout(250);
-    results.compareScrubMs.push(await scrubBurst(page, 24));
-    results.compareScrubMs.push(await scrubBurst(page, 24));
-    const compareScrubAvgMs = average(results.compareScrubMs);
-    expect(compareScrubAvgMs).not.toBeNull();
-    expectWithinBudget('compareScrubAvgMs', compareScrubAvgMs);
-    await page.locator('#btn-compare').click();
-  }
 
   await clearPerf(page);
   await page.locator('#btn-3d').click();
   await expect(page.locator('#three-container.active canvas')).toBeVisible();
   const threeEvent = await waitForPerfEvent(page, 'enter-3d', 4_000);
   expect(threeEvent, 'missing enter-3d trace').toBeTruthy();
-  results.enter3dMs = threeEvent.duration;
   expectWithinBudget('enter3dMs', threeEvent.duration);
   await page.locator('#btn-3d').click();
 
   const summary = {
-    selectSeries2dMs: results.selectSeries2dMs,
+    selectSeries2dMs: selectSeriesEvent.duration,
     scrub2dAvgMs,
-    enter3dMs: results.enter3dMs,
+    enter3dMs: threeEvent.duration,
   };
-  if (results.overlayScrubMs.length) summary.overlayScrubAvgMs = average(results.overlayScrubMs);
-  if (results.compareScrubMs.length) summary.compareScrubAvgMs = average(results.compareScrubMs);
-
   await testInfo.attach('viewer-performance.json', {
-    body: JSON.stringify(results, null, 2),
+    body: JSON.stringify({ ...summary, scrub2dMs }, null, 2),
     contentType: 'application/json',
   });
   await testInfo.attach('viewer-performance-budget-report.json', {
@@ -1013,9 +296,8 @@ test('viewer runtime paths keep emitting performance milestones', async ({ page 
   });
 });
 
-test('MPR axis interaction stays off the slice scrub path and defers oblique paint', async ({ page }, testInfo) => {
-  await openLocalVolumeFixture(page);
-
+test('MPR Z scrub settles through a full-quality redraw without moving the oblique pane', async ({ page }) => {
+  await openPerfVolumeFixture(page);
   await clearPerf(page);
   await page.locator('#btn-mpr').click();
   const mprEvent = await waitForPerfEvent(page, 'enter-mpr', 3_000);
@@ -1023,43 +305,55 @@ test('MPR axis interaction stays off the slice scrub path and defers oblique pai
   expectWithinBudget('enterMprMs', mprEvent.duration);
   await waitForCanvasPaint(page, '#mpr-ob');
 
-  const obliqueBeforeZScrub = await obliqueSnapshot(page);
-  const obliqueDuringZScrub = await zScrubAndSnapshotOblique(page);
-  const stableObliqueLayout = ({ backing, display, aspectDelta, physicalAspectDelta }) => ({
-    backing,
-    display,
-    aspectDelta,
-    physicalAspectDelta,
-  });
+  const before = await obliqueSnapshot(page);
+  const during = await zScrubAndSnapshotOblique(page);
   expect(
-    stableObliqueLayout(obliqueDuringZScrub),
-    JSON.stringify({ obliqueBeforeZScrub, obliqueDuringZScrub }),
-  ).toEqual(stableObliqueLayout(obliqueBeforeZScrub));
+    stableObliqueLayout(during),
+    JSON.stringify({ before, during }),
+  ).toEqual(stableObliqueLayout(before));
+
   const settleEvent = await waitForPerfEvent(page, 'mpr-quality-settle', 3_000);
   expect(settleEvent, 'Z scrub should settle through a full-quality MPR redraw').not.toBeNull();
-  const obliqueAfterZScrub = await obliqueSnapshot(page);
-  expect(obliqueAfterZScrub.backing, JSON.stringify(obliqueAfterZScrub)).toBe(obliqueBeforeZScrub.backing);
-  expect(obliqueAfterZScrub.display, JSON.stringify(obliqueAfterZScrub)).toBe(obliqueBeforeZScrub.display);
-  expect(obliqueAfterZScrub.aspectDelta, JSON.stringify(obliqueAfterZScrub)).toBeLessThan(0.025);
-  expect(obliqueAfterZScrub.physicalAspectDelta, JSON.stringify(obliqueAfterZScrub)).toBeLessThan(0.05);
+  const after = await obliqueSnapshot(page);
+  expect(after.backing, JSON.stringify(after)).toBe(before.backing);
+  expect(after.display, JSON.stringify(after)).toBe(before.display);
+  expect(after.aspectDelta, JSON.stringify(after)).toBeLessThan(0.025);
+  expect(after.physicalAspectDelta, JSON.stringify(after)).toBeLessThan(0.05);
 
-  const mprCellSizing = await page.locator('#mpr-ob').evaluate((canvas) => {
-    const cell = canvas.closest('.mpr-cell');
-    const style = getComputedStyle(cell);
+  expect(await page.locator('#mpr-ob').evaluate((canvas) => {
+    const style = getComputedStyle(canvas.closest('.mpr-cell'));
     return { minWidth: style.minWidth, minHeight: style.minHeight };
-  });
-  expect(mprCellSizing).toEqual({ minWidth: '0px', minHeight: '0px' });
-  const obliqueDuringPitch = await obliqueSliderAndSnapshot(page, '#ob-pitch', 42);
-  expect(obliqueDuringPitch.aspectDelta, JSON.stringify(obliqueDuringPitch)).toBeLessThan(0.025);
-  expect(obliqueDuringPitch.physicalAspectDelta, JSON.stringify(obliqueDuringPitch)).toBeLessThan(0.05);
-  await page.waitForTimeout(260);
-  const obliqueAfterPitch = await obliqueSnapshot(page);
-  expect(obliqueAfterPitch.backing, JSON.stringify({ obliqueDuringPitch, obliqueAfterPitch }))
-    .toBe(obliqueDuringPitch.backing);
-  expect(obliqueAfterPitch.display, JSON.stringify({ obliqueDuringPitch, obliqueAfterPitch }))
-    .toBe(obliqueDuringPitch.display);
-  expect(obliqueAfterPitch.aspectDelta, JSON.stringify(obliqueAfterPitch)).toBeLessThan(0.025);
-  expect(obliqueAfterPitch.physicalAspectDelta, JSON.stringify(obliqueAfterPitch)).toBeLessThan(0.05);
+  })).toEqual({ minWidth: '0px', minHeight: '0px' });
+});
+
+test('oblique pitch keeps the pane geometry stable through its settle redraw', async ({ page }) => {
+  await openPerfVolumeFixture(page);
+  await clearPerf(page);
+  await page.locator('#btn-mpr').click();
+  expect(await waitForPerfEvent(page, 'enter-mpr', 3_000), 'missing enter-mpr trace').toBeTruthy();
+  await waitForCanvasPaint(page, '#mpr-ob');
+
+  const duringPitch = await obliqueSliderAndSnapshot(page, '#ob-pitch', 42);
+  expect(duringPitch.aspectDelta, JSON.stringify(duringPitch)).toBeLessThan(0.025);
+  expect(duringPitch.physicalAspectDelta, JSON.stringify(duringPitch)).toBeLessThan(0.05);
+
+  await expect.poll(() => mprQuality(page), {
+    message: 'oblique pitch should settle back to a full-quality MPR redraw',
+    timeout: 3_000,
+  }).toBe('quality');
+  const afterPitch = await obliqueSnapshot(page);
+  expect(afterPitch.backing, JSON.stringify({ duringPitch, afterPitch })).toBe(duringPitch.backing);
+  expect(afterPitch.display, JSON.stringify({ duringPitch, afterPitch })).toBe(duringPitch.display);
+  expect(afterPitch.aspectDelta, JSON.stringify(afterPitch)).toBeLessThan(0.025);
+  expect(afterPitch.physicalAspectDelta, JSON.stringify(afterPitch)).toBeLessThan(0.05);
+});
+
+test('MPR axis wheel stays off the slice scrub path and defers the oblique repaint', async ({ page }, testInfo) => {
+  await openPerfVolumeFixture(page);
+  await clearPerf(page);
+  await page.locator('#btn-mpr').click();
+  expect(await waitForPerfEvent(page, 'enter-mpr', 3_000), 'missing enter-mpr trace').toBeTruthy();
+  await waitForCanvasPaint(page, '#mpr-ob');
 
   const obliqueBefore = await canvasChecksum(page, '#mpr-ob');
   const sliceBeforeAxisWheel = await page.locator('#slice-cur').textContent();
@@ -1072,48 +366,32 @@ test('MPR axis interaction stays off the slice scrub path and defers oblique pai
     { selector: '#mpr-co', deltaY: 140, steps: 8 },
     { selector: '#mpr-sa', deltaY: -140, steps: 6 },
   ]);
+  expect(obliqueImmediate, 'axis wheel must not repaint the oblique pane on the interaction frame').toBe(obliqueBefore);
+
   await expect.poll(() => mprAxisIndex(page, '#mpr-co-idx'), {
     message: 'coronal MPR wheel should update the Y axis label on the next frame',
   }).not.toBe(yBefore);
   await expect.poll(() => mprAxisIndex(page, '#mpr-sa-idx'), {
     message: 'sagittal MPR wheel should update the X axis label on the next frame',
   }).not.toBe(xBefore);
+  expect(await page.locator('#slice-cur').textContent()).toBe(sliceBeforeAxisWheel);
 
-  const yAfter = await mprAxisIndex(page, '#mpr-co-idx');
-  const xAfter = await mprAxisIndex(page, '#mpr-sa-idx');
-  const sliceAfterAxisWheel = await page.locator('#slice-cur').textContent();
-
-  expect(yAfter).not.toBe(yBefore);
-  expect(xAfter).not.toBe(xBefore);
-  expect(sliceAfterAxisWheel).toBe(sliceBeforeAxisWheel);
-  expect(obliqueImmediate).toBe(obliqueBefore);
-
-  await page.waitForTimeout(260);
-  const obliqueDeferred = await canvasChecksum(page, '#mpr-ob');
-  expect(obliqueDeferred).not.toBe(obliqueBefore);
+  await expect.poll(() => canvasChecksum(page, '#mpr-ob'), {
+    message: 'oblique pane should repaint after the deferred settle',
+  }).not.toBe(obliqueBefore);
 
   const mprScrubMs = [await scrubBurst(page, 40), await scrubBurst(page, 40)];
   const mprScrubAvgMs = average(mprScrubMs);
   expect(mprScrubAvgMs).not.toBeNull();
   expectWithinBudget('mprScrubAvgMs', mprScrubAvgMs);
 
-  await testInfo.attach('viewer-mpr-performance.json', {
-    body: JSON.stringify({
-      enterMprMs: mprEvent.duration,
-      mprScrubMs,
-    }, null, 2),
-    contentType: 'application/json',
-  });
   await testInfo.attach('viewer-mpr-performance-budget-report.json', {
-    body: JSON.stringify(budgetReport({
-      enterMprMs: mprEvent.duration,
-      mprScrubAvgMs,
-    }), null, 2),
+    body: JSON.stringify(budgetReport({ mprScrubAvgMs }), null, 2),
     contentType: 'application/json',
   });
 });
 
-test('cloud delayed overlay upgrade keeps trace pending until overlay is actually ready', async ({ page }) => {
+test('cloud delayed overlay upgrade keeps the trace pending until the overlay is ready', async ({ page }) => {
   await routePerfCloudFixture(page, { overlayDelayMs: 900 });
   await openPerfViewer(page, '/?perf=1&localBackend=0');
 
@@ -1124,8 +402,7 @@ test('cloud delayed overlay upgrade keeps trace pending until overlay is actuall
   await expect(page.locator('#btn-sym')).toHaveCount(1);
   await page.locator('#btn-sym').evaluate((button) => button.click());
   await expect.poll(async () => pendingPerfCount(page, 'overlay-toggle-paint'), { timeout: 2_000 }).toBeGreaterThan(0);
-  const earlyOverlayEvent = await waitForPerfEvent(page, 'overlay-toggle-paint', 250);
-  expect(earlyOverlayEvent).toBeNull();
+  expect(await waitForPerfEvent(page, 'overlay-toggle-paint', 250)).toBeNull();
 
   const overlayEvent = await waitForPerfEvent(page, 'overlay-toggle-paint', 6_000);
   expect(overlayEvent, 'missing delayed overlay-toggle-paint trace').toBeTruthy();

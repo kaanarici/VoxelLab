@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import { localVolumeSeries, routeLocalVolumeStudy } from '../helpers/browser/local-study.mjs';
 
 test('restored 3D anatomy and labels become visible without toggling', async ({ page }) => {
   const slug = 'restored_anatomy';

@@ -12,7 +12,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SUITES = {
     "projection": [
         [sys.executable, "-m", "pytest", "tests/test_projection_reconstruction.py", "-q"],
-        [sys.executable, "-m", "pytest", "tests/test_projection_rtk.py", "-q"],
         [sys.executable, "-m", "pytest", "tests/test_rtk_projection_wrapper.py", "-q"],
     ],
     "ultrasound": [

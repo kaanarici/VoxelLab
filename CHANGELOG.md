@@ -6,6 +6,49 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-29
+
+### Added
+
+- `voxellab-agent` lets AI agents and scripts drive a headless viewer through
+  the same import, measurement, ROI, and annotation code paths as the UI. It
+  runs as an MCP server for Claude Code or Codex, or as a CLI that keeps one
+  warm viewer between calls. Tools cover opening files, view state,
+  screenshots, pixel readout, rulers, angles, ellipse and polygon ROIs, notes,
+  findings, and ROI CSV export. Lengths and areas are calibrated when the
+  series has trusted spacing; ROI means report their value units.
+
+### Changed
+
+- Dialogs, menus, and popovers share one raised surface, larger radii, a ring
+  and layered shadow, semibold titles, and 32 px buttons with press feedback.
+  Dialogs now fade and scale in and close quickly instead of snapping. The
+  command palette opens instantly.
+- Body, caption, and micro text are one pixel larger.
+- The empty viewer hides playback and study-only actions until a study opens.
+  Study-only shortcuts stay inert without a study.
+- The slice scrubber yields toolbar space to tools at narrower widths.
+- `npm run check:fast` runs independent checks concurrently with a cached
+  lint, and Playwright uses up to four workers.
+
+### Fixed
+
+- Choosing a command palette row now runs that row's command. Previously,
+  sections registered out of order could run a different command.
+- Screenshot, slice navigation, and overlay shortcuts no longer throw errors
+  when no study is open.
+- ROI labels and delete controls, plus ruler label halos, keep their screen
+  size on small or zoomed images instead of scaling with the image.
+- DICOM imports describe one-slice series as "1 slice".
+- The Open study dialog no longer reserves space for an empty status line.
+
+### Security
+
+- Updated Electron to 42.11.18, dcmjs to 0.52.2, adm-zip to 0.6.1, and
+  brace-expansion to 1.1.21 to resolve published advisories.
+- Packaging moved to Electron Forge 8, which removes the vulnerable
+  extract-zip dependency. Development and CI use Node.js 22.23.4.
+
 ## [1.2.4] - 2026-09-06
 
 ### Fixed

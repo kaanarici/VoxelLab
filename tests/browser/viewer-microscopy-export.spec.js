@@ -1,25 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedChannelTimeOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
-import {
-  drawEllipseRoi,
-  dropFiles,
-  expectScaleBarFits,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+import { clickCanvasPixel, waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { drawEllipseRoi } from '../helpers/browser/panels.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
+import { expectScaleBarFits } from '../helpers/browser/scale-bar.mjs';
 
-async function clickCanvasPixel(page, x, y) {
-  const canvas = page.locator('#view');
-  const box = await canvas.boundingBox();
-  expect(box).toBeTruthy();
-  const size = await canvas.evaluate((el) => ({ width: el.width, height: el.height }));
-  await page.mouse.click(
-    box.x + (x / size.width) * box.width,
-    box.y + (y / size.height) * box.height,
-  );
-}
 
 test('microscopy screenshot export includes calibrated scale bar in PNG and rendered TIFF', async ({ page }, testInfo) => {
   test.setTimeout(45_000);
@@ -29,10 +15,9 @@ test('microscopy screenshot export includes calibrated scale bar in PNG and rend
   const omeTiffPath = testInfo.outputPath('cells-screenshot.ome.tiff');
   await writeCalibratedChannelTimeOmeTiff(omeTiffPath, { width, height });
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
-  await waitForCanvasPaint(page, '#view');
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await waitForSlicePaint(page);
   await expectScaleBarFits(page);
   const stackPanel = page.locator('#microscopy-stack-panel');
   if (await stackPanel.evaluate(el => el.classList.contains('collapsed')).catch(() => false)) {

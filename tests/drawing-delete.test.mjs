@@ -66,7 +66,12 @@ initROI({
 });
 
 function findChildByClass(node, className) {
-  return node.children.find((child) => child.attrs?.class === className) || null;
+  for (const child of node.children || []) {
+    if (child.attrs?.class === className) return child;
+    const nested = findChildByClass(child, className);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 test('ROI delete removes the stored shape by stable id', () => {

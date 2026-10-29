@@ -3,33 +3,68 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import analyze
 
-def write_png(path: Path) -> None:
-    _ = path.write_bytes(b"".join([
-        b"\x89PNG\r\n\x1a\n",
-        b"\x00\x00\x00\rIHDR",
-        b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x00\x00\x00\x00",
-        b"\x3a\x7e\x9b\x55",
-        b"\x00\x00\x00\x0aIDATx\x9cc`\x00\x00\x00\x02\x00\x01",
-        b"\xe2!\xbc3",
-        b"\x00\x00\x00\x00IEND\xaeB`\x82",
-    ]))
+PNG_1X1 = b"".join([
+    b"\x89PNG\r\n\x1a\n",
+    b"\x00\x00\x00\rIHDR",
+    b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x00\x00\x00\x00",
+    b"\x3a\x7e\x9b\x55",
+    b"\x00\x00\x00\x0aIDATx\x9cc`\x00\x00\x00\x02\x00\x01",
+    b"\xe2!\xbc3",
+    b"\x00\x00\x00\x00IEND\xaeB`\x82",
+])
 
-def test_process_keeps_partial_slice_runs_out_of_full_coverage(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    series_dir = data_dir / "sample"
-    series_dir.mkdir(parents=True)
-    for index in range(5):
-        write_png(series_dir / f"{index:04d}.png")
+@pytest.fixture()
+def data_dir(tmp_path: Path, monkeypatch) -> Path:
+    """An analysis data directory the module writes its sidecars into."""
+    directory = tmp_path / "data"
+    directory.mkdir()
+    monkeypatch.setattr(analyze, "DATA", directory)
+    return directory
 
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-    monkeypatch.setattr(
-        analyze,
-        "analyze_slice",
-        lambda series_name, slice_idx, png_path, model, **kwargs: {"slice": slice_idx, "severity": "note", "text": png_path.name},
-    )
-    monkeypatch.setattr(analyze, "summarize", lambda slug, series_name, findings, model, provider=None: "summary")
+@pytest.fixture()
+def slice_stack(data_dir: Path):
+    def make(slug: str = "sample", slices: int = 1) -> Path:
+        series_dir = data_dir / slug
+        series_dir.mkdir(parents=True)
+        for index in range(slices):
+            _ = (series_dir / f"{index:04d}.png").write_bytes(PNG_1X1)
+        return series_dir
+
+    return make
+
+@pytest.fixture()
+def stub_provider(monkeypatch):
+    """Replace the paid provider calls with deterministic local results."""
+    def install(*, slice_text=lambda series_name, slice_idx, png_path: png_path.name, summary="summary"):
+        monkeypatch.setattr(
+            analyze,
+            "analyze_slice",
+            lambda series_name, slice_idx, png_path, model, **_kwargs: {
+                "slice": slice_idx,
+                "severity": "note",
+                "text": slice_text(series_name, slice_idx, png_path),
+            },
+        )
+        monkeypatch.setattr(
+            analyze,
+            "summarize",
+            lambda slug, series_name, findings, model, provider=None: (
+                summary(series_name) if callable(summary) else summary
+            ),
+        )
+
+    return install
+
+def coverage_of(data_dir: Path, slug: str = "sample") -> dict:
+    return json.loads((data_dir / f"{slug}_analysis.json").read_text())["coverage"]
+
+def test_an_explicit_slice_subset_never_counts_as_full_coverage(data_dir: Path, slice_stack, stub_provider) -> None:
+    slice_stack(slices=5)
+    stub_provider()
 
     complete = analyze.process(
         "sample",
@@ -39,173 +74,26 @@ def test_process_keeps_partial_slice_runs_out_of_full_coverage(tmp_path: Path, m
         sample_count=3,
     )
 
-    written = json.loads((data_dir / "sample_analysis.json").read_text())
+    coverage = coverage_of(data_dir)
     assert complete is False
-    assert written["coverage"]["overviewSlices"] == [0, 2, 4]
-    assert written["coverage"]["analyzedSlices"] == [2]
-    assert written["coverage"]["isComplete"] is False
+    assert coverage["overviewSlices"] == [0, 2, 4]
+    assert coverage["analyzedSlices"] == [2]
+    assert coverage["isComplete"] is False
 
-def test_process_marks_full_overview_complete_once_all_overview_slices_exist(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    series_dir = data_dir / "sample"
-    series_dir.mkdir(parents=True)
-    for index in range(5):
-        write_png(series_dir / f"{index:04d}.png")
+def test_a_full_overview_run_is_marked_complete(data_dir: Path, slice_stack, stub_provider) -> None:
+    slice_stack(slices=5)
+    stub_provider()
 
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-    monkeypatch.setattr(
-        analyze,
-        "analyze_slice",
-        lambda series_name, slice_idx, png_path, model, **kwargs: {"slice": slice_idx, "severity": "note", "text": png_path.name},
-    )
-    monkeypatch.setattr(analyze, "summarize", lambda slug, series_name, findings, model, provider=None: "summary")
+    complete = analyze.process("sample", {"name": "Sample", "slices": 5}, "test-model", sample_count=3)
 
-    complete = analyze.process(
-        "sample",
-        {"name": "Sample", "slices": 5},
-        "test-model",
-        sample_count=3,
-    )
-
-    written = json.loads((data_dir / "sample_analysis.json").read_text())
+    coverage = coverage_of(data_dir)
     assert complete is True
-    assert written["coverage"]["overviewSlices"] == [0, 2, 4]
-    assert written["coverage"]["isComplete"] is True
+    assert coverage["overviewSlices"] == [0, 2, 4]
+    assert coverage["isComplete"] is True
 
-def test_process_keeps_same_slug_viewer_jobs_in_distinct_identity_sidecars(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    series_dir = data_dir / "sample"
-    series_dir.mkdir(parents=True)
-    write_png(series_dir / "0000.png")
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-    monkeypatch.setattr(
-        analyze,
-        "analyze_slice",
-        lambda series_name, slice_idx, png_path, model, **kwargs: {"slice": slice_idx, "severity": "note", "text": series_name},
-    )
-    monkeypatch.setattr(analyze, "summarize", lambda slug, series_name, findings, model, provider=None: series_name)
-
-    first_key = "v2:11111111111111111111111111111111"
-    second_key = "v2:22222222222222222222222222222222"
-    assert analyze.process("sample", {"name": "Study A", "slices": 1}, "test-model", analysis_key=first_key) is True
-    assert analyze.process("sample", {"name": "Study B", "slices": 1}, "test-model", analysis_key=second_key) is True
-
-    first = json.loads(analyze.analysis_output_path("sample", first_key).read_text())
-    second = json.loads(analyze.analysis_output_path("sample", second_key).read_text())
-    assert first["analysisKey"] == first_key
-    assert second["analysisKey"] == second_key
-    assert first["summary"] == "Study A"
-    assert second["summary"] == "Study B"
-    assert not (data_dir / "sample_analysis.json").exists()
-
-def test_analysis_output_path_rejects_path_like_identity(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(analyze, "DATA", tmp_path / "data")
-    try:
-        _ = analyze.analysis_output_path("sample", "../../escape")
-    except ValueError as exc:
-        assert "invalid analysis key" in str(exc)
-    else:
-        raise AssertionError("path-like analysis key should fail closed")
-
-def test_process_rejects_reusing_persisted_analysis_key_for_another_slug(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    for slug in ("sample", "other"):
-        series_dir = data_dir / slug
-        series_dir.mkdir(parents=True)
-        write_png(series_dir / "0000.png")
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-    monkeypatch.setattr(
-        analyze,
-        "analyze_slice",
-        lambda series_name, slice_idx, png_path, model, **kwargs: {"slice": slice_idx, "severity": "note", "text": series_name},
-    )
-    monkeypatch.setattr(analyze, "summarize", lambda slug, series_name, findings, model, provider=None: series_name)
-    key = "v2:33333333333333333333333333333333"
-    assert analyze.process("sample", {"name": "Study A", "slices": 1}, "test-model", analysis_key=key) is True
-
-    try:
-        _ = analyze.process("other", {"name": "Study B", "slices": 1}, "test-model", analysis_key=key, force=True)
-    except ValueError as exc:
-        assert "already bound to another result identity" in str(exc)
-    else:
-        raise AssertionError("persisted analysis key should not be reusable for another slug")
-
-    persisted = json.loads(analyze.analysis_output_path("sample", key).read_text())
-    assert persisted["slug"] == "sample"
-    assert persisted["summary"] == "Study A"
-
-def test_process_raises_on_slice_failure(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    series_dir = data_dir / "sample"
-    series_dir.mkdir(parents=True)
-    write_png(series_dir / "0000.png")
-
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-
-    def fail_slice(*_args, **_kwargs):
-        raise RuntimeError("provider unavailable")
-
-    monkeypatch.setattr(analyze, "analyze_slice", fail_slice)
-    monkeypatch.setattr(analyze, "summarize", lambda slug, series_name, findings, model, provider=None: "summary")
-
-    try:
-        _ = analyze.process("sample", {"name": "Sample", "slices": 1}, "test-model", sample_count=1)
-    except RuntimeError as exc:
-        assert "slice 0 failed: provider unavailable" in str(exc)
-    else:
-        raise AssertionError("process should fail when a selected slice fails")
-
-def test_process_raises_on_missing_slice_image(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    (data_dir / "sample").mkdir(parents=True)
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-
-    try:
-        _ = analyze.process("sample", {"name": "Sample", "slices": 1}, "test-model", sample_count=1)
-    except RuntimeError as exc:
-        assert "slice 0 image is missing" in str(exc)
-    else:
-        raise AssertionError("process should fail when a selected slice image is missing")
-
-def test_process_raises_on_summary_failure(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    series_dir = data_dir / "sample"
-    series_dir.mkdir(parents=True)
-    write_png(series_dir / "0000.png")
-
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-    monkeypatch.setattr(
-        analyze,
-        "analyze_slice",
-        lambda series_name, slice_idx, png_path, model, **kwargs: {"slice": slice_idx, "severity": "note", "text": "ok"},
-    )
-
-    def fail_summary(*_args, **_kwargs):
-        raise RuntimeError("summary provider unavailable")
-
-    monkeypatch.setattr(analyze, "summarize", fail_summary)
-
-    try:
-        _ = analyze.process("sample", {"name": "Sample", "slices": 1}, "test-model", sample_count=1)
-    except RuntimeError as exc:
-        assert "summary failed: summary provider unavailable" in str(exc)
-    else:
-        raise AssertionError("process should fail when summary generation fails")
-
-def test_process_keeps_selected_overview_subset_partial(tmp_path: Path, monkeypatch) -> None:
-    data_dir = tmp_path / "data"
-    series_dir = data_dir / "sample"
-    series_dir.mkdir(parents=True)
-    for index in range(5):
-        write_png(series_dir / f"{index:04d}.png")
-
-    monkeypatch.setattr(analyze, "DATA", data_dir)
-    monkeypatch.setattr(
-        analyze,
-        "analyze_slice",
-        lambda series_name, slice_idx, png_path, model, **kwargs: {"slice": slice_idx, "severity": "note", "text": png_path.name},
-    )
-    monkeypatch.setattr(analyze, "summarize", lambda slug, series_name, findings, model, provider=None: "summary")
+def test_selecting_exactly_the_overview_slices_still_reports_a_partial_run(data_dir: Path, slice_stack, stub_provider) -> None:
+    slice_stack(slices=5)
+    stub_provider()
 
     complete = analyze.process(
         "sample",
@@ -215,13 +103,84 @@ def test_process_keeps_selected_overview_subset_partial(tmp_path: Path, monkeypa
         sample_count=3,
     )
 
-    written = json.loads((data_dir / "sample_analysis.json").read_text())
+    coverage = coverage_of(data_dir)
     assert complete is False
-    assert written["coverage"]["overviewSlices"] == [0, 2, 4]
-    assert written["coverage"]["analyzedSlices"] == [0, 2, 4]
-    assert written["coverage"]["isComplete"] is False
+    assert coverage["overviewSlices"] == [0, 2, 4]
+    assert coverage["analyzedSlices"] == [0, 2, 4]
+    assert coverage["isComplete"] is False
 
-def test_build_analysis_prompt_marks_context_as_approximate() -> None:
+def test_two_studies_with_the_same_slug_keep_separate_result_sidecars(data_dir: Path, slice_stack, stub_provider) -> None:
+    slice_stack()
+    stub_provider(slice_text=lambda series_name, _idx, _png: series_name, summary=lambda series_name: series_name)
+    first_key = "v2:11111111111111111111111111111111"
+    second_key = "v2:22222222222222222222222222222222"
+
+    assert analyze.process("sample", {"name": "Study A", "slices": 1}, "test-model", analysis_key=first_key) is True
+    assert analyze.process("sample", {"name": "Study B", "slices": 1}, "test-model", analysis_key=second_key) is True
+
+    first = json.loads(analyze.analysis_output_path("sample", first_key).read_text())
+    second = json.loads(analyze.analysis_output_path("sample", second_key).read_text())
+    assert (first["analysisKey"], first["summary"]) == (first_key, "Study A")
+    assert (second["analysisKey"], second["summary"]) == (second_key, "Study B")
+    assert not (data_dir / "sample_analysis.json").exists()
+
+def test_a_result_identity_cannot_be_reused_for_another_series(data_dir: Path, slice_stack, stub_provider) -> None:
+    slice_stack("sample")
+    slice_stack("other")
+    stub_provider(slice_text=lambda series_name, _idx, _png: series_name, summary=lambda series_name: series_name)
+    key = "v2:33333333333333333333333333333333"
+    assert analyze.process("sample", {"name": "Study A", "slices": 1}, "test-model", analysis_key=key) is True
+
+    with pytest.raises(ValueError, match="already bound to another result identity"):
+        _ = analyze.process("other", {"name": "Study B", "slices": 1}, "test-model", analysis_key=key, force=True)
+
+    persisted = json.loads(analyze.analysis_output_path("sample", key).read_text())
+    assert persisted["slug"] == "sample"
+    assert persisted["summary"] == "Study A"
+
+def test_a_path_like_result_identity_fails_closed(data_dir: Path) -> None:
+    with pytest.raises(ValueError, match="invalid analysis key"):
+        _ = analyze.analysis_output_path("sample", "../../escape")
+
+def test_a_failing_slice_stops_the_run_and_names_the_slice(data_dir: Path, slice_stack, monkeypatch) -> None:
+    slice_stack()
+    monkeypatch.setattr(
+        analyze,
+        "analyze_slice",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("provider unavailable")),
+    )
+    monkeypatch.setattr(analyze, "summarize", lambda *_args, **_kwargs: "summary")
+
+    with pytest.raises(RuntimeError, match="slice 0 failed: provider unavailable"):
+        _ = analyze.process("sample", {"name": "Sample", "slices": 1}, "test-model", sample_count=1)
+
+def test_a_missing_slice_image_stops_the_run(data_dir: Path) -> None:
+    (data_dir / "sample").mkdir()
+
+    with pytest.raises(RuntimeError, match="slice 0 image is missing"):
+        _ = analyze.process("sample", {"name": "Sample", "slices": 1}, "test-model", sample_count=1)
+
+def test_a_failing_summary_stops_the_run(data_dir: Path, slice_stack, monkeypatch) -> None:
+    slice_stack()
+    monkeypatch.setattr(
+        analyze,
+        "analyze_slice",
+        lambda series_name, slice_idx, png_path, model, **_kwargs: {
+            "slice": slice_idx,
+            "severity": "note",
+            "text": "ok",
+        },
+    )
+    monkeypatch.setattr(
+        analyze,
+        "summarize",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("summary provider unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="summary failed: summary provider unavailable"):
+        _ = analyze.process("sample", {"name": "Sample", "slices": 1}, "test-model", sample_count=1)
+
+def test_the_slice_prompt_marks_derived_context_as_approximate() -> None:
     prompt, labels, fingerprint = analyze.build_analysis_prompt(
         {"name": "Sample", "slices": 2},
         1,
@@ -242,7 +201,7 @@ def test_build_analysis_prompt_marks_context_as_approximate() -> None:
     assert labels == {3}
     assert fingerprint
 
-def test_analyze_slice_filters_unprompted_region_labels(monkeypatch) -> None:
+def test_a_finding_may_only_reference_region_labels_it_was_given(monkeypatch) -> None:
     monkeypatch.setattr(
         analyze,
         "call_ai",

@@ -6,26 +6,12 @@ import { test } from 'node:test';
 import { writeCalibratedOmeTiff } from './fixtures/microscopy/calibrated-ome-tiff.mjs';
 import {
   assertShellFits,
+  clickCanvasPixel,
   closeApp,
+  ensurePanelOpen,
   launchVoxelLab,
+  waitForSeriesName,
 } from './fixtures/electron-runtime-smoke-helpers.mjs';
-
-async function ensurePanelOpen(page, panelSelector, visibleSelector) {
-  const collapsed = await page.$eval(panelSelector, panel => panel.classList.contains('collapsed')).catch(() => false);
-  if (collapsed) await page.click(`${panelSelector} .sec-title`);
-  await page.waitForSelector(visibleSelector, { state: 'visible', timeout: 10_000 });
-}
-
-async function clickCanvasPixel(page, x, y) {
-  const canvas = await page.locator('#view');
-  const box = await canvas.boundingBox();
-  assert.ok(box, 'viewer canvas must be visible');
-  const size = await canvas.evaluate(el => ({ width: el.width, height: el.height }));
-  await page.mouse.click(
-    box.x + (x / size.width) * box.width,
-    box.y + (y / size.height) * box.height,
-  );
-}
 
 async function installDownloadCapture(page) {
   await page.evaluate(() => {
@@ -97,7 +83,7 @@ test('Electron runtime supports calibrated microscopy measure, annotation, CSV, 
 
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'workflow-cells', null, { timeout: 30_000 });
+    await waitForSeriesName(page, 'workflow-cells', 30_000);
     await page.waitForFunction(() => document.getElementById('meta')?.textContent?.includes('Trusted metadata'), null, { timeout: 10_000 });
     await installDownloadCapture(page);
 

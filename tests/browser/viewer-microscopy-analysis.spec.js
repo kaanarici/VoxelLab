@@ -3,21 +3,10 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { writeCalibratedChannelTimeOmeTiff } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
-import {
-  dropFiles,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+import { waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { ensurePanelOpen } from '../helpers/browser/panels.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
 
-async function ensurePanelOpen(page, panelSelector) {
-  const panel = page.locator(panelSelector);
-  await expect(panel).toBeVisible();
-  if (await panel.evaluate((el) => el.classList.contains('collapsed')).catch(() => false)) {
-    await panel.locator('.sec-title').click();
-  }
-  await expect(panel).not.toHaveClass(/collapsed/);
-}
 
 function storedZipEntries(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -44,16 +33,15 @@ function zipJson(entries, name) {
 }
 
 test('first useful workflow exports calibrated microscopy particle evidence', async ({ page }, testInfo) => {
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page);
 
   const omeTiffPath = testInfo.outputPath('cells-channel-time.ome.tiff');
   await mkdir(dirname(omeTiffPath), { recursive: true });
   await writeCalibratedChannelTimeOmeTiff(omeTiffPath);
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
 
   await expect(page.locator('#series-name')).toHaveText('cells-channel-time');
-  await waitForCanvasPaint(page, '#view');
+  await waitForSlicePaint(page);
 
   await ensurePanelOpen(page, '#microscopy-stack-panel');
   await expect(page.locator('#microscopy-calibration')).toHaveText('X 0.500 µm/px · Y 0.250 µm/px · Z 1.50 µm');

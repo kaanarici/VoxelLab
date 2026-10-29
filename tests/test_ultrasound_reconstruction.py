@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from scipy import ndimage
 
-from ultrasound_reconstruction import _accumulate_frame, reconstruct_ultrasound_volume
+from ultrasound_reconstruction import _accumulate_frame, _frame_pixels, reconstruct_ultrasound_volume
 from geometry import geometry_from_grid
+
+from tests.helpers.python.manifests import ultrasound_source
 
 def test_grid_geometry_uses_row_column_spacing_and_oblique_slice_direction():
     result = geometry_from_grid({
@@ -55,23 +58,14 @@ def test_reconstruct_ultrasound_volume_scan_converts_calibrated_sector_stack():
     frame_b[12:28, 12:24] = 1.0
     ds = FakeUltrasound(np.stack([frame_a, frame_b], axis=0))
 
-    manifest = {
-        "sourceRecordVersion": 2,
-        "sourceKind": "ultrasound",
-        "seriesUID": "1.2.us.series",
-        "ultrasound": {
-            "mode": "stacked-sector",
-            "probeGeometry": "sector",
-            "profileId": "stacked-sector-default",
-            "thetaRangeDeg": [-35.0, 35.0],
-            "radiusRangeMm": [0.0, 60.0],
-            "outputShape": [32, 32, 2],
-            "outputSpacingMm": [1.0, 1.0, 2.0],
-            "firstIPP": [0.0, 0.0, 0.0],
-            "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            "frameOfReferenceUID": "1.2.us.for",
-        },
-    }
+    manifest = ultrasound_source(
+        series_uid="1.2.us.series",
+        profileId="stacked-sector-default",
+        thetaRangeDeg=[-35.0, 35.0],
+        radiusRangeMm=[0.0, 60.0],
+        outputShape=[32, 32, 2],
+        outputSpacingMm=[1.0, 1.0, 2.0],
+    )
 
     result = reconstruct_ultrasound_volume([ds], manifest, np, ndimage)
 
@@ -84,20 +78,14 @@ def test_reconstruct_ultrasound_volume_scan_converts_calibrated_sector_stack():
 
 
 def test_color_ultrasound_is_not_interpreted_as_a_frame_stack():
-    import pytest
-    from ultrasound_reconstruction import _frame_pixels
-
     dataset = FakeUltrasound(np.ones((8, 8, 3), dtype=np.float32))
     dataset.SamplesPerPixel = 3
     dataset.NumberOfFrames = 1
+
     with pytest.raises(ValueError, match="grayscale"):
         _ = _frame_pixels(dataset, np)
 
-
 def test_declared_ultrasound_frame_count_must_match_decoded_pixels():
-    import pytest
-    from ultrasound_reconstruction import _frame_pixels
-
     dataset = FakeUltrasound(np.ones((8, 8, 3), dtype=np.float32))
     dataset.NumberOfFrames = 2
     with pytest.raises(ValueError, match="multi-frame"):

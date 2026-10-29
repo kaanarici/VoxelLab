@@ -1,5 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 import {
@@ -7,291 +6,100 @@ import {
   writeCalibratedChannelTimeOmeTiff,
 } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
 import { parseImageJRoiZip } from '../../js/microscopy/imagej-roi.js';
+import { PIXEL, countPixels, parseCsvRows, readPngImage, readRenderedTiff } from '../helpers/browser/artifacts.mjs';
+import { canvasPixel, settleFrames, waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { writeHyperstackImageJTiff } from '../helpers/browser/fixtures/tiff.mjs';
+import { assertNoMicroscopyChromeOverflow } from '../helpers/browser/layout.mjs';
 import {
+  dropOnUploadZone,
+  openLocalUploadModal,
+  selectChannelAndTime,
+} from '../helpers/browser/microscopy.mjs';
+import {
+  clearSliceDrawings,
   drawEllipseRoi,
+  drawLineMeasurement,
   drawPointRoi,
-  dropFiles,
-  expectScaleBarFits,
-  openUploadModal,
-  parseCsvRows,
-  routeConfig,
-  selectMeasureTool,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+  ensurePanelOpen,
+} from '../helpers/browser/panels.mjs';
+import { scaleBarSnapshot } from '../helpers/browser/scale-bar.mjs';
 
-async function writeFourPageHyperstackTiff(path, description, { width = 4, height = 3 } = {}) {
-  const pageCount = 4;
-  const descriptionBytes = Buffer.from(`${description}\0`, 'utf8');
-  const ifdEntryCounts = [11, 10, 10, 10];
-  const ifdOffsets = [];
-  let cursor = 8;
-  for (const entryCount of ifdEntryCounts) {
-    ifdOffsets.push(cursor);
-    cursor += 2 + entryCount * 12 + 4;
-  }
-  const descriptionOffset = cursor;
-  cursor += descriptionBytes.length;
-  const pixelOffsets = [];
-  const pixelsByPage = Array.from({ length: pageCount }, (_, pageIndex) => {
-    const pixels = Buffer.alloc(width * height);
-    for (let i = 0; i < pixels.length; i += 1) pixels[i] = 20 + pageIndex * 45 + i;
-    pixelOffsets.push(cursor);
-    cursor += pixels.length;
-    return pixels;
-  });
-  const buffer = Buffer.alloc(cursor);
-  buffer.write('II', 0, 'ascii');
-  buffer.writeUInt16LE(42, 2);
-  buffer.writeUInt32LE(ifdOffsets[0], 4);
-  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
-    let ifdCursor = ifdOffsets[pageIndex];
-    const entries = [
-      [256, 4, 1, width],
-      [257, 4, 1, height],
-      [258, 3, 1, 8],
-      [259, 3, 1, 1],
-      [262, 3, 1, 1],
-      [273, 4, 1, pixelOffsets[pageIndex]],
-      [277, 3, 1, 1],
-      [278, 4, 1, height],
-      [279, 4, 1, width * height],
-      [339, 3, 1, 1],
-    ];
-    if (pageIndex === 0) entries.splice(5, 0, [270, 2, descriptionBytes.length, descriptionOffset]);
-    buffer.writeUInt16LE(entries.length, ifdCursor);
-    ifdCursor += 2;
-    const writeEntry = (tag, type, count, value) => {
-      buffer.writeUInt16LE(tag, ifdCursor);
-      buffer.writeUInt16LE(type, ifdCursor + 2);
-      buffer.writeUInt32LE(count, ifdCursor + 4);
-      if (type === 3 && count === 1) buffer.writeUInt16LE(value, ifdCursor + 8);
-      else buffer.writeUInt32LE(value, ifdCursor + 8);
-      ifdCursor += 12;
-    };
-    for (const entry of entries) writeEntry(...entry);
-    buffer.writeUInt32LE(ifdOffsets[pageIndex + 1] || 0, ifdCursor);
-    pixelsByPage[pageIndex].copy(buffer, pixelOffsets[pageIndex]);
-  }
-  descriptionBytes.copy(buffer, descriptionOffset);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, buffer);
-}
+const CONTEXT_LABEL_BOX = { x0: 10, y0: 10, x1: 151, y1: 35 };
 
-async function writeHyperstackImageJTiff(path, options = {}) {
-  const description = [
-    'ImageJ=1.54',
-    'images=4',
-    'channels=2',
-    'slices=2',
-    'frames=1',
-    'hyperstack=true',
-    'mode=grayscale',
-    'unit=um',
-    'pixel_width=0.5',
-    'pixel_height=0.25',
-    'spacing=1.5',
-  ].join('\n');
-  await writeFourPageHyperstackTiff(path, description, options);
-}
-
-async function drawLineMeasurement(page) {
-  await selectMeasureTool(page, '#btn-measure');
-  const box = await page.locator('#view').boundingBox();
-  const y = box.y + box.height * 0.55;
-  await page.mouse.click(box.x + box.width * 0.25, y);
-  await page.mouse.click(box.x + box.width * 0.75, y);
+function fractionRect(image, left, top, right, bottom) {
+  return {
+    x0: Math.floor(image.width * left),
+    y0: Math.floor(image.height * top),
+    x1: Math.floor(image.width * right),
+    y1: Math.floor(image.height * bottom),
+  };
 }
 
 async function screenshotPngMetrics(page, pngPath) {
-  const dataUrl = `data:image/png;base64,${(await readFile(pngPath)).toString('base64')}`;
-  return page.evaluate(async (href) => {
-    const img = new Image();
-    const loaded = new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-    img.src = href;
-    await loaded;
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    let scaleBarBrightPixels = 0;
-    const scaleY = canvas.height - 10;
-    for (let x = Math.max(0, canvas.width - 130); x < canvas.width - 6; x += 1) {
-      const offset = (scaleY * canvas.width + x) * 4;
-      if (data[offset] > 230 && data[offset + 1] > 230 && data[offset + 2] > 230) scaleBarBrightPixels += 1;
-    }
-    let pointRoiBluePixels = 0;
-    for (let y = Math.floor(canvas.height * 0.35); y < Math.floor(canvas.height * 0.65); y += 1) {
-      for (let x = Math.floor(canvas.width * 0.35); x < Math.floor(canvas.width * 0.72); x += 1) {
-        const offset = (y * canvas.width + x) * 4;
-        if (data[offset] < 180 && data[offset + 1] > 130 && data[offset + 2] > 180) pointRoiBluePixels += 1;
-      }
-    }
-    let measurementWhitePixels = 0;
-    for (let y = Math.floor(canvas.height * 0.52); y < Math.floor(canvas.height * 0.59); y += 1) {
-      for (let x = Math.floor(canvas.width * 0.20); x < Math.floor(canvas.width * 0.80); x += 1) {
-        const offset = (y * canvas.width + x) * 4;
-        if (data[offset] > 235 && data[offset + 1] > 235 && data[offset + 2] > 235) measurementWhitePixels += 1;
-      }
-    }
-    let contextDarkPixels = 0;
-    let contextBrightPixels = 0;
-    for (let y = 10; y <= 34; y += 1) {
-      for (let x = 10; x <= 150; x += 1) {
-        const offset = (y * canvas.width + x) * 4;
-        if (data[offset] < 55 && data[offset + 1] < 55 && data[offset + 2] < 55) contextDarkPixels += 1;
-        if (data[offset] > 220 && data[offset + 1] > 220 && data[offset + 2] > 220) contextBrightPixels += 1;
-      }
-    }
-    return {
-      width: canvas.width,
-      height: canvas.height,
-      contextDarkPixels,
-      contextBrightPixels,
-      scaleBarBrightPixels,
-      pointRoiBluePixels,
-      measurementWhitePixels,
-    };
-  }, dataUrl);
+  const image = await readPngImage(page, pngPath);
+  return {
+    width: image.width,
+    height: image.height,
+    contextDarkPixels: countPixels(image, PIXEL.dark, CONTEXT_LABEL_BOX),
+    contextBrightPixels: countPixels(image, PIXEL.chromeBright, CONTEXT_LABEL_BOX),
+    scaleBarBrightPixels: countPixels(image, PIXEL.bright, {
+      x0: Math.max(0, image.width - 130),
+      y0: image.height - 10,
+      x1: image.width - 6,
+      y1: image.height - 9,
+    }),
+    pointRoiBluePixels: countPixels(image, PIXEL.roiBlue, fractionRect(image, 0.35, 0.35, 0.72, 0.65)),
+    measurementWhitePixels: countPixels(image, PIXEL.white, fractionRect(image, 0.20, 0.52, 0.80, 0.59)),
+  };
 }
 
 async function renderedTiffMetrics(tiffPath) {
-  const bytes = await readFile(tiffPath);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const entryCount = view.getUint16(8, true);
-  const tags = new Map();
-  for (let i = 0; i < entryCount; i += 1) {
-    const offset = 10 + i * 12;
-    tags.set(view.getUint16(offset, true), {
-      type: view.getUint16(offset + 2, true),
-      count: view.getUint32(offset + 4, true),
-      value: view.getUint32(offset + 8, true),
-    });
-  }
-  const rational = (tag) => {
-    const offset = tags.get(tag).value;
-    return view.getUint32(offset, true) / view.getUint32(offset + 4, true);
-  };
-  const pixelOffset = tags.get(273).value;
-  const pixelBytes = bytes.subarray(pixelOffset, pixelOffset + tags.get(279).value);
-  const descriptionTag = tags.get(270);
-  const description = new TextDecoder().decode(bytes.subarray(descriptionTag.value, descriptionTag.value + descriptionTag.count)).replace(/\0$/u, '');
-  let pointRoiBluePixels = 0;
-  let measurementWhitePixels = 0;
-  for (let i = 0; i < pixelBytes.length; i += 3) {
-    if (pixelBytes[i] < 180 && pixelBytes[i + 1] > 130 && pixelBytes[i + 2] > 180) pointRoiBluePixels += 1;
-    if (pixelBytes[i] > 235 && pixelBytes[i + 1] > 235 && pixelBytes[i + 2] > 235) measurementWhitePixels += 1;
-  }
+  const image = await readRenderedTiff(tiffPath);
   return {
-    magic: [bytes[0], bytes[1], view.getUint16(2, true)],
-    width: tags.get(256).value,
-    height: tags.get(257).value,
-    compression: tags.get(259).value,
-    photometric: tags.get(262).value,
-    samplesPerPixel: tags.get(277).value,
-    xResolution: rational(282),
-    yResolution: rational(283),
-    resolutionUnit: tags.get(296).value,
-    pixelByteCount: tags.get(279).value,
-    description,
-    pointRoiBluePixels,
-    measurementWhitePixels,
+    ...image,
+    pointRoiBluePixels: countPixels(image, PIXEL.roiBlue),
+    measurementWhitePixels: countPixels(image, PIXEL.white),
   };
 }
 
-async function ensurePanelOpen(page, panelSelector, visibleSelector) {
-  const panel = page.locator(panelSelector);
-  const target = page.locator(visibleSelector);
-  if (await panel.evaluate(el => el.classList.contains('collapsed')).catch(() => false)) {
-    await panel.locator('.sec-title').click();
-  }
-  await expect(panel).not.toHaveClass(/collapsed/);
-  await expect(target.first()).toBeVisible();
-}
+const CHANNEL_TIME_STACK = 'cells-channel-time';
 
-async function scaleBarSnapshot(page) {
-  await expectScaleBarFits(page);
-  return page.locator('#scale-bar').evaluate((bar) => ({
-    label: document.getElementById('scale-bar-label')?.textContent || '',
-    lineWidth: Math.round(document.getElementById('scale-bar-line')?.getBoundingClientRect().width || 0),
-    aria: bar.getAttribute('aria-label') || '',
-  }));
-}
-
-async function canvasPixel(page, x = 0, y = 0) {
-  return page.locator('#view').evaluate((canvas, point) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    return Array.from(ctx.getImageData(point.x, point.y, 1, 1).data);
-  }, { x, y });
-}
-
-async function assertNoWorkflowOverflow(page) {
-  const metrics = await page.evaluate(() => {
-    const visibleRect = (selector) => {
-      const el = document.querySelector(selector);
-      if (!el) return null;
-      const style = getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      if (style.display === 'none' || style.visibility === 'hidden' || rect.width <= 0 || rect.height <= 0) return null;
-      return {
-        selector,
-        right: rect.right,
-        bottom: rect.bottom,
-        scrollWidth: el.scrollWidth,
-        clientWidth: el.clientWidth,
-        overflow: el.scrollWidth > el.clientWidth + 1,
-      };
-    };
-    const checked = [
-      '#microscopy-channel-select',
-      '#microscopy-channel-color',
-      '#microscopy-time-select',
-      '.hyperstack-channel-text',
-      '.hyperstack-status',
-      '#microscopy-split-preview',
-      '#microscopy-calibration',
-      '#scale-bar',
-      '#microscopy-recipe-export',
-      '#microscopy-recipe-import',
-      '#microscopy-recipe-status',
-      '[data-roi-result-row]',
-      '#roi-results-export',
-      '#roi-results-json-export',
-      '#roi-results-json-import',
-      '#roi-results-status',
-    ].map(visibleRect).filter(Boolean);
-    return {
-      viewportWidth: innerWidth,
-      rootScrollWidth: document.documentElement.scrollWidth,
-      overflowing: checked.filter(item => item.overflow),
-      outOfViewport: checked.filter(item => item.right > innerWidth + 1),
-    };
-  });
-  expect(metrics.rootScrollWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(metrics.viewportWidth + 1);
-  expect(metrics.overflowing, JSON.stringify(metrics)).toEqual([]);
-  expect(metrics.outOfViewport, JSON.stringify(metrics)).toEqual([]);
-}
-
-test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenance, and CSV export aligned', async ({ page }, testInfo) => {
-  test.setTimeout(45_000);
+async function openChannelTimeStack(page, testInfo) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const omeTiffPath = testInfo.outputPath('cells-channel-time.ome.tiff');
+  const omeTiffPath = testInfo.outputPath(`${CHANNEL_TIME_STACK}.ome.tiff`);
   await writeCalibratedChannelTimeOmeTiff(omeTiffPath);
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  const initialCount = await page.locator('#series-list li').count();
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await expect(page.locator('#series-name')).toHaveText(CHANNEL_TIME_STACK);
+  await waitForSlicePaint(page);
+  await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-channel-select');
+}
 
-  await expect(page.locator('#series-name')).toHaveText('cells-channel-time');
-  await expect(page.locator('#series-list li')).toHaveCount(initialCount + 1);
+async function useRecoloredGfpTimepointTwo(page) {
+  await selectChannelAndTime(page, 1, 1);
+  await page.locator('#microscopy-channel-color').fill('#aa00cc');
+  await expect(page.locator('#microscopy-channel-color')).toHaveValue('#aa00cc');
+  await expect(page.locator('.hyperstack-status')).toHaveText('Z 1/1 · C 2/2 · T 2/2');
+}
+
+async function drawNamedRoi(page, label) {
+  await drawEllipseRoi(page);
+  await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(1);
+  await ensurePanelOpen(page, '#roi-results-panel', '#roi-results-count');
+  const row = page.locator('[data-roi-result-row]');
+  await expect(page.locator('#roi-results-count')).toHaveText('1');
+  await expect(row).toContainText('ROI 1');
+  await row.locator('.roi-result-name').fill(label);
+  await row.locator('.roi-result-name').press('Enter');
+  await expect(row.locator('.roi-result-name')).toHaveText(label);
+  return row;
+}
+
+test('microscopy C/T controls keep calibration, channel identity, and composite rendering aligned', async ({ page }, testInfo) => {
+  await openChannelTimeStack(page, testInfo);
   await expect(page.locator('#slice-tot')).toHaveText('1');
   await expect(page.locator('#meta')).toContainText('Z 1 · C 2 · T 2');
-  await waitForCanvasPaint(page, '#view');
   const initialScaleBar = await scaleBarSnapshot(page);
 
   await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-channel-select');
@@ -344,6 +152,14 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
   expect(compositePixel[0], JSON.stringify(compositePixel)).toBeGreaterThan(0);
   expect(compositePixel[1], JSON.stringify(compositePixel)).toBe(0);
   expect(compositePixel[2], JSON.stringify(compositePixel)).toBeGreaterThan(0);
+});
+
+test('the microscopy workflow recipe records and replays C/T, channel color, and composite state', async ({ page }, testInfo) => {
+  await openChannelTimeStack(page, testInfo);
+  await useRecoloredGfpTimepointTwo(page);
+  await page.locator('#microscopy-composite-toggle').check();
+  await expect(page.locator('#microscopy-composite-toggle')).toBeChecked();
+
   const recipeDownloadPromise = page.waitForEvent('download');
   await page.locator('#microscopy-recipe-export').click();
   const recipeDownload = await recipeDownloadPromise;
@@ -365,8 +181,7 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
     },
   });
   expect(recipe.channels[1].color).toBe('#AA00CC');
-  await page.locator('#microscopy-channel-select').selectOption('0');
-  await page.locator('#microscopy-time-select').selectOption('0');
+  await selectChannelAndTime(page, 0, 0);
   await page.locator('#microscopy-channel-color').fill('#0000ff');
   await page.locator('#microscopy-composite-toggle').uncheck();
   await page.locator('#microscopy-recipe-import-input').setInputFiles(recipePath);
@@ -378,16 +193,17 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
   await page.locator('#microscopy-composite-toggle').uncheck();
   await expect(page.locator('#microscopy-composite-toggle')).not.toBeChecked();
 
-  await drawEllipseRoi(page);
-  await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(1);
-  await ensurePanelOpen(page, '#roi-results-panel', '#roi-results-count');
-  const row = page.locator('[data-roi-result-row]');
-  await expect(page.locator('#roi-results-count')).toHaveText('1');
-  await expect(row).toContainText('ROI 1');
+});
+
+test('a calibrated ROI carries its C/T provenance into the results row and CSV export', async ({ page }, testInfo) => {
+  await openChannelTimeStack(page, testInfo);
+  await useRecoloredGfpTimepointTwo(page);
+  const row = await drawNamedRoi(page, 'Nucleus A');
+  await expect(page.locator('#overlay-svg .roi-label')).toContainText('Nucleus A');
   await expect(row).toContainText('C2 GFP');
   await expect(row).toContainText('T2');
   await expect(row).toContainText('µm²');
-  await row.locator('.roi-result-name').fill('Nucleus A');
+
   await row.locator('.roi-result-name').press('Enter');
   await expect(row.locator('.roi-result-name')).toHaveText('Nucleus A');
   await expect(page.locator('#overlay-svg .roi-label')).toContainText('Nucleus A');
@@ -410,8 +226,7 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
   expect(roiObjectId).toMatch(/^roi:[^|]+\|0:1$/);
 
   await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-channel-select');
-  await page.locator('#microscopy-channel-select').selectOption('0');
-  await page.locator('#microscopy-time-select').selectOption('0');
+  await selectChannelAndTime(page, 0, 0);
   await expect(page.locator('.hyperstack-status')).toHaveText('Z 1/1 · C 1/2 · T 1/2');
   await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(0);
   await ensurePanelOpen(page, '#roi-results-panel', '#roi-results-count');
@@ -474,6 +289,21 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
   expect(Math.abs(Number(cells[46]) - Number(cells[44]) * 0.001)).toBeLessThan(1e-12);
   expect(Math.abs(Number(cells[47]) - Number(cells[19]) * Number(cells[22]))).toBeLessThan(1e-9);
   expect(Math.abs(Number(cells[48]) - Number(cells[20]) * Number(cells[22]))).toBeLessThan(1e-12);
+
+});
+
+test('the ROI JSON bundle records the dataset contract and re-imports display-only rows', async ({ page }, testInfo) => {
+  await openChannelTimeStack(page, testInfo);
+  await useRecoloredGfpTimepointTwo(page);
+  const row = await drawNamedRoi(page, 'Nucleus A');
+  const roiObjectId = await row.getAttribute('data-roi-object-id');
+  const seriesSlug = await page.evaluate(async () => {
+    const { state } = await import('/js/core/state.js');
+    return state.manifest.series[state.seriesIdx].slug;
+  });
+  const pixels = Number(await row.locator('.roi-result-metrics div')
+    .filter({ hasText: 'Pixels' }).locator('b').textContent());
+  expect(pixels).toBeGreaterThan(0);
 
   const jsonDownloadPromise = page.waitForEvent('download');
   await page.locator('#roi-results-json-export').click();
@@ -559,11 +389,7 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
   };
   await writeFile(displayFieldsBundlePath, `${JSON.stringify(displayFieldsBundle, null, 2)}\n`);
 
-  await page.evaluate(async () => {
-    const { clearCurrentSliceDrawings } = await import('/js/clear-slice-drawings.js');
-    clearCurrentSliceDrawings();
-  });
-  await page.locator('#clear-confirm').click();
+  await clearSliceDrawings(page);
   await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(0);
   await expect(page.locator('#roi-results-count')).toHaveText('0');
   await expect(page.locator('[data-roi-result-row]')).toHaveCount(0);
@@ -603,23 +429,22 @@ test('microscopy C/T workflow keeps calibration, channel rendering, ROI provenan
     localStackKeys: ['0|0', '0|1', '1|0', '1|1'],
   });
 
-  await assertNoWorkflowOverflow(page);
+  await assertNoMicroscopyChromeOverflow(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await assertNoWorkflowOverflow(page);
+  await settleFrames(page);
+  await assertNoMicroscopyChromeOverflow(page);
 });
+
 
 test('microscopy point count ROI exports C/T-scoped coordinates and count', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1200, height: 820 });
   const omeTiffPath = testInfo.outputPath('cells-point-count.ome.tiff');
   await writeCalibratedChannelTimeOmeTiff(omeTiffPath);
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
   await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-channel-select');
-  await page.locator('#microscopy-channel-select').selectOption('1');
-  await page.locator('#microscopy-time-select').selectOption('1');
+  await selectChannelAndTime(page, 1, 1);
 
   await drawPointRoi(page);
   await drawPointRoi(page, 0.62, 0.58);
@@ -682,11 +507,7 @@ test('microscopy point count ROI exports C/T-scoped coordinates and count', asyn
   expect(Number(bundle.rows[0].rawIntDen)).toBeGreaterThan(0);
   expect(bundle.rows[0].points).toHaveLength(2);
 
-  await page.evaluate(async () => {
-    const { clearCurrentSliceDrawings } = await import('/js/clear-slice-drawings.js');
-    clearCurrentSliceDrawings();
-  });
-  await page.locator('#clear-confirm').click();
+  await clearSliceDrawings(page);
   await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(0);
   await expect(page.locator('#roi-results-count')).toHaveText('0');
   await page.locator('#roi-results-json-import-input').setInputFiles(jsonBundlePath);
@@ -702,8 +523,7 @@ test('microscopy point count ROI exports C/T-scoped coordinates and count', asyn
   expect(importedMetrics.Count).toBe('2');
   expect(importedMetrics.Pixels).toBe('2');
   expect(Number(importedMetrics.RawIntDen)).toBeGreaterThan(0);
-  await page.locator('#microscopy-channel-select').selectOption('0');
-  await page.locator('#microscopy-time-select').selectOption('0');
+  await selectChannelAndTime(page, 0, 0);
   await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(0);
   await expect(row).not.toHaveClass(/is-current/);
   await row.press('Enter');
@@ -727,13 +547,11 @@ test('microscopy workflow recipes replay deterministically and fail closed on in
   const omeTiffPath = testInfo.outputPath('cells-recipe.ome.tiff');
   await writeCalibratedChannelTimeOmeTiff(omeTiffPath);
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
   await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-channel-select');
 
-  await page.locator('#microscopy-channel-select').selectOption('1');
-  await page.locator('#microscopy-time-select').selectOption('1');
+  await selectChannelAndTime(page, 1, 1);
   await page.locator('#microscopy-channel-color').fill('#aa00cc');
   await page.locator('#microscopy-composite-toggle').check();
   await page.locator('#microscopy-composite-c0').check();
@@ -751,8 +569,7 @@ test('microscopy workflow recipes replay deterministically and fail closed on in
   expect(recipe.stack.compositeEnabled).toBe(true);
   expect(recipe.stack.compositeChannels).toEqual([true, false]);
 
-  await page.locator('#microscopy-channel-select').selectOption('0');
-  await page.locator('#microscopy-time-select').selectOption('0');
+  await selectChannelAndTime(page, 0, 0);
   await page.locator('#microscopy-channel-color').fill('#00ff00');
   await page.locator('#microscopy-composite-toggle').uncheck();
 
@@ -793,7 +610,7 @@ test('microscopy workflow recipes replay deterministically and fail closed on in
   const countBeforeRecipeSidecarDrop = await page.locator('#series-list li').count();
   await page.locator('#btn-upload').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: omeTiffPath, mimeType: 'image/tiff' },
     { path: recipePath, mimeType: 'application/json' },
   ]);
@@ -815,12 +632,11 @@ test('ImageJ hyperstack workflow supports Z/C/T-scoped calibrated count and line
   const imageJPath = testInfo.outputPath('cells-imagej-workflow.tif');
   await writeHyperstackImageJTiff(imageJPath, { width: 256, height: 128 });
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path: imageJPath, mimeType: 'image/tiff' }]);
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: imageJPath, mimeType: 'image/tiff' }]);
   await expect(page.locator('#series-name')).toHaveText('cells-imagej-workflow');
   await expect(page.locator('#series-desc')).toContainText('ImageJ-TIFF');
-  await waitForCanvasPaint(page, '#view');
+  await waitForSlicePaint(page);
   await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-channel-select');
   await expect(page.locator('#microscopy-calibration')).toContainText('X 0.500 µm/px · Y 0.250 µm/px');
   await expect(page.locator('#slice-tot')).toHaveText('2');
@@ -979,22 +795,14 @@ test('ImageJ hyperstack workflow supports Z/C/T-scoped calibrated count and line
   expect(tiffMetrics.pointRoiBluePixels, JSON.stringify(tiffMetrics)).toBeGreaterThan(5);
   expect(tiffMetrics.measurementWhitePixels, JSON.stringify(tiffMetrics)).toBeGreaterThan(40);
 
-  await page.evaluate(async () => {
-    const { clearCurrentSliceDrawings } = await import('/js/clear-slice-drawings.js');
-    clearCurrentSliceDrawings();
-  });
-  await page.locator('#clear-confirm').click();
+  await clearSliceDrawings(page);
   await expect(page.locator('#roi-results-count')).toHaveText('0');
   await page.locator('#microscopy-recipe-import-input').setInputFiles(recipePath);
   await expect(page.locator('#microscopy-recipe-status')).toHaveText('Workflow recipe replayed');
   await expect(page.locator('#roi-results-count')).toHaveText('2');
   await expect(page.locator('#overlay-svg .roi-group')).toHaveCount(1);
   await expect(page.locator('#overlay-svg .m-group')).toHaveCount(1);
-  await page.evaluate(async () => {
-    const { clearCurrentSliceDrawings } = await import('/js/clear-slice-drawings.js');
-    clearCurrentSliceDrawings();
-  });
-  await page.locator('#clear-confirm').click();
+  await clearSliceDrawings(page);
   await expect(page.locator('#roi-results-count')).toHaveText('0');
   await page.locator('#roi-results-json-import-input').setInputFiles(jsonBundlePath);
   await expect(page.locator('#roi-results-status')).toHaveText('Imported 2 result rows');
@@ -1049,7 +857,7 @@ test('ImageJ hyperstack workflow supports Z/C/T-scoped calibrated count and line
   const countBeforeZipSidecarDrop = await page.locator('#series-list li').count();
   await page.locator('#btn-upload').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: zipReplayImageJPath, mimeType: 'image/tiff' },
     { path: imagejZipPath, mimeType: 'application/zip' },
   ]);
@@ -1173,7 +981,7 @@ test('ImageJ hyperstack workflow supports Z/C/T-scoped calibrated count and line
   const countBeforeSidecarDrop = await page.locator('#series-list li').count();
   await page.locator('#btn-upload').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: imageJPath, mimeType: 'image/tiff' },
     { path: jsonBundlePath, mimeType: 'application/json' },
     { path: recipePath, mimeType: 'application/json' },
@@ -1198,7 +1006,7 @@ test('ImageJ hyperstack workflow supports Z/C/T-scoped calibrated count and line
   const countBeforeInvalidSidecarDrop = await page.locator('#series-list li').count();
   await page.locator('#btn-upload').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: imageJPath, mimeType: 'image/tiff' },
     { path: invalidSidecarPath, mimeType: 'application/json' },
   ]);

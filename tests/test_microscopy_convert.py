@@ -8,7 +8,6 @@ import pytest
 
 import microscopy_convert
 from microscopy_convert import (
-    CANON_AXES,
     EXTERNAL_CONVERT_EXTENSIONS,
     MAX_CONVERTER_ERROR_DETAIL_CHARS,
     MAX_NATIVE_SERIES_PARTS,
@@ -61,8 +60,18 @@ def test_to_tczyx_rejects_empty_axis():
     with pytest.raises(ValueError, match="empty axis"):
         _ = to_tczyx(np.zeros((0, 4, 5)), "CYX")
 
-def test_canonical_axis_order():
-    assert CANON_AXES == "TCZYX"
+def install_external_converter(monkeypatch, tmp_path, body: str, *, name: str = "fake-bfconvert.py"):
+    """Point VOXELLAB_BFCONVERT at an executable stand-in for the external converter."""
+    converter = tmp_path / name
+    converter.write_text(f"#!/usr/bin/env python3\n{body}", encoding="utf-8")
+    converter.chmod(0o755)
+    monkeypatch.setenv("VOXELLAB_BFCONVERT", str(converter))
+    return converter
+
+def write_source(tmp_path, suffix: str):
+    source = tmp_path / f"sample{suffix}"
+    source.write_bytes(suffix.encode())
+    return source
 
 def test_supported_extensions_separate_native_readers_from_external_converter():
     assert NATIVE_READER_EXTENSIONS == (".nd2", ".czi", ".lif")
@@ -394,19 +403,13 @@ def test_convert_rejects_unsupported_extension():
         _ = convert_to_ome_tiff_with_result("/tmp/sample.png", "/tmp/out.ome.tiff")
 
 def test_external_converter_writes_ome_tiff(monkeypatch, tmp_path):
-    converter = tmp_path / "fake-bfconvert.py"
-    converter.write_text(
-        """#!/usr/bin/env python3
-import pathlib, sys
-pathlib.Path(sys.argv[2]).write_bytes(b'II*\\x00ome-tiff')
-""",
-        encoding="utf-8",
+    install_external_converter(
+        monkeypatch,
+        tmp_path,
+        "import pathlib, sys\npathlib.Path(sys.argv[2]).write_bytes(b'II*\\x00ome-tiff')\n",
     )
-    converter.chmod(0o755)
-    source = tmp_path / "sample.lsm"
-    source.write_bytes(b"lsm")
+    source = write_source(tmp_path, ".lsm")
     output = tmp_path / "out.ome.tiff"
-    monkeypatch.setenv("VOXELLAB_BFCONVERT", str(converter))
 
     assert convert_to_ome_tiff_with_result(str(source), str(output)).output_path == str(output)
     assert output.read_bytes() == b"II*\x00ome-tiff"
@@ -416,50 +419,35 @@ pathlib.Path(sys.argv[2]).write_bytes(b'II*\\x00ome-tiff')
     assert result.warnings == []
 
 def test_external_converter_rejects_empty_ome_tiff(monkeypatch, tmp_path):
-    converter = tmp_path / "fake-empty-bfconvert.py"
-    converter.write_text(
-        """#!/usr/bin/env python3
-import pathlib, sys
-pathlib.Path(sys.argv[2]).write_bytes(b'')
-""",
-        encoding="utf-8",
+    install_external_converter(
+        monkeypatch,
+        tmp_path,
+        "import pathlib, sys\npathlib.Path(sys.argv[2]).write_bytes(b'')\n",
     )
-    converter.chmod(0o755)
-    source = tmp_path / "sample.oib"
-    source.write_bytes(b"oib")
-    monkeypatch.setenv("VOXELLAB_BFCONVERT", str(converter))
+    source = write_source(tmp_path, ".oib")
 
     with pytest.raises(RuntimeError, match="did not write an output OME-TIFF") as exc_info:
         _ = convert_to_ome_tiff_with_result(str(source), str(tmp_path / "empty.ome.tiff"))
     assert exc_info.value.reason == REASON_EXTERNAL_PROCESS_FAILURE
 
 def test_external_converter_rejects_non_tiff_output(monkeypatch, tmp_path):
-    converter = tmp_path / "fake-text-bfconvert.py"
-    converter.write_text(
-        """#!/usr/bin/env python3
-import pathlib, sys
-pathlib.Path(sys.argv[2]).write_bytes(b'not a tiff')
-""",
-        encoding="utf-8",
+    install_external_converter(
+        monkeypatch,
+        tmp_path,
+        "import pathlib, sys\npathlib.Path(sys.argv[2]).write_bytes(b'not a tiff')\n",
     )
-    converter.chmod(0o755)
-    source = tmp_path / "sample.oif"
-    source.write_bytes(b"oif")
-    monkeypatch.setenv("VOXELLAB_BFCONVERT", str(converter))
+    source = write_source(tmp_path, ".oif")
 
     with pytest.raises(RuntimeError, match="did not write a TIFF/OME-TIFF file"):
         _ = convert_to_ome_tiff_with_result(str(source), str(tmp_path / "text.ome.tiff"))
 
 def test_external_converter_failure_detail_stays_in_local_log(monkeypatch, tmp_path, capsys):
-    converter = tmp_path / "fake-noisy-bfconvert.py"
-    converter.write_text(
-        "#!/usr/bin/env python3\nimport sys\nsys.stderr.write('x' * 5000)\nsys.exit(2)\n",
-        encoding="utf-8",
+    install_external_converter(
+        monkeypatch,
+        tmp_path,
+        "import sys\nsys.stderr.write('x' * 5000)\nsys.exit(2)\n",
     )
-    converter.chmod(0o755)
-    source = tmp_path / "sample.lsm"
-    source.write_bytes(b"lsm")
-    monkeypatch.setenv("VOXELLAB_BFCONVERT", str(converter))
+    source = write_source(tmp_path, ".lsm")
 
     with pytest.raises(RuntimeError) as exc_info:
         _ = convert_to_ome_tiff_with_result(str(source), str(tmp_path / "out.ome.tiff"))
@@ -472,12 +460,8 @@ def test_external_converter_failure_detail_stays_in_local_log(monkeypatch, tmp_p
     assert len(captured.err) <= len("[microscopy-converter] external process failed: ") + MAX_CONVERTER_ERROR_DETAIL_CHARS + 4
 
 def test_external_converter_timeout_reports_conversion_error(monkeypatch, tmp_path):
-    converter = tmp_path / "fake-slow-bfconvert.py"
-    converter.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
-    converter.chmod(0o755)
-    source = tmp_path / "sample.lsm"
-    source.write_bytes(b"lsm")
-    monkeypatch.setenv("VOXELLAB_BFCONVERT", str(converter))
+    converter = install_external_converter(monkeypatch, tmp_path, "")
+    source = write_source(tmp_path, ".lsm")
 
     def fake_run(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(cmd=[str(converter)], timeout=300)
@@ -488,8 +472,7 @@ def test_external_converter_timeout_reports_conversion_error(monkeypatch, tmp_pa
         _ = convert_to_ome_tiff_with_result(str(source), str(tmp_path / "out.ome.tiff"))
 
 def test_external_converter_requires_absolute_executable(monkeypatch, tmp_path):
-    source = tmp_path / "sample.oif"
-    source.write_bytes(b"oif")
+    source = write_source(tmp_path, ".oif")
     monkeypatch.setenv("VOXELLAB_BFCONVERT", "bfconvert")
 
     with pytest.raises(ImportError) as exc_info:
@@ -497,8 +480,7 @@ def test_external_converter_requires_absolute_executable(monkeypatch, tmp_path):
     assert exc_info.value.reason == "converter_path_not_absolute"
 
 def test_external_converter_reports_missing_and_non_executable_paths(monkeypatch, tmp_path):
-    source = tmp_path / "sample.oif"
-    source.write_bytes(b"oif")
+    source = write_source(tmp_path, ".oif")
     missing = tmp_path / "missing-bfconvert"
     monkeypatch.setenv("VOXELLAB_BFCONVERT", str(missing))
 
@@ -512,10 +494,3 @@ def test_external_converter_reports_missing_and_non_executable_paths(monkeypatch
     with pytest.raises(ImportError) as executable_error:
         _ = convert_to_ome_tiff_with_result(str(source), str(tmp_path / "non-executable.ome.tiff"))
     assert executable_error.value.reason == REASON_CONVERTER_PATH_NOT_EXECUTABLE
-
-def test_normalized_stack_defaults():
-    s = NormalizedStack(data=np.zeros((1, 1, 1, 2, 2)))
-    assert s.channel_names == []
-    assert s.warnings == []
-    assert s.physical_size_x is None
-    assert s.source_format == ""

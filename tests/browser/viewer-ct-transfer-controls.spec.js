@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import { localVolumeSeries, routeLocalVolumeStudy } from '../helpers/browser/local-study.mjs';
 
 test('CT HU transfer controls are CT-only and clear stale active state', async ({ page }) => {
   const errors = [];

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import { localVolumeSeries, openLocalStudy } from '../helpers/browser/local-study.mjs';
+import { ensurePanelOpen } from '../helpers/browser/panels.mjs';
 
 function violationSummary(results) {
   return results.violations.map(violation => ({
@@ -11,8 +12,18 @@ function violationSummary(results) {
   }));
 }
 
+async function settleEntranceAnimations(page, include) {
+  await page.locator(include).evaluate(async (root) => {
+    const finite = root.getAnimations({ subtree: true })
+      .filter(animation => animation.effect?.getComputedTiming?.().iterations !== Infinity);
+    await Promise.all(finite.map(animation => animation.finished.catch(() => {})));
+  });
+}
+
 async function expectNoSeriousViolations(page, include) {
-  await page.waitForTimeout(500);
+  await expect(page.locator(include)).toBeVisible();
+  await expect(page.locator('#viewer-spinner')).toBeHidden();
+  await settleEntranceAnimations(page, include);
   const results = await new AxeBuilder({ page })
     .include(include)
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
@@ -22,8 +33,7 @@ async function expectNoSeriousViolations(page, include) {
 }
 
 test('viewer, exact MPR angles, and arbitrary 3D clipping pass serious WCAG checks', async ({ page }) => {
-  await routeLocalVolumeStudy(page, [localVolumeSeries('a11y_volume', 'Accessibility Volume')]);
-  await page.goto('/?localBackend=1', { waitUntil: 'domcontentloaded' });
+  await openLocalStudy(page, [localVolumeSeries('a11y_volume', 'Accessibility Volume')]);
   await page.locator('#series-list li').first().click();
   const navigationHelp = page.getByRole('dialog', { name: 'How to navigate' });
   if (await navigationHelp.isVisible()) await navigationHelp.getByRole('button', { name: 'Got it' }).click();
@@ -36,13 +46,9 @@ test('viewer, exact MPR angles, and arbitrary 3D clipping pass serious WCAG chec
   await page.locator('#btn-mpr').click();
 
   await page.locator('#btn-3d').click();
-  const volumePanel = page.locator('#panel-3d');
-  await expect(volumePanel).toBeVisible();
-  await page.waitForTimeout(350);
-  if (await volumePanel.evaluate(panel => panel.classList.contains('collapsed'))) {
-    await volumePanel.locator('.sec-title').click();
-  }
-  const clippingDetails = volumePanel.locator('.rp-more');
+  await expect(page.locator('#three-container.active canvas')).toBeVisible();
+  await ensurePanelOpen(page, '#panel-3d');
+  const clippingDetails = page.locator('#panel-3d .rp-more');
   if (!(await clippingDetails.evaluate(details => details.open))) {
     await clippingDetails.locator('.rp-more-summary').click();
   }

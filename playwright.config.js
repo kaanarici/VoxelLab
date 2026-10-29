@@ -1,11 +1,13 @@
+import { availableParallelism } from 'node:os';
+import { defineConfig, devices } from '@playwright/test';
+
 const requestedPort = Number(process.env.PLAYWRIGHT_PORT || 4173);
 const PORT = Number.isInteger(requestedPort) && requestedPort > 0 ? requestedPort : 4173;
-const WORKERS = Number(process.env.PLAYWRIGHT_WORKERS || 1);
+const WORKERS = Number(process.env.PLAYWRIGHT_WORKERS) || Math.max(1, Math.min(4, Math.floor(availableParallelism() / 4)));
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${PORT}`;
 const PYTHON = process.env.PYTHON || 'node scripts/run_python.mjs';
 
-import { defineConfig, devices } from '@playwright/test';
 
 const config = {
   testDir: './tests/browser',

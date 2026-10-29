@@ -4,8 +4,10 @@ import {
   getShortcut,
   matchCommandShortcutEvent,
   onShortcutsChange,
+  isStudyFreeCommand,
   registerShortcutCommand,
 } from './keyboard-shortcuts.js';
+import { state } from './core/state.js';
 
 const commands = [];
 
@@ -66,13 +68,11 @@ function matchFilter(cmd, q) {
 
 function render() {
   const q = input.value.trim().toLowerCase();
-  filtered = commands.filter(c => matchFilter(c, q));
-
-  const sections = [];
-  const seen = new Set();
-  for (const cmd of filtered) {
-    if (!seen.has(cmd.section)) { seen.add(cmd.section); sections.push(cmd.section); }
-  }
+  const studyLoaded = !!state.manifest?.series?.[state.seriesIdx];
+  const matches = commands.filter(c => (studyLoaded || isStudyFreeCommand(c)) && matchFilter(c, q));
+  const sections = [...new Set(matches.map(c => c.section))]
+    .sort((a, b) => (studyLoaded ? 0 : (b === 'General') - (a === 'General')));
+  filtered = sections.flatMap(sec => matches.filter(c => c.section === sec));
 
   if (filtered.length === 0) {
     list.innerHTML = '<div class="cmdk-empty">No matching actions</div>';

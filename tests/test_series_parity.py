@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from cloud_series import apply_public_series_urls
 from series_contract import GEOMETRY_CAPABILITY, validate_manifest_data, validate_series
 
@@ -12,26 +14,33 @@ FIXTURES = Path(__file__).parent / "fixtures" / "contract"
 def load_fixture(name: str) -> dict[str, Any]:
     return json.loads((FIXTURES / name).read_text())
 
-def test_geometry_kind_fixture_matches_python_contract() -> None:
-    fixture = load_fixture("geometry-kinds.json")
-    expected = {item["kind"]: item["capability"] for item in fixture["cases"]}
+GEOMETRY_CASES = load_fixture("geometry-kinds.json")["cases"]
+PUBLIC_URL_CASES = load_fixture("public-series-urls.json")["cases"]
 
-    assert GEOMETRY_CAPABILITY == expected
-    for item in fixture["cases"]:
-        series = item["series"]
-        assert series["geometryKind"] == item["kind"]
-        assert series["reconstructionCapability"] == item["capability"]
-        assert series["renderability"] == item["renderability"]
-        assert validate_series(series, 0) == []
+def test_every_shared_geometry_kind_has_a_python_capability() -> None:
+    assert GEOMETRY_CAPABILITY == {case["kind"]: case["capability"] for case in GEOMETRY_CASES}
 
-def test_microscopy_stack_manifest_validates() -> None:
-    fixture = load_fixture("geometry-kinds.json")
-    microscopy_series = next(item["series"] for item in fixture["cases"] if item["kind"] == "microscopyStack")
+@pytest.mark.parametrize("case", [pytest.param(case, id=case["kind"]) for case in GEOMETRY_CASES])
+def test_each_shared_geometry_case_validates_with_its_declared_capability(case: dict) -> None:
+    series = case["series"]
 
-    assert validate_manifest_data({"patient": "fixture", "studyDate": "2026-06-12", "series": [microscopy_series]}) == []
+    assert series["geometryKind"] == case["kind"]
+    assert series["reconstructionCapability"] == case["capability"]
+    assert series["renderability"] == case["renderability"]
+    assert validate_series(series, 0) == []
 
-def test_public_series_url_fixture_matches_python_backfill_implementation() -> None:
-    fixture = load_fixture("public-series-urls.json")
+def test_a_microscopy_stack_validates_as_a_whole_manifest() -> None:
+    microscopy_series = next(case["series"] for case in GEOMETRY_CASES if case["kind"] == "microscopyStack")
 
-    for item in fixture["cases"]:
-        assert apply_public_series_urls(item["input"], item["publicBase"]) == item["expected"]
+    assert validate_manifest_data({
+        "patient": "fixture",
+        "studyDate": "2026-06-12",
+        "series": [microscopy_series],
+    }) == []
+
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(case, id=case.get("id", case["input"].get("slug", "case"))) for case in PUBLIC_URL_CASES],
+)
+def test_public_series_urls_are_backfilled_exactly_as_the_shared_fixture_expects(case: dict) -> None:
+    assert apply_public_series_urls(case["input"], case["publicBase"]) == case["expected"]
