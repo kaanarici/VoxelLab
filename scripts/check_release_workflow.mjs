@@ -74,6 +74,6 @@ requireText(workflow, 'tag_name: ${{ inputs.tag }}', 'publication must create ex
 requireText(workflow, 'target_commitish: ${{ github.sha }}', 'tag must bind to the verified main commit');
 requireText(workflow, 'files: public-assets/*', 'GitHub Release must attach only the curated public directory');
 assert.equal(workflow.includes('files: release-assets/**/*'), false, 'GitHub Release must not publish internal CI staging');
-requireText(workflow, 'publish:\n    runs-on: ubuntu-latest\n    environment:\n      name: release', 'publication must require release-environment approval');
+requireText(workflow, 'publish:\n    runs-on: ubuntu-24.04\n    environment:\n      name: release', 'publication must require release-environment approval');
 
 console.log('OK: release workflow is manual, unsigned-only, approval-gated, and publishes exactly two installers plus checksums');

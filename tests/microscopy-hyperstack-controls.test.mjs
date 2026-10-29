@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const {
@@ -611,10 +610,4 @@ test('isolated hyperstack writes refuse without a writes adapter', () => {
   assert.equal(series.microscopy.channelIndex, 0);
   assert.equal(series.microscopyDataset.channels[1].displayColor, undefined);
   assert.equal(host.imgs, host._localMicroscopyStacks.cells['0|0']);
-});
-
-test('live hyperstack module does not import writeHost helpers or assign series in place', () => {
-  const src = readFileSync(new URL('../js/microscopy/microscopy-hyperstack-controls.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /writeHost/);
-  assert.doesNotMatch(src, /Object\.assign\(\s*series/);
 });

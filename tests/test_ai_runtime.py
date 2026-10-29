@@ -6,7 +6,22 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 import ai_runtime
+
+@pytest.fixture(autouse=True)
+def clear_model_catalog_cache():
+    """The CLI model catalog is cached per process; keep discovery per test."""
+    ai_runtime.clear_cli_models_cache()
+    yield
+    ai_runtime.clear_cli_models_cache()
+
+def raising(error: Exception):
+    def raise_error(*_args, **_kwargs):
+        raise error
+
+    return raise_error
 
 class DummyCompleted:
     def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
@@ -26,9 +41,7 @@ def test_codex_status_reports_config_error(monkeypatch) -> None:
     monkeypatch.setattr(
         ai_runtime,
         "_codex_account_read",
-        lambda env=None, timeout=30: (_ for _ in ()).throw(
-            RuntimeError("Error loading configuration: /Users/test/.codex/config.toml:82:1: missing field `path`")
-        ),
+        raising(RuntimeError("Error loading configuration: /Users/test/.codex/config.toml:82:1: missing field `path`")),
     )
 
     status = ai_runtime.codex_status({})
@@ -217,7 +230,6 @@ def provider_result(provider: str, catalog_status: str = "ready") -> dict:
     )
 
 def test_list_cli_models_includes_ready_claude_and_codex_catalogs(monkeypatch) -> None:
-    ai_runtime.clear_cli_models_cache()
     monkeypatch.setattr(
         ai_runtime,
         "_discover_claude_models",
@@ -247,7 +259,6 @@ def test_list_cli_models_includes_ready_claude_and_codex_catalogs(monkeypatch) -
     assert all(item["catalog"]["timeout_seconds"] == 8 for item in payload["providers"])
 
 def test_list_cli_models_caches_after_discovery_completion(monkeypatch) -> None:
-    ai_runtime.clear_cli_models_cache()
     clock = {"now": 10.0}
 
     def finish_late(env):
@@ -264,7 +275,6 @@ def test_list_cli_models_caches_after_discovery_completion(monkeypatch) -> None:
     assert ai_runtime._cli_models_cache[0] == 160.0
 
 def test_list_cli_models_deduplicates_concurrent_discovery(monkeypatch) -> None:
-    ai_runtime.clear_cli_models_cache()
     entered = threading.Event()
     release = threading.Event()
     calls = {"claude": 0, "codex": 0}
@@ -300,7 +310,7 @@ def test_claude_catalog_timeout_is_explicit_and_keeps_cli_default(monkeypatch) -
     monkeypatch.setattr(
         ai_runtime,
         "_run_status",
-        lambda *args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired("claude --help", 8)),
+        raising(subprocess.TimeoutExpired("claude --help", 8)),
     )
 
     status, models = ai_runtime._discover_claude_models({})
@@ -327,7 +337,7 @@ def test_claude_catalog_does_not_start_after_provider_deadline(monkeypatch) -> N
     monkeypatch.setattr(
         ai_runtime,
         "_run_status",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("help must not run")),
+        raising(AssertionError("help must not run")),
     )
 
     status, models = ai_runtime._discover_claude_models({})

@@ -3,10 +3,7 @@
     background: var(--scrim);
     display: none; z-index: var(--z-modal);
     align-items: center; justify-content: center;
-    opacity: 0;
-    transition: opacity var(--modal-close-dur) var(--ease-smooth);
   }
-  #ask-modal.visible, #consult-modal.visible, #upload-modal.visible, #confirm-modal.visible, #shortcuts-modal.visible, #cloud-settings-modal.visible { display: flex; opacity: 1; transition: opacity var(--modal-open-dur) var(--ease-smooth); }
   .ask-card {
     background: var(--panel);
     border: 0;
@@ -18,14 +15,7 @@
     overflow: hidden;
     box-shadow: var(--shadow-modal);
     display: flex; flex-direction: column;
-    transform: scale(var(--modal-scale));
-    transition: transform var(--modal-close-dur) var(--ease-smooth);
   }
-  #ask-modal.visible .ask-card,
-  #consult-modal.visible .ask-card,
-  #upload-modal.visible .ask-card,
-  #confirm-modal.visible .ask-card,
-  #cloud-settings-modal.visible .ask-card { transform: scale(1); transition: transform var(--modal-open-dur) var(--ease-smooth); }
   .ask-header {
     display: flex; align-items: center; gap: var(--space-10);
     padding: var(--space-md) var(--space-lg);
@@ -105,9 +95,7 @@
     display: none; z-index: var(--z-modal);
     align-items: center; justify-content: center;
     opacity: 0;
-    transition: opacity var(--modal-close-dur) var(--ease-smooth);
   }
-  #annot-modal.visible { display: flex; opacity: 1; transition: opacity var(--modal-open-dur) var(--ease-smooth); }
   #annot-modal .ask-card { min-width: 440px; max-width: 520px; }
 
   .annot-textarea {
@@ -177,10 +165,7 @@
     background: var(--scrim);
     display: none; z-index: var(--z-modal);
     align-items: center; justify-content: center;
-    opacity: 0;
-    transition: opacity var(--modal-close-dur) var(--ease-smooth);
   }
-  #help-modal.visible { display: flex; opacity: 1; transition: opacity var(--modal-open-dur) var(--ease-smooth); }
   .help-card {
     background: var(--panel);
     border: 0;
@@ -190,10 +175,7 @@
     max-height: min(80vh, calc(100vh - 48px));
     overflow: hidden;
     display: flex; flex-direction: column;
-    transform: scale(var(--modal-scale));
-    transition: transform var(--modal-close-dur) var(--ease-smooth);
   }
-  #help-modal.visible .help-card { transform: scale(1); transition: transform var(--modal-open-dur) var(--ease-smooth); }
   .help-subtitle {
     margin-top: 3px;
     font-size: var(--fs-body); color: var(--muted); line-height: var(--lh-normal);
@@ -285,10 +267,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transform: scale(var(--modal-scale));
-    transition: transform var(--modal-close-dur) var(--ease-smooth);
   }
-  #shortcuts-modal.visible .shortcuts-card { transform: scale(1); transition: transform var(--modal-open-dur) var(--ease-smooth); }
   .shortcuts-subtitle {
     margin-top: 3px;
     color: var(--muted);
@@ -504,6 +483,7 @@
     font-size: var(--fs-body);
     color: var(--muted);
   }
+  .upload-status:empty { display: none; }
   .upload-status.is-active { color: var(--text); }
   .upload-status.is-error { color: var(--danger); }
   .upload-status.is-warning { color: var(--color-attention); }
@@ -837,8 +817,6 @@
     overflow-wrap: anywhere;
   }
 
-  .rp-section[data-panel="metadata"] .rp-body { grid-template-columns: minmax(0, 1fr); }
-  .rp-section[data-panel="metadata"] .rp-body-inner,
   #meta { min-width: 0; }
   .meta-row.meta-row--truncate { gap: var(--space-md); }
   .meta-row.meta-row--truncate .mk { flex: 0 0 auto; white-space: nowrap; }
@@ -911,3 +889,87 @@
       grid-column: 2;
     }
   }
+
+  /* Dialog system: one shape, header, footer and motion for every modal. */
+  :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal) {
+    display: none;
+    opacity: 0;
+    padding: var(--space-lg);
+    transition: opacity 120ms ease, display 120ms allow-discrete;
+  }
+  :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible {
+    display: flex;
+    opacity: 1;
+    transition: opacity 180ms var(--ease-out-strong), display 180ms allow-discrete;
+  }
+  @starting-style {
+    :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible { opacity: 0; }
+  }
+  :is(.ask-card, .help-card, .shortcuts-card) {
+    background: var(--surface-raised);
+    border: 0;
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-modal);
+    transform: translateY(4px) scale(0.98);
+    transition: transform 120ms ease;
+  }
+  :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible :is(.ask-card, .help-card, .shortcuts-card) {
+    transform: none;
+    transition: transform 240ms var(--ease-out-strong);
+  }
+  @starting-style {
+    :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible :is(.ask-card, .help-card, .shortcuts-card) {
+      transform: translateY(8px) scale(0.97);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :is(.ask-card, .help-card, .shortcuts-card),
+    :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible :is(.ask-card, .help-card, .shortcuts-card) { transform: none; }
+  }
+
+  :is(.ask-card, .help-card, .shortcuts-card) > .ask-header {
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-lg) var(--space-lg) var(--space-md) var(--space-xl);
+    border-bottom: 0;
+  }
+  :is(.ask-card, .help-card, .shortcuts-card) > .ask-header.has-subtitle { align-items: flex-start; }
+  :is(.ask-card, .help-card, .shortcuts-card) .ask-header .ask-title {
+    font-size: var(--fs-title-lg);
+    font-weight: var(--fw-semibold);
+    letter-spacing: -0.015em;
+    line-height: var(--lh-tight);
+  }
+  :is(.help-subtitle, .shortcuts-subtitle, .cloud-settings-subtitle) {
+    margin-top: var(--space-xs);
+    font-size: var(--fs-body-lg);
+    color: var(--muted);
+    line-height: var(--lh-normal);
+  }
+  :is(.ask-card, .help-card, .shortcuts-card) .ask-close {
+    width: 28px; height: 28px;
+    margin: -2px -4px 0 0;
+    border-radius: var(--radius-control);
+  }
+  :is(.ask-card, .help-card, .shortcuts-card) .ask-close:active { opacity: 1; transform: scale(0.94); }
+  .ask-card > .ask-body-wrap { padding: 0 var(--space-xl) var(--space-xl); }
+  .ask-card > .ask-body-wrap,
+  .ask-card .dlg-body { font-size: var(--fs-title); line-height: var(--lh-relaxed); }
+  .help-footer {
+    padding: var(--space-md) var(--space-xl) var(--space-lg);
+    border-top: var(--border-w) solid var(--border);
+  }
+
+  :is(.ask-card, .help-card, .shortcuts-card) :is(.btn, .annot-btn) {
+    min-height: 32px;
+    padding: 0 var(--space-14);
+    border-radius: var(--radius-control);
+    font-size: var(--fs-title);
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-tight);
+    transition: background-color var(--dur-quick) ease, border-color var(--dur-quick) ease, color var(--dur-quick) ease,
+      transform 120ms var(--ease-out-strong);
+  }
+  :is(.ask-card, .help-card, .shortcuts-card) :is(.btn, .annot-btn):active:not(:disabled) { opacity: 1; transform: scale(0.97); }
+  :is(.ask-card, .help-card, .shortcuts-card) .annot-btn.primary:hover { opacity: 1; background: color-mix(in srgb, var(--text) 88%, var(--panel)); }
+  .annot-actions { gap: var(--space-sm); margin-top: var(--space-md); }

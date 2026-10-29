@@ -1,18 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { makeRectParticlePlane, PARTICLE_PLANE } from './fixtures/microscopy/particle-ground-truth.mjs';
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
 
-globalThis.location = new URL('http://127.0.0.1/');
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-  setItem(key, value) { storage.set(key, String(value)); },
-  removeItem(key) { storage.delete(key); },
-};
+const { storage } = installViewerGlobals();
 
 const { state } = await import('../js/core/state.js');
+const { isolatedHostWrites } = await import('../js/runtime/isolated-host.js');
 const {
   measurementEntriesForSlice,
   roiEntriesForSlice,
@@ -240,8 +235,31 @@ test('validateAnalysisOps is fail-closed', () => {
   }, series, { ...DIMS, sizeC: 2 }).code, 'analysis_op_axis_mismatch');
 });
 
-test('analysis module does not raw-assign isolated analysis maps', () => {
-  const src = readFileSync(new URL('../js/microscopy/microscopy-analysis.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /writeHost/);
-  assert.doesNotMatch(src, /host\[mapKey\]\s*=/);
+test('analysis on an isolated host writes maps only through an injected adapter', () => {
+  const live = setup();
+  const isolated = {
+    manifest: { series: [{ ...live, microscopy: { ...live.microscopy } }] },
+    seriesIdx: 0,
+    sliceIdx: 0,
+    _localMicroscopyPlanes: state._localMicroscopyPlanes,
+    _microscopyAnalysisLog: {},
+    _microscopyAnalysisResults: {},
+  };
+  const series = isolated.manifest.series[0];
+  const params = {
+    channelIndex: 0, timeIndex: 0, sliceIdx: 0, channelName: 'C0',
+    threshold: { method: 'manual', value: 1, darkBackground: true },
+  };
+
+  const unadapted = runParticleAnalysis(isolated, series, params);
+  assert.equal(unadapted.ok, true);
+  assert.deepEqual(isolated._microscopyAnalysisLog, {}, 'an isolated host without writers must stay untouched');
+  assert.deepEqual(isolated._microscopyAnalysisResults, {});
+  assert.deepEqual(state._microscopyAnalysisLog, {}, 'an isolated host must never leak into live state');
+
+  const adapted = runParticleAnalysis(isolated, series, { ...params, writes: isolatedHostWrites() });
+  assert.equal(adapted.ok, true);
+  const persistenceKey = seriesPersistenceKey(series, isolated.manifest);
+  assert.equal(isolated._microscopyAnalysisLog[persistenceKey].length, 1);
+  assert.deepEqual(state._microscopyAnalysisLog, {});
 });

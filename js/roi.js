@@ -1,4 +1,5 @@
 import { adcDisplayFromNorm } from './adc.js';
+import { canvasScreenScale } from './dom.js';
 import { ellipseInclusion, polygonInclusion } from './roi/roi-geometry.js';
 import { samplePlaneIntensity } from './microscopy/microscopy-plane-sampler.js';
 import { rawPlaneFor } from './microscopy/microscopy-plane-store.js';
@@ -191,14 +192,17 @@ export function drawROIs(svg) {
   svg.querySelectorAll('.roi-group').forEach(el => el.remove());
 
   const list = listHere().filter(roiVisibleInCurrentScope);
-  list.forEach((roi, i) => renderOne(svg, roi, i));
+  const series = roiState.deps.state.manifest.series[roiState.deps.state.seriesIdx];
+  const displayScale = canvasScreenScale(svg, series?.width, series?.height);
+  const screenPx = { x: 1 / Math.max(1e-6, displayScale.x), y: 1 / Math.max(1e-6, displayScale.y) };
+  list.forEach((roi, i) => renderOne(svg, roi, i, screenPx));
 
   if (roiState.pending) {
     renderPending(svg, roiState.pending);
   }
 }
 
-function renderOne(svg, roi, i) {
+function renderOne(svg, roi, i, screenPx) {
   const g = document.createElementNS(NS, 'g');
   g.setAttribute('class', 'roi-group');
 
@@ -234,11 +238,13 @@ function renderOne(svg, roi, i) {
   }
 
   const xs = roi.pts.map(p => p[0]), ys = roi.pts.map(p => p[1]);
-  const lx = Math.max(...xs);
-  const ly = Math.min(...ys) - 6;
+  const ui = document.createElementNS(NS, 'g');
+  ui.setAttribute('transform', `translate(${Math.max(...xs)} ${Math.min(...ys)}) scale(${screenPx.x} ${screenPx.y})`);
+  const btnR = 8;
+  const [dx, dy] = [btnR, -btnR - 4];
   const txt = document.createElementNS(NS, 'text');
-  txt.setAttribute('x', lx);
-  txt.setAttribute('y', ly);
+  txt.setAttribute('x', btnR * 2 + 4);
+  txt.setAttribute('y', -8);
   txt.setAttribute('text-anchor', 'start');
   txt.setAttribute('class', 'roi-label');
   const s = roi.stats || {};
@@ -257,26 +263,24 @@ function renderOne(svg, roi, i) {
     line += ` · μ${s.mean.toFixed(0)} ±${s.std.toFixed(0)}`;
   }
   txt.textContent = line;
-  g.appendChild(txt);
+  ui.appendChild(txt);
 
-  const [dx, dy] = [lx + 8, ly - 10];
-  const btnR = 8;
   const bg = document.createElementNS(NS, 'circle');
   bg.setAttribute('cx', dx); bg.setAttribute('cy', dy);
   bg.setAttribute('r', btnR);
   bg.setAttribute('class', 'roi-del-bg');
-  g.appendChild(bg);
+  ui.appendChild(bg);
   const x1 = dx - 3, x2 = dx + 3, y1 = dy - 3, y2 = dy + 3;
   const c1 = document.createElementNS(NS, 'line');
   c1.setAttribute('x1', x1); c1.setAttribute('y1', y1);
   c1.setAttribute('x2', x2); c1.setAttribute('y2', y2);
   c1.setAttribute('class', 'roi-del-x');
-  g.appendChild(c1);
+  ui.appendChild(c1);
   const c2 = document.createElementNS(NS, 'line');
   c2.setAttribute('x1', x2); c2.setAttribute('y1', y1);
   c2.setAttribute('x2', x1); c2.setAttribute('y2', y2);
   c2.setAttribute('class', 'roi-del-x');
-  g.appendChild(c2);
+  ui.appendChild(c2);
   const hit = document.createElementNS(NS, 'circle');
   hit.setAttribute('cx', dx); hit.setAttribute('cy', dy);
   hit.setAttribute('r', btnR);
@@ -294,7 +298,8 @@ function renderOne(svg, roi, i) {
       roiState.deps.onROIChange?.();
     }
   });
-  g.appendChild(hit);
+  ui.appendChild(hit);
+  g.appendChild(ui);
 
   svg.appendChild(g);
 }
@@ -413,6 +418,24 @@ async function ensureCtHuVolume() {
   if (host.hrVoxels?.length === series.width * series.height * series.slices) return;
   try { await (await import('./volume/volume-hr-voxels.js')).ensureHRVoxels(); }
   catch {                                           }
+}
+
+export async function addROI(roiKind, pts) {
+  await ensureCtHuVolume();
+  const stats = computeStats(pts, roiKind);
+  if (!stats) return null;
+  const list = listHere();
+  const entry = {
+    id: nextDrawingEntryId(list),
+    "shape": roiKind,
+    pts: pts.map(p => [Math.round(p[0]), Math.round(p[1])]),
+    stats,
+    microscopy: currentMicroscopyScope(),
+    createdAt: Date.now(),
+  };
+  setHere([...list, entry]);
+  roiState.deps.onROIChange?.();
+  return entry;
 }
 
 async function finalize() {

@@ -4,7 +4,6 @@
   padding-top: min(28vh, 240px);
   background: var(--scrim);
   opacity: 0; pointer-events: none;
-  transition: opacity var(--modal-open-dur) var(--ease-smooth);
 }
 .cmdk-backdrop.open { opacity: 1; pointer-events: auto; }
 
@@ -15,11 +14,7 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
   overflow: hidden;
-  transform: scale(var(--modal-scale)) translateY(6px); opacity: 0;
-  transition: transform var(--modal-open-dur) var(--ease-smooth), opacity var(--modal-open-dur) var(--ease-smooth);
-  will-change: transform, opacity;
 }
-.cmdk-backdrop.open .cmdk-dialog { transform: scale(1) translateY(0); opacity: 1; }
 
 .cmdk-input-row {
   display: flex; align-items: center; gap: var(--space-sm);
@@ -52,9 +47,8 @@
   background: none; border: none;
   font: inherit; font-size: var(--fs-title); color: var(--muted);
   cursor: pointer; text-align: left;
-  transition: background var(--dur-quick) var(--ease-tip), color var(--dur-quick) var(--ease-tip);
 }
-.cmdk-row:hover, .cmdk-row.active { background: var(--hover); color: var(--text); }
+.cmdk-row.active { background: var(--hover); color: var(--text); }
 .cmdk-row-icon { flex-shrink: 0; display: flex; color: var(--icon-idle); }
 .cmdk-row-icon svg { width: var(--icon-lg); height: var(--icon-lg); }
 .cmdk-row.active .cmdk-row-icon { color: var(--muted); }

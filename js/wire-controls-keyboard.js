@@ -75,6 +75,10 @@ export function wireKeyboardShortcuts(deps) {
       finalizePolygonROI();
       return;
     }
+    if (!state.manifest?.series?.[state.seriesIdx]) {
+      runShortcutEvent(e, { studyLoaded: false });
+      return;
+    }
     if (await handleMicroscopyStackShortcut(e, key)) return;
     if (key === 'ArrowUp') { step(-1); e.preventDefault(); return; }
     if (key === 'ArrowDown') { step(1); e.preventDefault(); return; }

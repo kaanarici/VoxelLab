@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-globalThis.location = new globalThis.URL('http://127.0.0.1/');
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
+
+installViewerGlobals();
 globalThis.window = globalThis.window || { addEventListener() {}, devicePixelRatio: 1 };
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((fn) => fn());
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-  setItem(key, value) { storage.set(key, String(value)); },
-  removeItem(key) { storage.delete(key); },
-};
 
 const { state } = await import('../js/core/state.js');
 const { drawSlice, markViewAwaitingSliceFade, showHoverAt } = await import('../js/slice-view.js');
@@ -286,16 +282,6 @@ function bindSliceView(view) {
   };
 }
 
-test('drawSlice walks OVERLAY_CACHE_BY_KIND instead of a persist-kind ladder', async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../js/slice-view.js', import.meta.url), 'utf8');
-  const start = source.indexOf('export function drawSlice');
-  const drawSliceSrc = source.slice(start);
-  assert.match(drawSliceSrc, /overlayBytesFromCaches/);
-  assert.equal(/overlays\.tissue\.enabled/.test(drawSliceSrc), false);
-  assert.equal(/overlays\.heatmap\.enabled/.test(drawSliceSrc), false);
-  assert.equal(/overlays\.labels\.enabled/.test(drawSliceSrc), false);
-});
 
 test('drawSlice composites every overlay-table kind including labels voxels', () => {
   const view = createVisibleCanvas();

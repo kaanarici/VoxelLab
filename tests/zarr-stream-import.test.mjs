@@ -5,6 +5,7 @@ import { test } from 'node:test';
 
 import { streamOmeZarrFromUrl, streamProvenanceText } from '../js/microscopy/zarr/zarr-stream-import.js';
 import { ZarrUnsupportedCodecError } from '../js/microscopy/zarr/zarr-codecs.js';
+import { installCanvasDocument } from './helpers/node/canvas-stub.mjs';
 
 const FIXTURE_BYTES = new Uint8Array(readFileSync(
   fileURLToPath(new URL('./fixtures/zarr/idr0062A-6001240-L0-c0z0.blosc', import.meta.url)),
@@ -128,26 +129,7 @@ function mockFetch({ scaleLevel2 = [1, 1, 2, 2], coarsestDimensions, coarsestCom
 }
 
 function installCanvasStub() {
-  const previousDocument = globalThis.document;
-  globalThis.document = {
-    createElement(tag) {
-      assert.equal(tag, 'canvas');
-      const canvas = {
-        width: 0,
-        height: 0,
-        getContext() {
-          return {
-            createImageData(width, height) {
-              return { width, height, data: new Uint8ClampedArray(width * height * 4) };
-            },
-            putImageData(image) { canvas._imageData = image; },
-          };
-        },
-      };
-      return canvas;
-    },
-  };
-  return () => { globalThis.document = previousDocument; };
+  return installCanvasDocument().restore;
 }
 
 test('streams the coarsest fitting level, builds a real plane, and returns a valid series entry', async () => {

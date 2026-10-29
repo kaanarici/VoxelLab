@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { parseOmeZarrFiles } from '../js/microscopy/microscopy-zarr-import.js';
+import { installCanvasDocument } from './helpers/node/canvas-stub.mjs';
 
 function jsonFile(path, value) {
   return {
@@ -22,20 +23,7 @@ function binaryFile(path, bytes) {
 }
 
 function canvasStub() {
-  const previous = globalThis.document;
-  globalThis.document = {
-    createElement() {
-      return {
-        getContext() {
-          return {
-            createImageData(width, height) { return { width, height, data: new Uint8ClampedArray(width * height * 4) }; },
-            putImageData() {},
-          };
-        },
-      };
-    },
-  };
-  return () => { globalThis.document = previous; };
+  return installCanvasDocument().restore;
 }
 
 function multiscaleFiles({ coarseChannels = 1, includeChunk = true } = {}) {

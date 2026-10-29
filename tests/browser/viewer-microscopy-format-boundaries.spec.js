@@ -8,7 +8,10 @@ import {
 } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
 import { createDeflateTiff } from '../fixtures/microscopy/deflate-tiff.mjs';
 import { createLzwReferenceTiff } from '../fixtures/microscopy/lzw-tiff.mjs';
-import { dropFiles, openUploadModal, routeConfig } from './microscopy-upload-helpers.mjs';
+import { openUploadModal, routeConfig, routeManifest, waitForControlsReady } from '../helpers/browser/app.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
+
+const LOCAL_ONLY_BOUNDARIES = { features: { cloudProcessing: false } };
 
 async function writePlaceholderFile(path) {
   await mkdir(dirname(path), { recursive: true });
@@ -37,18 +40,13 @@ function microscopyMultipart(boundary, parts) {
 async function openUploadModalWithoutLocalBackend(page) {
   await page.goto('/?localBackend=0', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#btn-upload')).toBeVisible();
-  await page.waitForFunction(
-    () => document.documentElement.dataset.voxellabControlsReady === 'true',
-    null,
-    { timeout: 10_000 },
-  );
+  await waitForControlsReady(page);
   await page.locator('#btn-upload').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
 }
 
 test('vendor microscopy inputs are presented with local and Electron converter boundaries', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const row = page.locator('.format-capability-row', { hasText: 'CZI / ND2 / LIF / OIB / OIF / LSM bridge' });
   await expect(row.locator('.format-capability-status')).toHaveText('Converted');
@@ -62,7 +60,7 @@ test('vendor microscopy inputs are presented with local and Electron converter b
   const initialSeriesCount = await page.locator('#series-list li').count();
   const path = testInfo.outputPath('sample.czi');
   await writePlaceholderFile(path);
-  await dropFiles(page, '#upload-zone', [{ path }]);
+  await dropOnUploadZone(page, [{ path }]);
 
   await expect(page.locator('#notify-container .notify-text')).toContainText('Local intake: 1 converter-backed file');
   await expect(page.locator('#upload-modal')).toBeVisible();
@@ -71,7 +69,8 @@ test('vendor microscopy inputs are presented with local and Electron converter b
 });
 
 test('native vendor split failures require the optional reader without external fallback', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
+  await routeManifest(page);
+  await routeConfig(page, LOCAL_ONLY_BOUNDARIES);
   await page.route('**/api/microscopy/convert?name=missing-reader.czi&mode=split', async (route) => {
     await route.fulfill({
       status: 501,
@@ -86,7 +85,7 @@ test('native vendor split failures require the optional reader without external 
 
   const path = testInfo.outputPath('missing-reader.czi');
   await writePlaceholderFile(path);
-  await dropFiles(page, '#upload-zone', [{ path }]);
+  await dropOnUploadZone(page, [{ path }]);
 
   const status = page.locator('#upload-status');
   await expect(status).toHaveClass(/error/);
@@ -96,8 +95,7 @@ test('native vendor split failures require the optional reader without external 
 });
 
 test('classic stripped Deflate TIFF imports through the upload flow', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const path = testInfo.outputPath('deflate-stack.tif');
   const buffer = createDeflateTiff({
@@ -111,7 +109,7 @@ test('classic stripped Deflate TIFF imports through the upload flow', async ({ p
     yResolution: 2,
   });
   await writeFile(path, new Uint8Array(buffer));
-  await dropFiles(page, '#upload-zone', [{ path, mimeType: 'image/tiff' }]);
+  await dropOnUploadZone(page, [{ path, mimeType: 'image/tiff' }]);
 
   await expect(page.locator('#upload-modal')).toBeHidden();
   await expect(page.locator('#series-list li.active')).toContainText('deflate-stack');
@@ -120,12 +118,11 @@ test('classic stripped Deflate TIFF imports through the upload flow', async ({ p
 });
 
 test('classic stripped LZW TIFF imports through the upload flow', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const path = testInfo.outputPath('lzw-stack.tif');
   await writeFile(path, new Uint8Array(createLzwReferenceTiff()));
-  await dropFiles(page, '#upload-zone', [{ path, mimeType: 'image/tiff' }]);
+  await dropOnUploadZone(page, [{ path, mimeType: 'image/tiff' }]);
 
   await expect(page.locator('#upload-modal')).toBeHidden();
   await expect(page.locator('#series-list li.active')).toContainText('lzw-stack');
@@ -133,8 +130,7 @@ test('classic stripped LZW TIFF imports through the upload flow', async ({ page 
 });
 
 test('local gzip Zarr v2 import exposes codec storage provenance', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const root = testInfo.outputPath('cells.zarr');
   const attrsPath = `${root}/.zattrs`;
@@ -166,7 +162,7 @@ test('local gzip Zarr v2 import exposes codec storage provenance', async ({ page
   }));
   await writeFile(chunkPath, gzipSync(Uint8Array.from([0, 64, 128, 255])));
 
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: attrsPath, relativePath: 'cells.zarr/.zattrs' },
     { path: arrayPath, relativePath: 'cells.zarr/0/.zarray' },
     { path: chunkPath, relativePath: 'cells.zarr/0/0.0' },
@@ -178,15 +174,14 @@ test('local gzip Zarr v2 import exposes codec storage provenance', async ({ page
 });
 
 test('local vendor microscopy sidecars do not mask the converter boundary message', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const cziPath = testInfo.outputPath('sample-with-sidecar.czi');
   const recipePath = testInfo.outputPath('sample-with-sidecar-recipe.json');
   await writePlaceholderFile(cziPath);
   await writeFile(recipePath, JSON.stringify({ schema: 'voxellab.microscopyWorkflowRecipe.v1' }));
 
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: cziPath },
     { path: recipePath, mimeType: 'application/json' },
   ]);
@@ -198,7 +193,8 @@ test('local vendor microscopy sidecars do not mask the converter boundary messag
 });
 
 test('multi-scene CZI conversion imports every scene as an independent series', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
+  await routeManifest(page);
+  await routeConfig(page, LOCAL_ONLY_BOUNDARIES);
   const cziPath = testInfo.outputPath('multi-scene.czi');
   const firstTiffPath = testInfo.outputPath('multi-scene-1.ome.tiff');
   const secondTiffPath = testInfo.outputPath('multi-scene-2.ome.tiff');
@@ -232,7 +228,7 @@ test('multi-scene CZI conversion imports every scene as an independent series', 
   });
   await openUploadModal(page);
 
-  await dropFiles(page, '#upload-zone', [{ path: cziPath }]);
+  await dropOnUploadZone(page, [{ path: cziPath }]);
 
   await expect(page.locator('#upload-modal')).toBeHidden();
   const firstScene = page.locator('#series-list li', { hasText: 'multi-scene--scene-001' });
@@ -247,7 +243,8 @@ test('multi-scene CZI conversion imports every scene as an independent series', 
 });
 
 test('malformed later vendor multipart part leaves the manifest unchanged', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
+  await routeManifest(page);
+  await routeConfig(page, LOCAL_ONLY_BOUNDARIES);
   const cziPath = testInfo.outputPath('malformed-multipart.czi');
   const validTiffPath = testInfo.outputPath('valid-first-part.ome.tiff');
   await writePlaceholderFile(cziPath);
@@ -279,7 +276,7 @@ test('malformed later vendor multipart part leaves the manifest unchanged', asyn
   await openUploadModal(page);
   const initialSeriesCount = await page.locator('#series-list li').count();
 
-  await dropFiles(page, '#upload-zone', [{ path: cziPath }]);
+  await dropOnUploadZone(page, [{ path: cziPath }]);
 
   await expect(page.locator('#upload-modal')).toBeVisible();
   await expect(page.locator('#upload-status')).toHaveClass(/error/);
@@ -384,15 +381,14 @@ test('vendor multipart parser keeps the 512 MiB contract and scans across window
 });
 
 test('OME-TIFF import rejects overlapping IFD mappings', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const initialSeriesCount = await page.locator('#series-list li').count();
   const path = testInfo.outputPath('overlapping-ifd.ome.tiff');
   await writeCalibratedTimeSeriesOmeTiff(path, {
     tiffData: '<TiffData/><TiffData IFD="1" FirstT="0"/>',
   });
-  await dropFiles(page, '#upload-zone', [{ path }]);
+  await dropOnUploadZone(page, [{ path }]);
 
   await expect(page.locator('#upload-modal')).toBeVisible();
   await expect(page.locator('#upload-status')).toHaveClass(/error/);
@@ -401,12 +397,13 @@ test('OME-TIFF import rejects overlapping IFD mappings', async ({ page }, testIn
 });
 
 test('vendor microscopy files explain reader or converter setup when local backend is unavailable', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
+  await routeManifest(page);
+  await routeConfig(page, LOCAL_ONLY_BOUNDARIES);
   await openUploadModalWithoutLocalBackend(page);
 
   const path = testInfo.outputPath('needs-backend.czi');
   await writePlaceholderFile(path);
-  await dropFiles(page, '#upload-zone', [{ path }]);
+  await dropOnUploadZone(page, [{ path }]);
 
   const status = page.locator('#upload-status');
   await expect(status).toHaveClass(/error/);
@@ -416,8 +413,7 @@ test('vendor microscopy files explain reader or converter setup when local backe
 });
 
 test('ImageJ ROI Manager ZIP boundary stays limited to sidecar archives', async ({ page }, testInfo) => {
-  await routeConfig(page, { features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page, LOCAL_ONLY_BOUNDARIES);
 
   const roiRow = page.locator('.format-capability-row', { hasText: 'ImageJ ROI .roi' });
   await expect(roiRow.locator('.format-capability-status')).toHaveText('Native');
@@ -438,7 +434,7 @@ test('ImageJ ROI Manager ZIP boundary stays limited to sidecar archives', async 
   const path = testInfo.outputPath('cells-rois.zip');
   await writePlaceholderFile(path);
 
-  await dropFiles(page, '#upload-zone', [{ path }]);
+  await dropOnUploadZone(page, [{ path }]);
 
   await expect(page.locator('#upload-modal')).toBeVisible();
   await expect(page.locator('#upload-status')).toContainText('Sidecar files are not standalone images');

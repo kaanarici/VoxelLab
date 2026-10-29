@@ -16,7 +16,7 @@ import {
   setMeasureMode,
   setMeasurePending,
 } from '../core/state/viewer-tool-commands.js';
-import { drawAngles } from './angle.js';
+import { currentMicroscopyScope, drawAngles } from './angle.js';
 import { renderRoiResults } from './roi-results.js';
 
 export function measureKey() {
@@ -59,15 +59,6 @@ function measurementsHere() {
   return series ? measurementEntriesForSlice(state, series, state.sliceIdx) : [];
 }
 
-function currentMicroscopyScope() {
-  const series = state.manifest.series[state.seriesIdx];
-  if (series?.imageDomain !== 'microscopy') return null;
-  return {
-    channelIndex: Number(series.microscopy?.channelIndex || 0),
-    channelName: series.microscopy?.channelName || '',
-    timeIndex: Number(series.microscopy?.timeIndex || 0),
-  };
-}
 
 function measurementVisibleInCurrentScope(measurement) {
   const scope = currentMicroscopyScope();

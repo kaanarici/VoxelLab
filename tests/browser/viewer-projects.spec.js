@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import { settleFrames } from '../helpers/browser/canvas.mjs';
+import { localVolumeSeries, routeLocalVolumeStudy } from '../helpers/browser/local-study.mjs';
 
 test('project rename dialog traps focus and returns to the folder menu button', async ({ page }) => {
   const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -98,7 +99,7 @@ test('slow project persistence renders late and rapid collapsed-folder clicks ke
   await page.locator('#pinned-list [data-series-slug="project_series_a"]').click();
 
   await expect.poll(async () => page.evaluate(() => window.__projectReadCompletions)).toBeGreaterThanOrEqual(2);
-  await page.waitForTimeout(250);
+  await settleFrames(page);
   await expect(page.locator('#series-name')).toHaveText('Project Series A');
   await expect.poll(async () => page.evaluate(async () => {
     const { state } = await import('/js/core/state.js');

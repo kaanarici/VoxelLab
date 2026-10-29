@@ -1,19 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+import { routeManifest, waitForControlsReady } from '../helpers/browser/app.mjs';
+
 test('Tools / Overlays toolbox triggers only show dot when a panel tool is active', async ({ page }) => {
-  await page.route('**/data/manifest.json', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-    });
-  });
+  await routeManifest(page);
   await page.goto('/');
   try {
-    await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true', null, { timeout: 10_000 });
+    await waitForControlsReady(page);
   } catch {
     await page.goto(`/?testReload=${Date.now()}`);
-    await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+    await waitForControlsReady(page);
   }
 
   const measure = page.locator('#toolbox-measure .toolbox-trigger');
@@ -22,7 +18,7 @@ test('Tools / Overlays toolbox triggers only show dot when a panel tool is activ
   await expect(overlays).not.toHaveClass(/has-active/);
 
   await page.reload();
-  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  await waitForControlsReady(page);
   await expect(measure).not.toHaveClass(/has-active/);
   await expect(overlays).not.toHaveClass(/has-active/);
 });

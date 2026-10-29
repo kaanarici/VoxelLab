@@ -4,67 +4,82 @@ import io
 from pathlib import Path
 import sys
 
+import pytest
+
 from modal_io import compress_raw_volume, download_r2_objects, get_r2_client, iter_r2_object_keys, upload_r2_files
 
-def test_modal_io_explicit_empty_environment_does_not_fall_back_to_process_env(monkeypatch) -> None:
+class FakeS3:
+    """R2 client double serving one listing page per configured page."""
+
+    def __init__(self, pages: list[list[dict]], *, truncated: bool = False):
+        self.pages = pages
+        self.truncated = truncated
+        self.listed_tokens: list[str | None] = []
+        self.downloads: list[tuple[str, str]] = []
+        self.uploads: list[tuple[str, str, str, str]] = []
+
+    def list_objects_v2(self, **kwargs):
+        token = kwargs.get("ContinuationToken")
+        self.listed_tokens.append(token)
+        index = len(self.listed_tokens) - 1
+        page = self.pages[min(index, len(self.pages) - 1)]
+        response: dict = {"Contents": page}
+        if index + 1 < len(self.pages) or self.truncated:
+            response["IsTruncated"] = True
+            response["NextContinuationToken"] = f"page-{index + 2}"
+        return response
+
+    def get_object(self, Bucket, Key, IfMatch):
+        self.downloads.append((Key, IfMatch))
+        payload = f"{Bucket}:{Key}".encode()
+        return {"Body": io.BytesIO(payload), "ContentLength": len(payload)}
+
+    def upload_file(self, filename, bucket, key, ExtraArgs, Config):
+        self.uploads.append((Path(filename).name, bucket, key, ExtraArgs["ContentType"]))
+
+def object_entry(key: str, size: int | None = None, etag: str | None = None) -> dict:
+    return {
+        "Key": key,
+        "Size": len(f"scan-data:{key}") if size is None else size,
+        "ETag": f'"{etag or key}"',
+    }
+
+def test_explicit_empty_environment_does_not_fall_back_to_process_env(monkeypatch) -> None:
     monkeypatch.setenv("R2_ENDPOINT", "https://account.r2.cloudflarestorage.com")
     monkeypatch.setenv("R2_ACCESS_KEY_ID", "process-access")
     monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "process-secret")
 
-    try:
+    with pytest.raises(ValueError, match="R2_ENDPOINT"):
         _ = get_r2_client({})
-    except ValueError as error:
-        assert "R2_ENDPOINT" in str(error)
-    else:
-        raise AssertionError("expected explicit empty environment to fail closed")
 
-def test_modal_io_iter_and_transfer_helpers(tmp_path: Path):
-    class FakeS3:
-        def __init__(self):
-            self.uploads = []
-            self.download_conditions = []
+def test_object_listing_walks_every_page() -> None:
+    s3 = FakeS3([
+        [object_entry("uploads/job/a.dcm")],
+        [object_entry("uploads/job/.DS_Store", size=0), object_entry("uploads/job/b.dcm")],
+    ])
 
-        def list_objects_v2(self, **kwargs):
-            if "ContinuationToken" not in kwargs:
-                return {
-                    "Contents": [{
-                        "Key": "uploads/job/a.dcm",
-                        "Size": len("scan-data:uploads/job/a.dcm"),
-                        "ETag": '"etag-a"',
-                    }],
-                    "NextContinuationToken": "page-2",
-                }
-            return {
-                "Contents": [
-                    {"Key": "uploads/job/.DS_Store", "Size": 0, "ETag": '"etag-hidden"'},
-                    {
-                        "Key": "uploads/job/b.dcm",
-                        "Size": len("scan-data:uploads/job/b.dcm"),
-                        "ETag": '"etag-b"',
-                    },
-                ],
-            }
-
-        def get_object(self, Bucket, Key, IfMatch):
-            assert IfMatch in {'"etag-a"', '"etag-b"'}
-            self.download_conditions.append((Key, IfMatch))
-            payload = f"{Bucket}:{Key}".encode()
-            return {"Body": io.BytesIO(payload), "ContentLength": len(payload)}
-
-        def upload_file(self, filename, bucket, key, ExtraArgs, Config):
-            self.uploads.append((Path(filename).name, bucket, key, ExtraArgs["ContentType"]))
-
-    s3 = FakeS3()
     assert list(iter_r2_object_keys(s3, "scan-data", "uploads/job/")) == [
         "uploads/job/a.dcm",
         "uploads/job/.DS_Store",
         "uploads/job/b.dcm",
     ]
+
+def test_download_skips_hidden_entries_and_pins_each_object_to_its_etag(tmp_path: Path) -> None:
+    s3 = FakeS3([
+        [object_entry("uploads/job/a.dcm", etag="etag-a")],
+        [object_entry("uploads/job/.DS_Store", size=0), object_entry("uploads/job/b.dcm", etag="etag-b")],
+    ])
+
     assert download_r2_objects(s3, "scan-data", "uploads/job/", tmp_path, max_workers=2) == 2
-    assert sorted(s3.download_conditions) == [
+    assert sorted(s3.downloads) == [
         ("uploads/job/a.dcm", '"etag-a"'),
         ("uploads/job/b.dcm", '"etag-b"'),
     ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["a.dcm", "b.dcm"]
+
+def test_upload_preserves_the_requested_object_keys_and_content_types(tmp_path: Path) -> None:
+    s3 = FakeS3([[]])
+    _ = (tmp_path / "a.dcm").write_bytes(b"dicom")
 
     upload_r2_files(
         s3,
@@ -72,86 +87,40 @@ def test_modal_io_iter_and_transfer_helpers(tmp_path: Path):
         [(tmp_path / "a.dcm", "data/cloud_job/0001.png", "image/png")],
         max_workers=0,
     )
+
     assert s3.uploads == [("a.dcm", "scan-data", "data/cloud_job/0001.png", "image/png")]
 
-def test_modal_io_rejects_r2_prefix_before_download_when_actual_limits_are_exceeded(tmp_path: Path):
-    class FakeS3:
-        def __init__(self, objects):
-            self.objects = objects
-            self.downloads = 0
+@pytest.mark.parametrize(
+    ("contents", "limits", "reason"),
+    [
+        (
+            [object_entry("uploads/job/a.dcm", size=1), object_entry("uploads/job/b.dcm", size=1)],
+            {"max_files": 1},
+            "file limit",
+        ),
+        ([object_entry("uploads/job/a.dcm", size=11)], {"max_total_bytes": 10}, "byte limit"),
+    ],
+    ids=["too-many-files", "too-many-bytes"],
+)
+def test_download_rejects_an_oversized_prefix_before_fetching_anything(
+    tmp_path: Path, contents: list[dict], limits: dict, reason: str
+) -> None:
+    s3 = FakeS3([contents])
 
-        def list_objects_v2(self, **_kwargs):
-            return {"Contents": self.objects}
+    with pytest.raises(ValueError, match=reason):
+        _ = download_r2_objects(s3, "scan-data", "uploads/job/", tmp_path, max_workers=2, **limits)
 
-        def get_object(self, *_args, **_kwargs):
-            self.downloads += 1
+    assert s3.downloads == []
 
-    too_many = FakeS3([
-        {"Key": "uploads/job/a.dcm", "Size": 1, "ETag": '"a"'},
-        {"Key": "uploads/job/b.dcm", "Size": 1, "ETag": '"b"'},
-    ])
-    try:
-        _ = download_r2_objects(
-            too_many,
-            "scan-data",
-            "uploads/job/",
-            tmp_path,
-            max_workers=2,
-            max_files=1,
-        )
-    except ValueError as error:
-        assert "file limit" in str(error)
-    else:
-        raise AssertionError("expected R2 file limit rejection")
-    assert too_many.downloads == 0
+def test_paginated_listing_stops_once_the_file_limit_is_exceeded(tmp_path: Path) -> None:
+    s3 = FakeS3([[object_entry(f"uploads/job/{index}.dcm", size=1)] for index in range(9)], truncated=True)
 
-    too_large = FakeS3([{"Key": "uploads/job/a.dcm", "Size": 11, "ETag": '"a"'}])
-    try:
-        _ = download_r2_objects(
-            too_large,
-            "scan-data",
-            "uploads/job/",
-            tmp_path,
-            max_workers=2,
-            max_total_bytes=10,
-        )
-    except ValueError as error:
-        assert "byte limit" in str(error)
-    else:
-        raise AssertionError("expected R2 byte limit rejection")
-    assert too_large.downloads == 0
+    with pytest.raises(ValueError, match="file limit"):
+        _ = download_r2_objects(s3, "scan-inputs", "uploads/job/", tmp_path, max_workers=1, max_files=2)
 
-def test_modal_io_stops_paginated_listing_at_file_limit(tmp_path: Path):
-    class FakeS3:
-        def __init__(self):
-            self.pages = 0
+    assert len(s3.listed_tokens) == 3
 
-        def list_objects_v2(self, **kwargs):
-            self.pages += 1
-            index = self.pages
-            return {
-                "Contents": [{"Key": f"uploads/job/{index}.dcm", "Size": 1, "ETag": f'"{index}"'}],
-                "IsTruncated": True,
-                "NextContinuationToken": f"page-{index + 1}",
-            }
-
-    s3 = FakeS3()
-    try:
-        _ = download_r2_objects(
-            s3,
-            "scan-inputs",
-            "uploads/job/",
-            tmp_path,
-            max_workers=1,
-            max_files=2,
-        )
-    except ValueError as error:
-        assert "file limit" in str(error)
-    else:
-        raise AssertionError("expected paginated R2 listing limit rejection")
-    assert s3.pages == 3
-
-def test_modal_io_compresses_raw_volume_with_bounded_atomic_python_stream(monkeypatch, tmp_path: Path):
+def test_raw_volume_compression_streams_atomically_with_bounded_chunks(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "volume.raw"
     destination = tmp_path / "volume.raw.zst"
     _ = source.write_bytes(b"voxel-bytes")
@@ -178,16 +147,13 @@ def test_modal_io_compresses_raw_volume_with_bounded_atomic_python_stream(monkey
     }
     assert not (tmp_path / ".volume.raw.zst.part").exists()
 
-def test_modal_io_rejects_raw_volume_over_compression_limit_before_import(monkeypatch, tmp_path: Path):
+def test_raw_volume_over_the_compression_limit_is_rejected_before_importing_zstandard(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "volume.raw"
     destination = tmp_path / "volume.raw.zst"
     _ = source.write_bytes(b"0123456789")
     monkeypatch.delitem(sys.modules, "zstandard", raising=False)
 
-    try:
+    with pytest.raises(ValueError, match="compression limit"):
         compress_raw_volume(source, destination, max_input_bytes=9)
-    except ValueError as error:
-        assert "compression limit" in str(error)
-    else:
-        raise AssertionError("expected raw compression bound rejection")
+
     assert not destination.exists()

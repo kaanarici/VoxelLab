@@ -20,7 +20,12 @@ import {
   assertShellFits,
   assertSmokeWindowVisibility,
   closeApp,
+  ensurePanelOpen,
   launchVoxelLab,
+  readConfirmDialog,
+  waitForDesktopIntakeNotify,
+  waitForNotify,
+  waitForSeriesName,
   waitForShellFits,
   writeTinyDicom,
   writeTinyNifti,
@@ -102,10 +107,7 @@ test('Electron runtime delivers queued launch paths after renderer bridge readin
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
     assert.equal(await page.locator('#upload-modal.visible').count(), 0);
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Unsupported desktop selection');
     assert.match(dialog.body || '', /notes\.md/);
     assert.match(dialog.body || '', /Try DICOM, NIfTI, OME-TIFF\/ImageJ TIFF/);
@@ -128,10 +130,7 @@ test('Electron runtime groups multiple queued launch files into one selection', 
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
     assert.equal(await page.locator('#upload-modal.visible').count(), 0);
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Unsupported desktop selection');
     assert.match(dialog.body || '', /notes\.md/);
     assert.match(dialog.body || '', /results\.csv/);
@@ -155,10 +154,7 @@ test('Electron runtime bounds direct unsupported launch file samples', async () 
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
     assert.equal(await page.locator('#upload-modal.visible').count(), 0);
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Unsupported desktop selection');
     assert.match(dialog.body || '', /Skipped \(unsupported\)/);
     assert.match(dialog.body || '', /notes-0\.md/);
@@ -183,10 +179,7 @@ test('Electron runtime reports skipped files for unsupported folder launches', a
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
     assert.equal(await page.locator('#upload-modal.visible').count(), 0);
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Unsupported desktop selection');
     assert.match(dialog.body || '', /Skipped \(unsupported\)/);
     assert.match(dialog.body || '', /notes\.md/);
@@ -215,21 +208,14 @@ test('Electron runtime explains sidecar-only launches before a microscopy image 
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
     assert.equal(await page.locator('#upload-modal.visible').count(), 0);
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Open microscopy image first');
     assert.match(dialog.body || '', /Sidecar files are not standalone images/);
     assert.match(dialog.body || '', /cell-body\.roi/);
     assert.match(dialog.body || '', /workflow\.json/);
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /2 sidecars/.test(item.textContent || '')
-          && /ImageJ ROI/.test(item.textContent || '')
-          && /Workflow recipe/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await page.waitForSelector('#confirm-modal.visible #desktop-intake-choose-files', { state: 'visible', timeout: 5_000 });
+    assert.equal(await page.locator('#desktop-intake-choose-files').textContent(), 'Choose other files');
+    await waitForDesktopIntakeNotify(page, [/2 sidecars/, /ImageJ ROI/, /Workflow recipe/], 10_000);
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
@@ -247,18 +233,10 @@ test('Electron runtime holds a supported DICOM SR launch until its source series
 
   const { app, page, pageErrors } = await launchVoxelLab([srPath]);
   try {
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Holding 1 derived object in this session/.test(item.textContent || '')
-          && /attach automatically when the matching source series is loaded/.test(item.textContent || ''))
-    ), null, { timeout: 15_000 });
+    await waitForNotify(page, [/Holding 1 derived object in this session/, /attach automatically when the matching source series is loaded/], 15_000);
     assert.equal(await page.locator('#upload-modal.visible').count(), 0);
     assert.equal(await page.locator('#confirm-modal.visible').count(), 0);
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 sidecar \(DICOM SR\)/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForDesktopIntakeNotify(page, [/1 sidecar \(DICOM SR\)/], 10_000);
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
@@ -275,18 +253,9 @@ test('Electron runtime reports skipped SR sidecars after loading a local DICOM s
 
   const { app, page, pageErrors } = await launchVoxelLab([dicomPath, srPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'Local DICOM CT', null, { timeout: 20_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Skipped 1 derived object/.test(item.textContent || '')
-          && /SR: SR import contains no measurement groups/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 openable file \(DICOM\)/.test(item.textContent || '')
-          && /1 sidecar \(DICOM SR\)/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForSeriesName(page, 'Local DICOM CT', 20_000);
+    await waitForNotify(page, [/Skipped 1 derived object/, /SR: SR import contains no measurement groups/], 10_000);
+    await waitForDesktopIntakeNotify(page, [/1 openable file \(DICOM\)/, /1 sidecar \(DICOM SR\)/], 10_000);
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
@@ -307,11 +276,8 @@ test('Electron runtime restores saved DICOM imports and removal forgets them wit
   const first = await launchVoxelLab([dicomPath, srPath]);
   const { profileDir } = first;
   try {
-    await first.page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'Local DICOM CT', null, { timeout: 20_000 });
-    await first.page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Imported 1 SR note set/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForSeriesName(first.page, 'Local DICOM CT', 20_000);
+    await waitForNotify(first.page, [/Imported 1 SR note set/], 10_000);
     const saved = JSON.parse(await fs.readFile(path.join(profileDir, 'saved-imports.json'), 'utf8'));
     assert.deepEqual(new Set(saved[0]?.paths), new Set([dicomPath, srPath]));
     assert.deepEqual(first.pageErrors, []);
@@ -321,7 +287,7 @@ test('Electron runtime restores saved DICOM imports and removal forgets them wit
 
   const restored = await launchVoxelLab([], { profileDir });
   try {
-    await restored.page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'Local DICOM CT', null, { timeout: 20_000 });
+    await waitForSeriesName(restored.page, 'Local DICOM CT', 20_000);
     const row = restored.page.locator('li[data-series-slug]').filter({ hasText: 'Local DICOM CT' }).first();
     await row.click({ button: 'right' });
     const remove = restored.page.locator('.context-menu .popover-item', { hasText: 'Remove from viewer' });
@@ -342,7 +308,14 @@ test('Electron runtime restores saved DICOM imports and removal forgets them wit
 
   const reopened = await launchVoxelLab([], { profileDir });
   try {
-    await reopened.page.waitForTimeout(1_000);
+    const savedAfterRemoval = JSON.parse(await fs.readFile(path.join(profileDir, 'saved-imports.json'), 'utf8'));
+    assert.deepEqual(savedAfterRemoval, [], 'removal must forget the persisted desktop import');
+    await reopened.page.waitForFunction(
+      () => document.documentElement.dataset.voxellabControlsReady === 'true',
+      null,
+      { timeout: 20_000 },
+    );
+    await reopened.page.waitForLoadState('networkidle');
     assert.equal(await reopened.page.locator('li[data-series-slug]').filter({ hasText: 'Local DICOM CT' }).count(), 0);
     assert.deepEqual(reopened.pageErrors, []);
   } finally {
@@ -407,13 +380,10 @@ test('Electron runtime reports converter-backed files in mixed folder launches',
   const { app, page, pageErrors } = await launchVoxelLab([tempDir]);
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'mixed-cells', null, { timeout: 20_000 });
+    await waitForSeriesName(page, 'mixed-cells', 20_000);
     await page.waitForFunction(() => document.querySelectorAll('[data-roi-result-row]').length === 1, null, { timeout: 10_000 });
     await page.waitForFunction(() => document.getElementById('microscopy-recipe-status')?.textContent === 'Workflow recipe replayed', null, { timeout: 10_000 });
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Conversion required');
     assert.match(dialog.body || '', /cells\.czi/);
     assert.match(dialog.body || '', /OME-TIFF/);
@@ -442,20 +412,15 @@ test('Electron runtime reports converter-backed files in mixed folder launches',
     assert.equal(imported.compositeEnabled, true);
     assert.deepEqual(imported.compositeChannels, [true, false]);
     assert.equal(imported.channelColor, '#AA00CC');
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => {
-          const text = item.textContent || '';
-          return /Desktop intake:/.test(text)
-            && /scanned 5 files/.test(text)
-            && /1 openable file \(OME-TIFF\)/.test(text)
-            && /2 sidecars/.test(text)
-            && /Workflow recipe/.test(text)
-            && /ImageJ ROI/.test(text)
-            && /1 converter-backed file \(CZI\)/.test(text)
-            && /1 unsupported file skipped/.test(text);
-        })
-    ), null, { timeout: 10_000 });
+    await waitForDesktopIntakeNotify(page, [
+      /scanned 5 files/,
+      /1 openable file \(OME-TIFF\)/,
+      /2 sidecars/,
+      /Workflow recipe/,
+      /ImageJ ROI/,
+      /1 converter-backed file \(CZI\)/,
+      /1 unsupported file skipped/,
+    ], 10_000);
     const recents = await page.evaluate(() => globalThis.voxellabDesktop.getRecentDocuments());
     assert.equal(recents[0]?.path, tempDir);
     assert.equal(recents.some(item => ['cell-body.roi', 'cells.czi', 'workflow.json'].includes(item.name)), false);
@@ -541,14 +506,7 @@ test('Electron runtime keeps desktop folder triage when a supported file fails p
         && /Scan depth limit/.test(text);
     }, expectsReadFailure, { timeout: 20_000 });
     if (expectsReadFailure) {
-      await page.waitForFunction(() => (
-        [...document.querySelectorAll('#notify-container .notify-text')]
-          .some(item => {
-            const text = item.textContent || '';
-            return /Desktop intake:/.test(text)
-              && /1 folder read failed/.test(text);
-          })
-      ), null, { timeout: 10_000 });
+      await waitForDesktopIntakeNotify(page, [/1 folder read failed/], 10_000);
     }
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
@@ -570,10 +528,7 @@ test('Electron runtime keeps converter-backed direct file selections in failed i
   const { app, page, pageErrors } = await launchVoxelLab([broken, convertible]);
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Conversion required');
     assert.match(dialog.body || '', /cells\.czi/);
     assert.match(dialog.body || '', /1 converter-backed file/);
@@ -601,11 +556,8 @@ test('Electron runtime opens local OME-Zarr folders through the desktop bridge',
 
   const { app, page, pageErrors } = await launchVoxelLab([zarrRoot]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'cells', null, { timeout: 20_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '') && /1 unsupported file skipped/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForSeriesName(page, 'cells', 20_000);
+    await waitForDesktopIntakeNotify(page, [/1 unsupported file skipped/], 10_000);
     const imported = await page.evaluate(async () => {
       const { state } = await import('/js/core/state.js');
       const series = state.manifest.series[state.seriesIdx];
@@ -640,10 +592,8 @@ test('Electron runtime keeps OME-TIFF with unsupported physical units uncalibrat
 
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'bad-unit-cells', null, { timeout: 20_000 });
-    await page.waitForSelector('#microscopy-stack-panel', { timeout: 10_000 });
-    const stackPanelCollapsed = await page.$eval('#microscopy-stack-panel', panel => panel.classList.contains('collapsed'));
-    if (stackPanelCollapsed) await page.click('#microscopy-stack-panel .sec-title');
+    await waitForSeriesName(page, 'bad-unit-cells', 20_000);
+    await ensurePanelOpen(page, '#microscopy-stack-panel', '#microscopy-calibration');
     await page.waitForFunction(() => (
       document.getElementById('microscopy-calibration')?.textContent === 'XY uncalibrated · 3 warnings'
     ), null, { timeout: 10_000 });
@@ -710,24 +660,14 @@ test('Electron runtime names incompatible workflow recipe sidecars after opening
 
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath, recipePath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'recipe-target-cells', null, { timeout: 20_000 });
+    await waitForSeriesName(page, 'recipe-target-cells', 20_000);
     await page.waitForFunction(() => (
       /Recipe geometry\/channel\/time dimensions do not match the active microscopy series/.test(
         document.getElementById('microscopy-recipe-status')?.textContent || '',
       )
     ), null, { timeout: 10_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Skipped 1 microscopy workflow recipe/.test(item.textContent || '')
-          && /workflow\.json/.test(item.textContent || '')
-          && /Recipe geometry\/channel\/time dimensions do not match/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 openable file \(OME-TIFF\)/.test(item.textContent || '')
-          && /1 sidecar \(Workflow recipe\)/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForNotify(page, [/Skipped 1 microscopy workflow recipe/, /workflow\.json/, /Recipe geometry\/channel\/time dimensions do not match/], 10_000);
+    await waitForDesktopIntakeNotify(page, [/1 openable file \(OME-TIFF\)/, /1 sidecar \(Workflow recipe\)/], 10_000);
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
@@ -746,13 +686,8 @@ test('Electron runtime skips ordinary JSON sidecars during local OME-TIFF launch
 
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath, metadataPath, invalidJsonPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'metadata-sidecar-cells', null, { timeout: 20_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 openable file \(OME-TIFF\)/.test(item.textContent || '')
-          && /2 unsupported files skipped/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForSeriesName(page, 'metadata-sidecar-cells', 20_000);
+    await waitForDesktopIntakeNotify(page, [/1 openable file \(OME-TIFF\)/, /2 unsupported files skipped/], 10_000);
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
@@ -780,12 +715,7 @@ test('Electron runtime guards schema-bearing unknown JSON sidecars during local 
         document.getElementById('upload-status')?.textContent || '',
       )
     ), null, { timeout: 20_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 openable file \(OME-TIFF\)/.test(item.textContent || '')
-          && /1 unsupported file skipped/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForDesktopIntakeNotify(page, [/1 openable file \(OME-TIFF\)/, /1 unsupported file skipped/], 10_000);
     await assertShellFits(page);
     assert.deepEqual(pageErrors, []);
   } finally {
@@ -840,7 +770,7 @@ test('Electron runtime imports ROI sidecars with local OME-TIFF launches', async
 
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath, roiPath, jsonPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'roi-sidecar-cells', null, { timeout: 20_000 });
+    await waitForSeriesName(page, 'roi-sidecar-cells', 20_000);
     try {
       await page.waitForFunction(() => document.querySelectorAll('[data-roi-result-row]').length === 2, null, { timeout: 30_000 });
     } catch (error) {
@@ -901,13 +831,7 @@ test('Electron runtime imports ROI sidecars with local OME-TIFF launches', async
     assert.match(imported.rowText, /json-cell/);
     assert.match(imported.rowText, /ellipse/);
     assert.match(imported.rowText, /µm²/);
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 openable file/.test(item.textContent || '')
-          && /2 sidecars/.test(item.textContent || '')
-          && /ROI results/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForDesktopIntakeNotify(page, [/1 openable file/, /2 sidecars/, /ROI results/], 10_000);
     const recents = await page.evaluate(() => globalThis.voxellabDesktop.getRecentDocuments());
     assert.deepEqual(recents.map(item => item.name), ['roi-sidecar-cells.ome.tiff']);
     await assertShellFits(page);
@@ -955,19 +879,9 @@ test('Electron runtime names incompatible ROI-results sidecars after opening loc
 
   const { app, page, pageErrors } = await launchVoxelLab([omeTiffPath, jsonPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'roi-results-target-cells', null, { timeout: 20_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Skipped 1 ROI sidecar/.test(item.textContent || '')
-          && /voxel-roi-results\.json/.test(item.textContent || '')
-          && /ROI bundle rows are incompatible with this microscopy stack/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
-    await page.waitForFunction(() => (
-      [...document.querySelectorAll('#notify-container .notify-text')]
-        .some(item => /Desktop intake:/.test(item.textContent || '')
-          && /1 openable file \(OME-TIFF\)/.test(item.textContent || '')
-          && /1 sidecar \(ROI results\)/.test(item.textContent || ''))
-    ), null, { timeout: 10_000 });
+    await waitForSeriesName(page, 'roi-results-target-cells', 20_000);
+    await waitForNotify(page, [/Skipped 1 ROI sidecar/, /voxel-roi-results\.json/, /ROI bundle rows are incompatible with this microscopy stack/], 10_000);
+    await waitForDesktopIntakeNotify(page, [/1 openable file \(OME-TIFF\)/, /1 sidecar \(ROI results\)/], 10_000);
     const roiResultCount = await page.$eval('#roi-results-count', item => item.textContent || '');
     assert.equal(roiResultCount, '0');
     await assertShellFits(page);
@@ -986,10 +900,7 @@ test('Electron runtime reports convertible launch paths instead of dropping them
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
     await page.waitForSelector('#upload-modal.visible', { timeout: 10_000 });
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Conversion required');
     assert.match(dialog.body || '', /cells\.czi/);
     assert.match(dialog.body || '', /OME-TIFF/);
@@ -1022,16 +933,13 @@ test('Electron runtime starts configured desktop conversion and reopens the OME-
   });
   try {
     await page.waitForSelector('#confirm-modal.visible', { timeout: 10_000 });
-    const dialog = await page.evaluate(() => ({
-      title: document.getElementById('confirm-title')?.textContent,
-      body: document.getElementById('confirm-body')?.textContent,
-    }));
+    const dialog = await readConfirmDialog(page);
     assert.equal(dialog.title, 'Converting desktop files');
     assert.match(dialog.body || '', /cells\.czi/);
     assert.match(dialog.body || '', /OME-TIFF/);
     assert.match(dialog.body || '', /Converting 1 desktop file/);
     assert.match(dialog.body || '', /Converted outputs reopen automatically/);
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'converted', null, { timeout: 15_000 });
+    await waitForSeriesName(page, 'converted', 15_000);
     const recents = await page.evaluate(() => globalThis.voxellabDesktop.getRecentDocuments());
     assert.equal(recents[0]?.name, 'cells.czi');
     assert.equal(recents.some(item => /\.ome\.tiff$/i.test(item.name)), false, 'app-managed converted outputs should not appear in Open Recent');
@@ -1047,7 +955,7 @@ test('Electron runtime starts configured desktop conversion and reopens the OME-
       const statuses = (globalThis.__voxellabConversionEvents || []).map(job => job.status);
       return statuses.includes('running') && statuses.includes('completed');
     }, null, { timeout: 15_000 });
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'converted', null, { timeout: 15_000 });
+    await waitForSeriesName(page, 'converted', 15_000);
     const recentsAfterReopen = await page.evaluate(() => globalThis.voxellabDesktop.getRecentDocuments());
     assert.equal(recentsAfterReopen[0]?.name, 'cells.czi');
     assert.equal(recentsAfterReopen.some(item => /\.ome\.tiff$/i.test(item.name)), false, 'recent reopen should not remember converted temp outputs');

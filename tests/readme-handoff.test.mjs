@@ -25,7 +25,7 @@ test('README offers a short source and demo path without internal release narrat
   assert.ok(demoIndex > 0);
   assert.ok(startIndex > demoIndex);
   assert.match(readme, /44 MB lite demo/);
-  assert.match(readme, /Node\.js 22\.12\.0/);
+  assert.ok(readme.includes(`Node.js ${readFileSync(new URL('../.node-version', import.meta.url), 'utf8').trim()}`));
   assert.match(readme, /Open <http:\/\/localhost:8000>/);
   assert.doesNotMatch(readme, /check:lab|lab-readiness|lab-readiness-report/);
 });

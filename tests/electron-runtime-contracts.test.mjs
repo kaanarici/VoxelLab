@@ -5,6 +5,8 @@ import path from 'node:path';
 import process from 'node:process';
 import { test } from 'node:test';
 
+import { moduleSource } from './helpers/node/module-imports.mjs';
+
 import { clearCloudSettings, saveCloudSettings } from '../electron/main/cloud-settings.js';
 import {
   CONVERTER_JOB_OWNER_FILE,
@@ -333,18 +335,57 @@ test('desktop converter artifacts are session-scoped and only release terminal j
   assert.deepEqual(await manager.releaseTerminalArtifacts(), []);
 });
 
-test('Electron main uses OS Trash for real converter sessions but not temporary smoke profiles', async () => {
-  const mainSource = await fs.readFile(new URL('../electron/main/index.js', import.meta.url), 'utf8');
-  assert.match(mainSource, /new ConverterJobManager\(\{\s*userDataPath: \(\) => app\.getPath\('userData'\),[\s\S]*?releaseJobDir: IS_SMOKE \? async \(\) => false : jobDir => shell\.trashItem\(jobDir\),/s);
+test('Electron main releases converter sessions to OS Trash and never hard-deletes them', () => {
+  const mainSource = moduleSource('electron/main/index.js');
+  const managerStart = mainSource.indexOf('new ConverterJobManager({');
+  assert.notEqual(managerStart, -1, 'converter job manager construction not found');
+  const manager = mainSource.slice(managerStart, mainSource.indexOf('});', managerStart));
+
+  assert.match(manager, /releaseJobDir: IS_SMOKE \? async \(\) => false : jobDir => shell\.trashItem\(jobDir\)/);
+  assert.equal(/releaseJobDir[^\n]*(rm|unlink|rmdir)/.test(manager), false, 'converter output must never be hard-deleted');
+  assert.match(manager, /userDataPath: \(\) => app\.getPath\('userData'\)/);
+});
+
+test('Electron main restores desktop state and clears stale artifacts before the first window', () => {
+  const mainSource = moduleSource('electron/main/index.js');
   const readyStart = mainSource.indexOf('app.whenReady().then(async () => {');
   const readyEnd = mainSource.indexOf("\n  app.on('window-all-closed'", readyStart);
   assert.notEqual(readyStart, -1);
   assert.notEqual(readyEnd, -1);
   const readyBlock = mainSource.slice(readyStart, readyEnd);
-  assert.match(readyBlock, /recentDocuments = await readRecentDocuments\(app\);/);
-  assert.match(readyBlock, /savedImports = await readSavedImports\(app\);/);
-  assert.match(readyBlock, /await converterJobs\.releaseStaleArtifacts\(\);[\s\S]*?createWindow\(\);/);
-  assert.match(mainSource, /app\.on\('before-quit', \(event\) => \{\s*if \(converterArtifactsReleasedForQuit\) return;\s*event\.preventDefault\(\);\s*if \(releasingConverterArtifactsBeforeQuit\) return;\s*releasingConverterArtifactsBeforeQuit = true;\s*void converterJobs\.shutdown\(\)\s*\.then\(\(\) => converterJobs\.releaseTerminalArtifacts\(\)\)[\s\S]*?converterArtifactsReleasedForQuit = true;\s*app\.quit\(\);/s);
+
+  const at = needle => {
+    const index = readyBlock.indexOf(needle);
+    assert.notEqual(index, -1, `${needle} missing from the app-ready block`);
+    return index;
+  };
+  const createWindowAt = at('createWindow();');
+  for (const step of [
+    'recentDocuments = await readRecentDocuments(app);',
+    'savedImports = await readSavedImports(app);',
+    'await converterJobs.releaseStaleArtifacts();',
+  ]) {
+    assert.ok(at(step) < createWindowAt, `${step} must run before the first window opens`);
+  }
+});
+
+test('Electron main blocks quit until converter children stop and terminal artifacts are released', () => {
+  const mainSource = moduleSource('electron/main/index.js');
+  const quitStart = mainSource.indexOf("app.on('before-quit'");
+  assert.notEqual(quitStart, -1);
+  const quitBlock = mainSource.slice(quitStart, mainSource.indexOf("\n  app.whenReady()", quitStart));
+
+  const at = needle => {
+    const index = quitBlock.indexOf(needle);
+    assert.notEqual(index, -1, `${needle} missing from the before-quit handler`);
+    return index;
+  };
+  assert.ok(at('if (converterArtifactsReleasedForQuit) return;') < at('event.preventDefault();'));
+  assert.ok(at('event.preventDefault();') < at('converterJobs.shutdown()'));
+  assert.ok(at('converterJobs.shutdown()') < at('converterJobs.releaseTerminalArtifacts()'));
+  assert.ok(at('converterJobs.releaseTerminalArtifacts()') < at('converterArtifactsReleasedForQuit = true;'));
+  assert.ok(at('converterArtifactsReleasedForQuit = true;') < at('app.quit();'));
+  assert.match(quitBlock, /releasingConverterArtifactsBeforeQuit = true;/);
 });
 
 test('desktop native file reads cannot raise the main-process hard cap', async () => {

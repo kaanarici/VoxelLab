@@ -206,6 +206,63 @@ export async function launchVoxelLab(extraArgs = [], opts = {}) {
   return { app, page, pageErrors, tempDir, profileDir };
 }
 
+export async function waitForSeriesName(page, name, timeout = 20_000) {
+  await page.waitForFunction(
+    expected => document.getElementById('series-name')?.textContent === expected,
+    name,
+    { timeout },
+  );
+}
+
+export async function readConfirmDialog(page) {
+  return page.evaluate(() => ({
+    title: document.getElementById('confirm-title')?.textContent || '',
+    body: document.getElementById('confirm-body')?.textContent || '',
+  }));
+}
+
+export async function notifyTexts(page) {
+  return page.evaluate(() => (
+    [...document.querySelectorAll('#notify-container .notify-text')].map(item => item.textContent || '')
+  ));
+}
+
+export async function waitForNotify(page, patterns, timeout = 10_000) {
+  const sources = patterns.map(pattern => pattern.source);
+  try {
+    await page.waitForFunction(
+      expected => [...document.querySelectorAll('#notify-container .notify-text')]
+        .some(item => expected.every(source => new RegExp(source).test(item.textContent || ''))),
+      sources,
+      { timeout },
+    );
+  } catch (error) {
+    const seen = await notifyTexts(page);
+    throw new Error(`${error.message}\nexpected a toast matching ${sources.join(' + ')}\nsaw:\n${seen.join('\n') || '(no toasts)'}`);
+  }
+}
+
+export async function waitForDesktopIntakeNotify(page, patterns, timeout = 10_000) {
+  await waitForNotify(page, [/Desktop intake:/, ...patterns], timeout);
+}
+
+export async function ensurePanelOpen(page, panelSelector, visibleSelector) {
+  const collapsed = await page.$eval(panelSelector, panel => panel.classList.contains('collapsed')).catch(() => false);
+  if (collapsed) await page.click(`${panelSelector} .sec-title`);
+  await page.waitForSelector(visibleSelector, { state: 'visible', timeout: 10_000 });
+}
+
+export async function clickCanvasPixel(page, x, y) {
+  const canvas = page.locator('#view');
+  const box = await canvas.boundingBox();
+  assert.ok(box, 'viewer canvas must be visible');
+  const size = await canvas.evaluate(element => ({ width: element.width, height: element.height }));
+  await page.mouse.click(
+    box.x + (x / size.width) * box.width,
+    box.y + (y / size.height) * box.height,
+  );
+}
+
 export async function assertSmokeWindowVisibility(app, expectedVisible) {
   const visible = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible() ?? false);
   assert.equal(visible, expectedVisible);

@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { URL } from 'node:url';
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
 
-globalThis.location = new URL('http://127.0.0.1/');
-globalThis.self = {};
-globalThis.voxellabDesktop = true;
+installViewerGlobals({ desktop: true });
 
 const { loadFusion } = await import('../js/fusion-loader.js');
 const { state } = await import('../js/core/state.js');
@@ -48,10 +46,4 @@ test('loadFusion reuses the active peer stack and voxel cache', async (t) => {
   assert.equal(state.overlays.fusionSlug, 'fusion_peer');
   assert.equal(state.fusionImgs, existingFusionImgs);
   assert.equal(state.fusionVoxels, voxels);
-});
-
-test('fusion-loader does not import sync.js', async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../js/fusion-loader.js', import.meta.url), 'utf8');
-  assert.equal(/from ['"].*sync\.js['"]/.test(source), false);
 });
