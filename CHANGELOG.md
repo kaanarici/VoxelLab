@@ -22,7 +22,7 @@ use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Dialogs, menus, and popovers share one raised surface, larger radii, a ring
   and layered shadow, semibold titles, and 32 px buttons with press feedback.
-  Dialogs now fade and scale in and close quickly instead of snapping. The
+  Dialogs now fade and scale in and close instantly. The
   command palette opens instantly.
 - Body, caption, and micro text are one pixel larger.
 - The empty viewer hides playback and study-only actions until a study opens.
