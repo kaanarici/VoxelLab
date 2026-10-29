@@ -7,6 +7,7 @@ import {
   assertShellFits,
   closeApp,
   launchVoxelLab,
+  waitForSeriesName,
   writeTinyNifti,
 } from './fixtures/electron-runtime-smoke-helpers.mjs';
 
@@ -17,7 +18,7 @@ test('Electron runtime opens local NIfTI with calibration and source provenance'
 
   const { app, page, pageErrors } = await launchVoxelLab([niftiPath]);
   try {
-    await page.waitForFunction(() => document.getElementById('series-name')?.textContent === 'calibrated-brain', null, { timeout: 20_000 });
+    await waitForSeriesName(page, 'calibrated-brain', 20_000);
     const imported = await page.evaluate(async () => {
       const { state } = await import('/js/core/state.js');
       const series = state.manifest.series[state.seriesIdx];

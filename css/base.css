@@ -52,8 +52,14 @@
 
     --rail-section-padding: var(--space-md) var(--chrome-header-pr) var(--space-md) var(--chrome-header-pl);
 
-    --shadow-popover: 0 0 0 1px rgba(255,255,255,0.08), 0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
-    --shadow-modal:   0 8px 24px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.3);
+    --surface-raised: #181818;
+    --surface-ring:   rgba(255,255,255,0.09);
+    --shadow-popover: 0 0 0 1px var(--surface-ring), 0 2px 6px rgba(0,0,0,0.35), 0 12px 32px -6px rgba(0,0,0,0.55);
+    --shadow-modal:   0 0 0 1px var(--surface-ring), 0 8px 20px -6px rgba(0,0,0,0.5), 0 32px 72px -16px rgba(0,0,0,0.7);
+    --radius-control: 8px;
+    --radius-popover: 10px;
+    --radius-dialog:  14px;
+    --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
 
     --rail-title: #a0a0a0;
     --rail-label: #8a8a8a;
@@ -87,7 +93,6 @@
     --panel-close-dur:    var(--dur-medium);
     --modal-open-dur:     var(--dur-fast);
     --modal-close-dur:    var(--dur-quick);
-    --modal-scale:        0.96;
     --tt-in-dur:          var(--dur-quick);
     --tt-out-dur:         var(--dur-micro);
     --tt-delay:           var(--dur-micro);
@@ -104,10 +109,10 @@
     --avatar-ease-out:    var(--ease-bouncy-strong);
     --ease-hover:         var(--ease-tip);
 
-    --fs-micro:    9px;
-    --fs-caption:  10px;
-    --fs-body:     11px;
-    --fs-body-lg:  12px;
+    --fs-micro:    10px;
+    --fs-caption:  11px;
+    --fs-body:     12px;
+    --fs-body-lg:  13px;
     --fs-title:    13px;
     --fs-title-lg: 15px;
     --fs-display:  28px;
@@ -159,7 +164,7 @@
     --danger-bg:       color-mix(in srgb, var(--danger) 10%, transparent);
     --danger-border:   color-mix(in srgb, var(--danger) 30%, transparent);
     --abnormal-strong: color-mix(in srgb, var(--color-abnormal) 90%, transparent);
-    --scrim:           rgba(0, 0, 0, 0.5);
+    --scrim:           rgba(0, 0, 0, 0.6);
     --hover-strong:    rgba(128, 128, 128, 0.2);
     --selection-bg:    rgba(255, 255, 255, 0.2);
     --focus-ring:      0 0 0 2px var(--bg), 0 0 0 4px rgba(255, 255, 255, 0.4);
@@ -192,8 +197,10 @@
     --accent-bg: rgba(0,0,0,0.05);
     --active-bg: rgba(0,0,0,0.07);
     --danger:  #c62828;
-    --shadow-popover: 0 0 0 1px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.08);
-    --shadow-modal:   0 8px 24px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.08);
+    --surface-raised: #ffffff;
+    --surface-ring:   rgba(0,0,0,0.08);
+    --shadow-popover: 0 0 0 1px var(--surface-ring), 0 2px 6px rgba(0,0,0,0.06), 0 12px 32px -6px rgba(0,0,0,0.14);
+    --shadow-modal:   0 0 0 1px var(--surface-ring), 0 8px 20px -6px rgba(0,0,0,0.1), 0 32px 72px -16px rgba(0,0,0,0.22);
 
     --rail-title: #4a4a4a;
     --rail-label: #5c5c5c;
@@ -654,3 +661,25 @@
     .notify-item.shake { animation: none; }
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Raised surfaces: popovers, menus and dropdowns share one shape and one quick entrance. */
+  :is(.popover-menu, .toolbox-panel, .custom-dropdown .dd-menu, .select-dropdown-menu, .slimsam-menu, .plugin-context-menu) {
+    background: var(--surface-raised);
+    border: 0;
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
+    opacity: 1;
+    transform: none;
+    transition: opacity var(--dur-quick) var(--ease-out-strong), transform var(--dur-quick) var(--ease-out-strong);
+  }
+  @starting-style {
+    :is(.popover-menu, .toolbox-panel, .custom-dropdown .dd-menu, .select-dropdown-menu, .slimsam-menu, .plugin-context-menu) {
+      opacity: 0;
+      transform: translateY(2px) scale(0.98);
+    }
+  }
+  .toolbox-panel::after { background: var(--surface-raised); }
+  :is(.popover-item, .custom-dropdown .dd-item, .select-dropdown-item, .plugin-context-menu-item) { border-radius: var(--radius-lg); }
+  @media (prefers-reduced-motion: reduce) {
+    :is(.popover-menu, .toolbox-panel, .custom-dropdown .dd-menu, .select-dropdown-menu, .slimsam-menu, .plugin-context-menu) { transform: none; }
+  }

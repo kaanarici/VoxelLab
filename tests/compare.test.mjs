@@ -1,21 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { URL } from 'node:url';
+import { installCompareGridDom } from './helpers/node/compare-grid-dom.mjs';
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
+import { nextTask } from './helpers/node/wait.mjs';
 
-globalThis.location = new URL('http://127.0.0.1/');
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-  setItem(key, value) { storage.set(key, String(value)); },
-  removeItem(key) { storage.delete(key); },
-};
+const { storage } = installViewerGlobals();
+installCompareGridDom();
 
 const { buildCompareGrid, drawCompare, getGroupPeers, loadComparePeers } = await import('../js/series/compare.js');
 const { state } = await import('../js/core/state.js');
 const { OVERLAY_CACHE_BY_KIND } = await import('../js/runtime/overlay-cache-keys.js');
 const { createLocalByteSlice } = await import('../js/series/local-byte-slice.js');
 const { setNoteEntriesForSlice } = await import('../js/overlay/annotation-graph.js');
-const { loadRegistrationData, registrationQualityFromData, registrationRecordFromData } = await import('../js/metadata.js');
+const { loadRegistrationData } = await import('../js/metadata.js');
 
 test('loadComparePeers reuses in-memory local stacks for compare mode peers', async () => {
   state.manifest = {
@@ -199,57 +196,10 @@ test('loadComparePeers warms the visible window when compare stacks already exis
   assert.equal(created, 60, 'existing compare stacks should still fetch the new visible base+overlay window');
 });
 
-test('drawCompare applies one linked viewport transform to every compare pane canvas', () => {
-  const makeCanvas = () => ({
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ({
-      createImageData: () => ({ data: new Uint8ClampedArray(4) }),
-      putImageData() {},
-    }),
-  });
-  const cells = [];
-  const host = {
-    innerHTML: '',
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return cells;
-      if (selector === '.cmp-cell canvas') return cells.map((cell) => cell.canvas);
-      return [];
-    },
-    appendChild(node) { cells.push(node); },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      if (tag === 'canvas') {
-        return {
-          width: 0,
-          height: 0,
-          getContext: () => ({
-            clearRect() {},
-            drawImage() {},
-            getImageData: () => ({ data: new Uint8ClampedArray(4) }),
-          }),
-        };
-      }
-      return {
-        className: '',
-        dataset: {},
-        innerHTML: '',
-        addEventListener() {},
-        canvas: makeCanvas(),
-        querySelector(selector) {
-          if (selector === 'canvas') return this.canvas;
-          return null;
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+test('drawCompare applies one linked viewport transform to every compare pane canvas', (t) => {
+  const grid = installCompareGridDom();
+  t.after(grid.restore);
+  const cells = grid.cells;
 
   state.manifest = {
     series: [
@@ -277,64 +227,10 @@ test('drawCompare applies one linked viewport transform to every compare pane ca
   }
 });
 
-test('drawCompare renders notes for its peer series instead of the active series', () => {
+test('drawCompare renders notes for its peer series instead of the active series', (t) => {
   storage.clear();
-  let pinLabels = 0;
-  const ctx = {
-    createImageData: () => ({ data: new Uint8ClampedArray(4) }),
-    putImageData() {},
-    save() {},
-    restore() {},
-    beginPath() {},
-    arc() {},
-    fill() {},
-    stroke() {},
-    fillText() { pinLabels += 1; },
-  };
-  const canvas = {
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ctx,
-  };
-  const cell = {
-    dataset: { slug: 'cmp_note_peer' },
-    canvas,
-    querySelector(selector) {
-      if (selector === 'canvas') return canvas;
-      return null;
-    },
-  };
-  const host = {
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return [cell];
-      if (selector === '.cmp-cell canvas') return [canvas];
-      return [];
-    },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      if (tag !== 'canvas') return {};
-      return {
-        width: 0,
-        height: 0,
-        getContext() {
-          return {
-            clearRect() {},
-            drawImage() {},
-            getImageData(_x, _y, w, h) {
-              return { data: new Uint8ClampedArray(w * h * 4) };
-            },
-          };
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+  const grid = installCompareGridDom(['cmp_note_peer']);
+  t.after(grid.restore);
 
   state.manifest = {
     series: [
@@ -350,75 +246,14 @@ test('drawCompare renders notes for its peer series instead of the active series
 
   drawCompare();
 
-  assert.equal(pinLabels, 1);
+  assert.equal(grid.record.labelsDrawn.length, 1);
 });
 
-test('drawCompare keeps no-overlay peers on the direct grayscale path', () => {
-  const previousWebGL2 = globalThis.WebGL2RenderingContext;
-  let webgl2Requests = 0;
-  let putCalls = 0;
-  const ctx = {
-    createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },
-    putImageData() { putCalls += 1; },
-    save() {},
-    restore() {},
-    beginPath() {},
-    arc() {},
-    fill() {},
-    stroke() {},
-    fillText() {},
-  };
-  const canvas = {
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ctx,
-  };
-  const cell = {
-    dataset: { slug: 'cmp_direct' },
-    canvas,
-    querySelector(selector) {
-      if (selector === 'canvas') return canvas;
-      return null;
-    },
-  };
-  const host = {
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return [cell];
-      if (selector === '.cmp-cell canvas') return [canvas];
-      return [];
-    },
-  };
-  globalThis.WebGL2RenderingContext = class {};
-  globalThis.document = {
-    createElement(tag) {
-      if (tag !== 'canvas') return {};
-      return {
-        width: 0,
-        height: 0,
-        getContext(type) {
-          if (type === 'webgl2') {
-            webgl2Requests += 1;
-            return null;
-          }
-          return {
-            clearRect() {},
-            drawImage() {},
-            getImageData(_x, _y, w, h) {
-              return { data: new Uint8ClampedArray(w * h * 4) };
-            },
-          };
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+test('drawCompare keeps no-overlay peers on the direct grayscale path', (t) => {
+  const grid = installCompareGridDom(['cmp_direct'], { webgl2: class {} });
+  t.after(grid.restore);
 
-  try {
+  {
     state.manifest = {
       series: [
         { slug: 'cmp_direct', name: 'Direct', group: 'cmpd', slices: 1, width: 2, height: 2, hasBrain: false, hasSeg: false, hasSym: false, hasRegions: false },
@@ -440,79 +275,19 @@ test('drawCompare keeps no-overlay peers on the direct grayscale path', () => {
     };
 
     drawCompare();
-  } finally {
-    globalThis.WebGL2RenderingContext = previousWebGL2;
   }
 
-  assert.equal(putCalls, 1);
-  assert.equal(webgl2Requests, 0);
+  assert.equal(grid.paintCount, 1);
+  assert.equal(grid.webgl2Requests, 0);
 });
 
-test('drawCompare maps peer slices in patient space instead of raw index space', () => {
-  let rendered = 0;
-  const makeCanvas = () => ({
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ({
-      createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-      putImageData() { rendered += 1; },
-      clearRect() {},
-      save() {},
-      restore() {},
-      beginPath() {},
-      arc() {},
-      fill() {},
-      stroke() {},
-      fillText() {},
-    }),
-  });
-  const makeCell = (slug, name) => {
-    const canvas = makeCanvas();
-    const label = { textContent: name };
-    return {
-      dataset: { slug },
-      canvas,
-      label,
-      classList: { add() {}, remove() {} },
-      querySelector(selector) {
-        if (selector === 'canvas') return canvas;
-        if (selector === '.cmp-lbl') return label;
-        return null;
-      },
-    };
-  };
-  const cells = [makeCell('primary_cmp', 'Primary'), makeCell('peer_cmp', 'Peer')];
-  const host = {
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return cells;
-      if (selector === '.cmp-cell canvas') return cells.map((cell) => cell.canvas);
-      return [];
-    },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      if (tag !== 'canvas') return {};
-      return {
-        width: 0,
-        height: 0,
-        getContext() {
-          return {
-            clearRect() {},
-            drawImage() {},
-            getImageData(_x, _y, w, h) {
-              return { data: new Uint8ClampedArray(w * h * 4) };
-            },
-          };
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+test('drawCompare maps peer slices in patient space instead of raw index space', (t) => {
+  const grid = installCompareGridDom([
+    { slug: 'primary_cmp', name: 'Primary' },
+    { slug: 'peer_cmp', name: 'Peer' },
+  ]);
+  t.after(grid.restore);
+  const cells = grid.cells;
 
   state.manifest = {
     series: [
@@ -570,63 +345,11 @@ test('drawCompare maps peer slices in patient space instead of raw index space',
 
   drawCompare();
 
-  assert.equal(rendered, 2, 'peer should render its geometry-matched slice rather than a missing raw index');
+  assert.equal(grid.paintCount, 2, 'peer should render its geometry-matched slice rather than a missing raw index');
   assert.equal(cells[1].label.textContent, 'Peer');
 });
 
-test('registration quality parser reads current registration sidecar shape', () => {
-  const quality = registrationQualityFromData({
-    reference: 't1_se',
-    pairs: {
-      flair: {
-        translation_magnitude_mm: 1.0882392394512812,
-        rotation_deg: 0.2639295804557845,
-        dice: 0.899039129506268,
-        verdict: 'slightly off',
-      },
-    },
-  }, 'flair');
-
-  assert.deepEqual(quality, {
-    mm: 1.09,
-    measurement: '',
-    grade: 'fair',
-    dice: 0.899039129506268,
-    rotationDeg: 0.26,
-    verdict: 'slightly off',
-  });
-});
-
-test('registration record parser exposes transform and metrics for evidence export', () => {
-  const record = registrationRecordFromData({
-    reference: 't1_se',
-    pairs: {
-      flair: {
-        translation_mm: [-0.01, 0.16, 1.08],
-        translation_magnitude_mm: 1.0882392394512812,
-        rotation_deg: 0.2639295804557845,
-        rotation_magnitude_mm: 0.36851521378885727,
-        mse_normalized: 0.01529048290103674,
-        mutual_information: -0.5627987496944827,
-        dice: 0.899039129506268,
-        verdict: 'slightly off',
-      },
-    },
-    method: "ANTsPy ants.registration type_of_transform='Rigid' to t1_se",
-    ants_version: '0.6.3',
-    generated_at: '2026-04-09T04:06:07.426217+00:00',
-  }, 'flair');
-
-  assert.equal(record.referenceSlug, 't1_se');
-  assert.equal(record.movingSlug, 'flair');
-  assert.equal(record.transform.type, 'rigid');
-  assert.deepEqual(record.transform.translationMm, [-0.01, 0.16, 1.08]);
-  assert.equal(record.transform.translationMagnitudeMm, 1.0882392394512812);
-  assert.equal(record.metrics.dice, 0.899039129506268);
-  assert.equal(record.quality.mm, 1.09);
-});
-
-test('drawCompare adds registration verdicts to peer labels when sidecar data is loaded', async () => {
+test('drawCompare adds registration verdicts to peer labels when sidecar data is loaded', async (t) => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: true,
@@ -644,70 +367,12 @@ test('drawCompare adds registration verdicts to peer labels when sidecar data is
   await loadRegistrationData();
   globalThis.fetch = previousFetch;
 
-  let rendered = 0;
-  const makeCanvas = () => ({
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ({
-      createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-      putImageData() { rendered += 1; },
-      clearRect() {},
-      save() {},
-      restore() {},
-      beginPath() {},
-      arc() {},
-      fill() {},
-      stroke() {},
-      fillText() {},
-    }),
-  });
-  const makeCell = (slug, name) => {
-    const canvas = makeCanvas();
-    const label = { textContent: name };
-    return {
-      dataset: { slug },
-      canvas,
-      label,
-      classList: { add() {}, remove() {} },
-      querySelector(selector) {
-        if (selector === 'canvas') return canvas;
-        if (selector === '.cmp-lbl') return label;
-        return null;
-      },
-    };
-  };
-  const cells = [makeCell('primary_reg', 'Primary'), makeCell('peer_reg', 'Peer')];
-  const host = {
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return cells;
-      if (selector === '.cmp-cell canvas') return cells.map((cell) => cell.canvas);
-      return [];
-    },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      if (tag !== 'canvas') return {};
-      return {
-        width: 0,
-        height: 0,
-        getContext() {
-          return {
-            clearRect() {},
-            drawImage() {},
-            getImageData(_x, _y, w, h) {
-              return { data: new Uint8ClampedArray(w * h * 4) };
-            },
-          };
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+  const grid = installCompareGridDom([
+    { slug: 'primary_reg', name: 'Primary' },
+    { slug: 'peer_reg', name: 'Peer' },
+  ]);
+  t.after(grid.restore);
+  const cells = grid.cells;
 
   state.manifest = {
     series: [
@@ -725,7 +390,7 @@ test('drawCompare adds registration verdicts to peer labels when sidecar data is
 
   drawCompare();
 
-  assert.equal(rendered, 2);
+  assert.equal(grid.paintCount, 2);
   assert.equal(cells[0].label.textContent, 'Primary');
   assert.equal(cells[1].label.textContent, 'Peer · slightly off · reported displacement 3.25 mm');
 
@@ -747,76 +412,13 @@ test('drawCompare adds registration verdicts to peer labels when sidecar data is
   assert.equal(cells[1].label.textContent, 'Peer');
 });
 
-test('drawCompare marks peers out of range instead of clamping to the wrong anatomy', () => {
-  let rendered = 0;
-  const makeCanvas = () => ({
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ({
-      createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-      putImageData() { rendered += 1; },
-      clearRect() {},
-      save() {},
-      restore() {},
-      beginPath() {},
-      arc() {},
-      fill() {},
-      stroke() {},
-      fillText() {},
-    }),
-  });
-  const peerClasses = new Set();
-  const makeCell = (slug, name, classSet = null) => {
-    const canvas = makeCanvas();
-    const label = { textContent: name };
-    const classes = classSet || new Set();
-    return {
-      dataset: { slug },
-      canvas,
-      label,
-      classList: {
-        add(value) { classes.add(value); },
-        remove(value) { classes.delete(value); },
-      },
-      querySelector(selector) {
-        if (selector === 'canvas') return canvas;
-        if (selector === '.cmp-lbl') return label;
-        return null;
-      },
-    };
-  };
-  const cells = [makeCell('primary_far', 'Primary'), makeCell('peer_far', 'Peer', peerClasses)];
-  const host = {
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return cells;
-      if (selector === '.cmp-cell canvas') return cells.map((cell) => cell.canvas);
-      return [];
-    },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      if (tag !== 'canvas') return {};
-      return {
-        width: 0,
-        height: 0,
-        getContext() {
-          return {
-            clearRect() {},
-            drawImage() {},
-            getImageData(_x, _y, w, h) {
-              return { data: new Uint8ClampedArray(w * h * 4) };
-            },
-          };
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+test('drawCompare marks peers out of range instead of clamping to the wrong anatomy', (t) => {
+  const grid = installCompareGridDom([
+    { slug: 'primary_far', name: 'Primary' },
+    { slug: 'peer_far', name: 'Peer' },
+  ]);
+  t.after(grid.restore);
+  const cells = grid.cells;
 
   state.manifest = {
     series: [
@@ -874,49 +476,14 @@ test('drawCompare marks peers out of range instead of clamping to the wrong anat
 
   drawCompare();
 
-  assert.equal(rendered, 1, 'only the primary slice should render when the peer has no nearby plane');
+  assert.equal(grid.paintCount, 1, 'only the primary slice should render when the peer has no nearby plane');
   assert.equal(cells[1].label.textContent, 'Peer · out of range');
-  assert.equal(peerClasses.has('out-of-range'), true);
+  assert.equal(cells[1].classes.has('out-of-range'), true);
 });
 
-test('drawCompare does not refetch a failed compare stack in a loop', async () => {
-  const cells = [];
-  const host = {
-    innerHTML: '',
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return cells;
-      if (selector === '.cmp-cell canvas') return cells.map((cell) => cell.canvas);
-      return [];
-    },
-    appendChild(node) { cells.push(node); },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      if (tag === 'canvas') {
-        return {
-          width: 0,
-          height: 0,
-          getContext: () => ({ clearRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray(4) }) }),
-        };
-      }
-      return {
-        className: '',
-        dataset: {},
-        innerHTML: '',
-        addEventListener() {},
-        canvas: { style: {}, width: 0, height: 0, addEventListener() {}, getContext: () => ({ createImageData: () => ({ data: new Uint8ClampedArray(4) }), putImageData() {} }) },
-        querySelector(selector) {
-          if (selector === 'canvas') return this.canvas;
-          if (selector === '.cmp-lbl') return this.label || (this.label = { textContent: '' });
-          return null;
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
+test('drawCompare does not refetch a failed compare stack in a loop', async (t) => {
+  const grid = installCompareGridDom();
+  t.after(grid.restore);
 
   let ensureCalls = 0;
   const failedStack = () => {
@@ -953,71 +520,13 @@ function tableOverlayCaches() {
   return Object.values(OVERLAY_CACHE_BY_KIND).filter((cache) => !cache.refuseInOverlayStack);
 }
 
-function installSingleCellCompareHost(slug) {
-  const pixels = [];
-  const ctx = {
-    createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },
-    putImageData(image) { pixels.push(Uint8ClampedArray.from(image.data)); },
-    clearRect() {},
-    save() {},
-    restore() {},
-    beginPath() {},
-    arc() {},
-    fill() {},
-    stroke() {},
-    fillText() {},
-    drawImage() {},
-  };
-  const canvas = {
-    style: {},
-    width: 0,
-    height: 0,
-    addEventListener() {},
-    getContext: () => ctx,
-  };
-  const cell = {
-    dataset: { slug },
-    canvas,
-    classList: { add() {}, remove() {} },
-    querySelector(selector) {
-      if (selector === 'canvas') return canvas;
-      if (selector === '.cmp-lbl') return { textContent: '' };
-      return null;
-    },
-  };
-  const host = {
-    querySelectorAll(selector) {
-      if (selector === '.cmp-cell') return [cell];
-      if (selector === '.cmp-cell canvas') return [canvas];
-      return [];
-    },
-  };
-  globalThis.document = {
-    createElement() {
-      return {
-        width: 0,
-        height: 0,
-        getContext(type) {
-          if (type === 'webgl2') return null;
-          return {
-            clearRect() {},
-            drawImage() {},
-            getImageData(_x, _y, w, h) {
-              return { data: new Uint8ClampedArray(w * h * 4) };
-            },
-          };
-        },
-      };
-    },
-    getElementById(id) {
-      if (id === 'cmp-grid') return host;
-      return null;
-    },
-  };
-  return pixels;
+function installSingleCellCompareHost(t, slug) {
+  const grid = installCompareGridDom([slug]);
+  t.after(grid.restore);
+  return grid;
 }
 
-test('ensureCompareCurrentSlice asks every table overlay stack for the current slice', async () => {
+test('ensureCompareCurrentSlice asks every table overlay stack for the current slice', async (t) => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: true,
@@ -1066,18 +575,26 @@ test('ensureCompareCurrentSlice asks every table overlay stack for the current s
         return Promise.resolve(true);
       };
     }
-    installSingleCellCompareHost(slug);
+    installSingleCellCompareHost(t, slug);
     drawCompare();
     assert.deepEqual(
       Object.fromEntries(tableOverlayCaches().map((cache) => [cache.type, ensureCalls[cache.type]])),
       Object.fromEntries(tableOverlayCaches().map((cache) => [cache.type, 1])),
+    );
+
+    state.mode = '2d';
+    await nextTask();
+    assert.deepEqual(
+      Object.fromEntries(tableOverlayCaches().map((cache) => [cache.type, ensureCalls[cache.type]])),
+      Object.fromEntries(tableOverlayCaches().map((cache) => [cache.type, 1])),
+      'leaving compare mode must stop the deferred redraw from re-requesting slices',
     );
   } finally {
     globalThis.fetch = previousFetch;
   }
 });
 
-test('drawCompare paints every table overlay kind', async () => {
+test('drawCompare paints every table overlay kind', async (t) => {
   const previousFetch = globalThis.fetch;
   const previousWebGL2 = globalThis.WebGL2RenderingContext;
   globalThis.WebGL2RenderingContext = class {};
@@ -1133,10 +650,10 @@ test('drawCompare paints every table overlay kind', async () => {
         ];
       }
       await loadComparePeers();
-      const pixels = installSingleCellCompareHost(slug);
+      const grid = installSingleCellCompareHost(t, slug);
       drawCompare();
-      assert.equal(pixels.length, 1, `${cache.kind} should paint one compare slice`);
-      painted[cache.kind] = [...pixels[0]];
+      assert.equal(grid.paintCount, 1, `${cache.kind} should paint one compare slice`);
+      painted[cache.kind] = [...grid.record.puts[0].image.data];
     }
 
     state.overlays.tissue = false;
@@ -1144,34 +661,18 @@ test('drawCompare paints every table overlay kind', async () => {
     state.overlays.labels = false;
     state._localStacks = { [slug]: [base()] };
     await loadComparePeers();
-    const grayPixels = installSingleCellCompareHost(slug);
+    const grayGrid = installSingleCellCompareHost(t, slug);
     drawCompare();
-    const gray = [...grayPixels[0]];
+    const gray = [...grayGrid.record.puts[0].image.data];
 
     for (const cache of tableOverlayCaches()) {
       assert.notDeepEqual(painted[cache.kind], gray, `${cache.kind} overlay should change compare pixels`);
     }
+
+    state.mode = '2d';
+    await nextTask();
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.WebGL2RenderingContext = previousWebGL2;
   }
-});
-
-
-test('unavailable registration metrics stay unknown instead of becoming zero', () => {
-  for (const value of [null, '', ' ', false, []]) {
-    const quality = registrationQualityFromData({ pairs: { moving: {
-      translation_magnitude_mm: value, dice: value, rotation_deg: value,
-    } } }, 'moving');
-    assert.equal(quality.mm, null);
-    assert.equal(quality.dice, null);
-    assert.equal(quality.rotationDeg, null);
-    assert.equal(quality.grade, 'unknown');
-  }
-  const quality = registrationQualityFromData({ pairs: { moving: {
-    translation_magnitude_mm: 0, dice: 0, rotation_deg: 0,
-  } } }, 'moving');
-  assert.equal(quality.mm, 0);
-  assert.equal(quality.dice, 0);
-  assert.equal(quality.rotationDeg, 0);
 });

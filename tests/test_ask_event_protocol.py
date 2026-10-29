@@ -10,22 +10,26 @@ from ask_event_protocol import AskEventProtocolError, normalize_ask_event, versi
 FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "contract" / "ask-events-v1.json").read_text(encoding="utf-8")
 )
+VALID_CASES = [pytest.param(case, id=case["id"]) for case in FIXTURE["valid"]]
+INVALID_CASES = [pytest.param(case, id=case["id"]) for case in FIXTURE["invalid"]]
 
-def test_ask_event_v1_fixture_valid_cases_match_python_normalizer() -> None:
-    for item in FIXTURE["valid"]:
-        assert normalize_ask_event(item["input"]) == item["input"], item["id"]
+@pytest.mark.parametrize("case", VALID_CASES)
+def test_every_shared_valid_event_passes_the_python_normalizer(case: dict) -> None:
+    assert normalize_ask_event(case["input"]) == case["input"]
 
-def test_ask_event_v1_fixture_invalid_cases_have_shared_reasons() -> None:
-    for item in FIXTURE["invalid"]:
-        with pytest.raises(AskEventProtocolError) as exc_info:
-            _ = normalize_ask_event(item["input"])
-        assert exc_info.value.reason == item["reason"], item["id"]
+@pytest.mark.parametrize("case", INVALID_CASES)
+def test_every_shared_invalid_event_fails_with_the_shared_reason(case: dict) -> None:
+    with pytest.raises(AskEventProtocolError) as exc_info:
+        _ = normalize_ask_event(case["input"])
 
-def test_emitter_versions_every_current_ask_event_variant() -> None:
-    for item in FIXTURE["valid"]:
-        unversioned = {
-            key: value
-            for key, value in item["input"].items()
-            if key not in {"protocol", "version"}
-        }
-        assert version_ask_event(unversioned) == item["input"], item["id"]
+    assert exc_info.value.reason == case["reason"]
+
+@pytest.mark.parametrize("case", VALID_CASES)
+def test_the_emitter_versions_every_current_event_variant(case: dict) -> None:
+    unversioned = {
+        key: value
+        for key, value in case["input"].items()
+        if key not in {"protocol", "version"}
+    }
+
+    assert version_ask_event(unversioned) == case["input"]

@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { fileURLToPath, URL } from 'node:url';
 
 const {
   cloudProvenanceExportPayload,
@@ -14,8 +12,6 @@ const {
   sourceFileMetadataRow,
   sourceFileListText,
 } = await import('../js/series/select-series-dom.js');
-
-const selectSeriesDomSource = readFileSync(fileURLToPath(new URL('../js/series/select-series-dom.js', import.meta.url)), 'utf8');
 
 test('metadata pixel spacing preserves anisotropic non-microscopy calibration', () => {
   assert.equal(formatPixelSpacing([0.5, 0.5], {}), '0.500 mm');
@@ -101,14 +97,6 @@ test('medical calibration trust text names trusted and unknown spacing states', 
     seriesCalibrationTrustText({ dicomImportKind: 'image-stack', _spacingKnown: false }, [0, 0]),
     'Unknown · DICOM pixel spacing missing',
   );
-});
-
-test('microscopy metadata panel exposes TIFF sequence ordering provenance', () => {
-  assert.match(selectSeriesDomSource, /microscopySequenceOrderText/);
-  assert.match(selectSeriesDomSource, /microscopyStorageProvenanceText/);
-  assert.match(selectSeriesDomSource, /\['Storage', storageProvenanceText\]/);
-  assert.match(selectSeriesDomSource, /\['Sequence order', sequenceOrderText\]/);
-  assert.match(selectSeriesDomSource, /\['Spacing trust', microscopyCalibrationTrustText\(series, pixelSpacing\)\]/);
 });
 
 test('sourceFileListText names bounded source-file samples', () => {

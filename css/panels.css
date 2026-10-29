@@ -13,13 +13,14 @@
   .rp-section.collapsible .sec-title:hover .rp-collapse-ico { color: var(--text); background: var(--hover); }
 
   .rp-section.collapsible .rp-body {
-    display: grid; grid-template-rows: 1fr;
+    display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr);
     overflow: hidden;
     transition: grid-template-rows var(--accordion-dur) var(--ease-smooth);
   }
   .rp-section.collapsible.collapsed .rp-body { grid-template-rows: 0fr; }
   .rp-section.collapsible .rp-body-inner {
     min-height: 0;
+    min-width: 0;
     padding-top: var(--space-md);
     opacity: 1;
     transition: padding-top var(--accordion-dur) var(--ease-smooth), opacity var(--accordion-dur) var(--ease-smooth);

@@ -36,7 +36,7 @@ function showEmptyViewer() {
   clearRuntimeSelectionCaches();
   $('canvas-wrap')?.classList.add('no-series');
   const seriesName = $('series-name');
-  if (seriesName) seriesName.textContent = '—';
+  if (seriesName) seriesName.textContent = '';
   const current = $('slice-cur');
   const total = $('slice-tot');
   if (current) current.textContent = '';

@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
-import { openUploadModal as openUploadModalBase, routeConfig, waitForCanvasPaint } from './microscopy-upload-helpers.mjs';
+import { openUploadModal as openUploadModalBase, routeConfig, routeManifest } from '../helpers/browser/app.mjs';
+import { waitForCanvasPaint } from '../helpers/browser/canvas.mjs';
 
 async function openUploadModal(page) {
   await openUploadModalBase(page);
@@ -101,6 +102,7 @@ test('streams a downsampled OME-Zarr pyramid level by URL with honest provenance
     consoleErrors.push(msg.text());
   });
 
+  await routeManifest(page);
   await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
   await mockZarrProxy(page);
   await openUploadModal(page);
@@ -131,6 +133,7 @@ test('streams a downsampled OME-Zarr pyramid level by URL with honest provenance
 
 test('fails closed with a named reason on an unsupported OME-Zarr codec', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 840 });
+  await routeManifest(page);
   await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
   await mockZarrProxy(page, { coarsestCompressor: { id: 'blosc', cname: 'snappy', shuffle: 1 } });
   await openUploadModal(page);
@@ -151,6 +154,7 @@ test('fails closed with a named reason on an unsupported OME-Zarr codec', async 
 
 test('fails closed before chunk fetches when streamed planes exceed the allocation budget', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 840 });
+  await routeManifest(page);
   await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
   const requestedPaths = [];
   await mockZarrProxy(page, {

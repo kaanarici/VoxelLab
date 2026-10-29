@@ -1,32 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { URL } from 'node:url';
+import { cachedOverlayStack } from './helpers/node/overlay-stacks.mjs';
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
 
-globalThis.location = new URL('http://127.0.0.1/');
-globalThis.document = { getElementById: () => null };
-globalThis.self = globalThis;
-globalThis.voxellabDesktop = true;
-
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-  setItem(key, value) { storage.set(key, String(value)); },
-  removeItem(key) { storage.delete(key); },
-};
+const { storage } = installViewerGlobals({ desktop: true });
 
 const { state } = await import('../js/core/state.js');
 const { toggleSeriesOverlay } = await import('../js/overlay/overlay-toggle.js');
+const { getPreferredOverlays } = await import('../js/overlay/overlay-preferences.js');
+const { seriesViewMemoryKey } = await import('../js/core/state/series-view-memory.js');
 
-function cachedStack(dir, slices) {
-  const cached = new Array(slices);
-  cached._dir = dir;
-  cached.ensureIndex = () => Promise.resolve(true);
-  cached.ensureWindow = () => {};
-  cached.prefetchRemaining = () => Promise.resolve();
-  return cached;
-}
-
-function setOverlaySeries() {
+function setOverlaySeries({ modality = 'MR' } = {}) {
   storage.clear();
   state.manifest = {
     series: [{
@@ -37,7 +21,7 @@ function setOverlaySeries() {
       hasSeg: true,
       hasRegions: true,
       hasSym: true,
-      modality: 'MR',
+      modality,
     }],
   };
   state.seriesIdx = 0;
@@ -47,9 +31,10 @@ function setOverlaySeries() {
   state.overlays.labels = true;
   state.overlays.heatmap = false;
   state.overlays.regionMeta = {};
-  state.segImgs = cachedStack('toggle_persist_seg', 2);
-  state.regionImgs = cachedStack('toggle_persist_regions', 2);
-  state.symImgs = cachedStack('toggle_persist_sym', 2);
+  state.segImgs = cachedOverlayStack('toggle_persist_seg', 2);
+  state.regionImgs = cachedOverlayStack('toggle_persist_regions', 2);
+  state.symImgs = cachedOverlayStack('toggle_persist_sym', 2);
+  return state.manifest.series[0];
 }
 
 test('toggleSeriesOverlay speaks persist kinds and maps loader dirs internally', () => {
@@ -70,19 +55,38 @@ test('toggleSeriesOverlay speaks persist kinds and maps loader dirs internally',
   assert.equal(state.overlays.heatmap, true);
 });
 
-test('toggleSeriesOverlay does not own a 3D voxel refresh', async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../js/overlay/overlay-toggle.js', import.meta.url), 'utf8');
-  assert.equal(/from ['"].*volume-3d\.js['"]/.test(source), false);
-  assert.equal(/ensureVoxels/.test(source), false);
-  assert.equal(/updateLabelTexture/.test(source), false);
+test('toggleSeriesOverlay refuses overlays the active series does not offer', () => {
+  const series = setOverlaySeries();
+  series.hasSym = false;
+  state.symImgs = null;
+  state.overlays.heatmap = false;
+
+  assert.equal(toggleSeriesOverlay('heatmap'), null);
+  assert.equal(state.overlays.heatmap, false);
+  assert.equal(toggleSeriesOverlay('not-an-overlay'), null);
 });
 
-test('toggleSeriesOverlay does not import sync or compare', async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../js/overlay/overlay-toggle.js', import.meta.url), 'utf8');
-  assert.equal(/from ['"].*sync\.js['"]/.test(source), false);
-  assert.equal(/from ['"].*compare\.js['"]/.test(source), false);
-  assert.equal(/syncOverlays/.test(source), false);
-  assert.equal(/loadComparePeers/.test(source), false);
+test('toggleSeriesOverlay records and forgets the per-modality overlay preference', () => {
+  setOverlaySeries({ modality: 'CT' });
+  state.overlays.labels = false;
+
+  toggleSeriesOverlay('labels');
+  assert.deepEqual(getPreferredOverlays('CT'), ['labels']);
+
+  toggleSeriesOverlay('labels');
+  assert.equal(state.overlays.labels, false);
+  assert.deepEqual(getPreferredOverlays('CT'), []);
+});
+
+test('toggleSeriesOverlay remembers the overlay set in the per-series view memory', () => {
+  const series = setOverlaySeries();
+  state.overlays.tissue = false;
+  state.overlays.labels = false;
+
+  toggleSeriesOverlay('tissue');
+
+  const remembered = state.seriesViewMemory?.[seriesViewMemoryKey(series)];
+  assert.ok(remembered, 'expected toggling to write series view memory');
+  assert.equal(remembered.overlays.tissue, true);
+  assert.equal(remembered.overlays.labels, false);
 });

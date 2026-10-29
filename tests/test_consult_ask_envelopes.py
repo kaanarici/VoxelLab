@@ -9,27 +9,22 @@ import pytest
 
 from ask_envelopes import EnvelopeValidationError, normalize_ask_result, normalize_consult_result
 
-FIXTURE = Path(__file__).parent / "fixtures" / "contract" / "ask-envelopes.json"
-
+FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "contract" / "ask-envelopes.json").read_text())
 NORMALIZERS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "ask-result": normalize_ask_result,
     "consult-result": normalize_consult_result,
 }
+VALID_CASES = [pytest.param(case, id=case["id"]) for case in FIXTURE["valid"]]
+INVALID_CASES = [pytest.param(case, id=case["id"]) for case in FIXTURE["invalid"]]
 
-def load_fixture() -> dict[str, Any]:
-    return json.loads(FIXTURE.read_text())
+@pytest.mark.parametrize("case", VALID_CASES)
+def test_every_shared_valid_envelope_normalizes_to_the_shared_expectation(case: dict) -> None:
+    assert NORMALIZERS[case["kind"]](case["input"]) == case["expected"]
 
-def test_ask_consult_envelope_fixture_valid_cases_match_python_normalizers() -> None:
-    fixture = load_fixture()
+@pytest.mark.parametrize("case", INVALID_CASES)
+def test_every_shared_invalid_envelope_fails_with_the_shared_reason(case: dict) -> None:
+    with pytest.raises(EnvelopeValidationError) as exc_info:
+        _ = NORMALIZERS[case["kind"]](case["input"])
 
-    for case in fixture["valid"]:
-        assert NORMALIZERS[case["kind"]](case["input"]) == case["expected"], case["id"]
-
-def test_ask_consult_envelope_fixture_invalid_cases_have_named_python_reasons() -> None:
-    fixture = load_fixture()
-
-    for case in fixture["invalid"]:
-        with pytest.raises(EnvelopeValidationError) as excinfo:
-            _ = NORMALIZERS[case["kind"]](case["input"])
-        assert excinfo.value.envelope == case["kind"], case["id"]
-        assert excinfo.value.reason == case["reason"], case["id"]
+    assert exc_info.value.envelope == case["kind"]
+    assert exc_info.value.reason == case["reason"]

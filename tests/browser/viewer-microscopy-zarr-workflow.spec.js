@@ -1,21 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { TextDecoder } from 'node:util';
 import { expect, test } from '@playwright/test';
 
-import {
-  drawEllipseRoi,
-  dropFiles,
-  expectScaleBarFits,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
-
-function uint16LeChunk(values) {
-  const buffer = Buffer.alloc(values.length * 2);
-  values.forEach((value, index) => buffer.writeUInt16LE(value, index * 2));
-  return buffer;
-}
+import { PIXEL, countPixels, readPngImage, readRenderedTiff } from '../helpers/browser/artifacts.mjs';
+import { waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { uint16LeChunk } from '../helpers/browser/fixtures/tiff.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
+import { drawEllipseRoi } from '../helpers/browser/panels.mjs';
+import { expectScaleBarFits } from '../helpers/browser/scale-bar.mjs';
 
 async function writeChunkedOmeZarrFixture(testInfo) {
   const files = [];
@@ -93,94 +84,36 @@ async function writeChunkedOmeZarrFixture(testInfo) {
   ];
 }
 
+function fractionRect(image, left, top, right, bottom) {
+  return {
+    x0: Math.floor(image.width * left),
+    y0: Math.floor(image.height * top),
+    x1: Math.floor(image.width * right),
+    y1: Math.floor(image.height * bottom),
+  };
+}
+
 async function screenshotPngMetrics(page, pngPath) {
-  const dataUrl = `data:image/png;base64,${(await readFile(pngPath)).toString('base64')}`;
-  return page.evaluate(async (href) => {
-    const img = new Image();
-    const loaded = new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-    img.src = href;
-    await loaded;
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    let scaleBarBrightPixels = 0;
-    for (let y = Math.max(0, canvas.height - 18); y < canvas.height - 4; y += 1) {
-      for (let x = Math.max(0, canvas.width - 90); x < canvas.width - 6; x += 1) {
-        const offset = (y * canvas.width + x) * 4;
-        if (data[offset] > 230 && data[offset + 1] > 230 && data[offset + 2] > 230) scaleBarBrightPixels += 1;
-      }
-    }
-    let roiBluePixels = 0;
-    for (let y = Math.floor(canvas.height * 0.30); y < Math.floor(canvas.height * 0.75); y += 1) {
-      for (let x = Math.floor(canvas.width * 0.30); x < Math.floor(canvas.width * 0.75); x += 1) {
-        const offset = (y * canvas.width + x) * 4;
-        if (data[offset] < 180 && data[offset + 1] > 130 && data[offset + 2] > 180) roiBluePixels += 1;
-      }
-    }
-    let contextDarkPixels = 0;
-    let contextBrightPixels = 0;
-    for (let y = 8; y <= 34; y += 1) {
-      for (let x = 8; x <= Math.min(126, canvas.width - 1); x += 1) {
-        const offset = (y * canvas.width + x) * 4;
-        if (data[offset] < 55 && data[offset + 1] < 55 && data[offset + 2] < 55) contextDarkPixels += 1;
-        if (data[offset] > 220 && data[offset + 1] > 220 && data[offset + 2] > 220) contextBrightPixels += 1;
-      }
-    }
-    return {
-      width: canvas.width,
-      height: canvas.height,
-      contextDarkPixels,
-      contextBrightPixels,
-      scaleBarBrightPixels,
-      roiBluePixels,
-    };
-  }, dataUrl);
+  const image = await readPngImage(page, pngPath);
+  const contextBox = { x0: 8, y0: 8, x1: Math.min(127, image.width), y1: 35 };
+  return {
+    width: image.width,
+    height: image.height,
+    contextDarkPixels: countPixels(image, PIXEL.dark, contextBox),
+    contextBrightPixels: countPixels(image, PIXEL.chromeBright, contextBox),
+    scaleBarBrightPixels: countPixels(image, PIXEL.bright, {
+      x0: Math.max(0, image.width - 90),
+      y0: Math.max(0, image.height - 18),
+      x1: image.width - 6,
+      y1: image.height - 4,
+    }),
+    roiBluePixels: countPixels(image, PIXEL.roiBlue, fractionRect(image, 0.30, 0.30, 0.75, 0.75)),
+  };
 }
 
 async function renderedTiffMetrics(tiffPath) {
-  const bytes = await readFile(tiffPath);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const entryCount = view.getUint16(8, true);
-  const tags = new Map();
-  for (let i = 0; i < entryCount; i += 1) {
-    const offset = 10 + i * 12;
-    tags.set(view.getUint16(offset, true), {
-      count: view.getUint32(offset + 4, true),
-      value: view.getUint32(offset + 8, true),
-    });
-  }
-  const rational = (tag) => {
-    const offset = tags.get(tag).value;
-    return view.getUint32(offset, true) / view.getUint32(offset + 4, true);
-  };
-  const pixelOffset = tags.get(273).value;
-  const pixelBytes = bytes.subarray(pixelOffset, pixelOffset + tags.get(279).value);
-  const descriptionTag = tags.get(270);
-  const description = new TextDecoder().decode(bytes.subarray(descriptionTag.value, descriptionTag.value + descriptionTag.count)).replace(/\0$/u, '');
-  let roiBluePixels = 0;
-  for (let i = 0; i < pixelBytes.length; i += 3) {
-    if (pixelBytes[i] < 180 && pixelBytes[i + 1] > 130 && pixelBytes[i + 2] > 180) roiBluePixels += 1;
-  }
-  return {
-    magic: [bytes[0], bytes[1], view.getUint16(2, true)],
-    width: tags.get(256).value,
-    height: tags.get(257).value,
-    compression: tags.get(259).value,
-    photometric: tags.get(262).value,
-    samplesPerPixel: tags.get(277).value,
-    xResolution: rational(282),
-    yResolution: rational(283),
-    resolutionUnit: tags.get(296).value,
-    pixelByteCount: tags.get(279).value,
-    description,
-    roiBluePixels,
-  };
+  const image = await readRenderedTiff(tiffPath);
+  return { ...image, roiBluePixels: countPixels(image, PIXEL.roiBlue) };
 }
 
 test('OME-Zarr microscopy ROI results export calibration, replay recipes, and re-import safely', async ({ page }, testInfo) => {
@@ -189,9 +122,8 @@ test('OME-Zarr microscopy ROI results export calibration, replay recipes, and re
   const notesPath = testInfo.outputPath('zarr-notes.md');
   await writeFile(notesPath, 'not image data');
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [
     ...files,
     { path: notesPath, relativePath: 'cells.zarr/notes.md', mimeType: 'text/markdown' },
   ]);
@@ -207,7 +139,7 @@ test('OME-Zarr microscopy ROI results export calibration, replay recipes, and re
   await expect(page.locator('#meta .meta-row').filter({ hasText: 'Calibration' })).toContainText('OME-Zarr metadata');
   await expect(page.locator('#meta .meta-row').filter({ hasText: 'Source warnings' })).toContainText('OMERO transitional metadata');
   await expect(page.locator('#meta .meta-row').filter({ hasText: 'Source warnings' })).not.toContainText('Z spacing missing');
-  await waitForCanvasPaint(page, '#view');
+  await waitForSlicePaint(page);
   await expectScaleBarFits(page);
   if (await page.locator('#microscopy-stack-panel').evaluate(panel => panel.classList.contains('collapsed'))) {
     await page.locator('#microscopy-stack-panel .sec-title').click();
@@ -392,7 +324,7 @@ test('OME-Zarr microscopy ROI results export calibration, replay recipes, and re
   const countBeforeSidecarDrop = await page.locator('#series-list li').count();
   await page.locator('#btn-upload').click();
   await expect(page.locator('#upload-modal')).toBeVisible();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     ...files,
     { path: jsonBundlePath, mimeType: 'application/json' },
     { path: recipePath, mimeType: 'application/json' },
@@ -412,9 +344,8 @@ test('OME-Zarr zarr.json-only selections explain missing OME metadata precisely'
   const zarrJsonPath = testInfo.outputPath('plain-zarr-json.json');
   await writeFile(zarrJsonPath, JSON.stringify({ zarr_format: 2 }));
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [
     { path: zarrJsonPath, relativePath: 'plain.zarr/zarr.json', mimeType: 'application/json' },
   ]);
 
@@ -459,10 +390,9 @@ test('OME-Zarr metadata-only boundaries show a warning instead of success', asyn
     },
   }));
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page);
   const countBefore = await page.locator('#series-list li').count();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: zmetadataPath, relativePath: 'cells.zarr/.zmetadata', mimeType: 'application/json' },
   ]);
 

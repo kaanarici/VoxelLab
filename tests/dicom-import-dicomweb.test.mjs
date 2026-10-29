@@ -1,25 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { installCanvasDocument } from './helpers/node/canvas-stub.mjs';
 
 globalThis.location = new URL('http://127.0.0.1/');
 
-globalThis.document = {
-  createElement(tag) {
-    if (tag !== 'canvas') throw new Error(`unexpected element: ${tag}`);
-    return {
-      width: 0,
-      height: 0,
-      getContext() {
-        return {
-          createImageData(width, height) {
-            return { data: new Uint8ClampedArray(width * height * 4) };
-          },
-          putImageData() {},
-        };
-      },
-    };
-  },
-};
+installCanvasDocument();
 
 async function freshImportModule() {
   const url = new URL(`../js/dicom/dicomweb-import.js?t=${Date.now()}-${Math.random()}`, import.meta.url);

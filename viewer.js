@@ -203,7 +203,7 @@ async function init() {
   if (state.manifest.series.length === 0) {
     wrap.classList.add('no-series');
     const seriesName = $('series-name');
-    if (seriesName) seriesName.textContent = '—';
+    if (seriesName) seriesName.textContent = '';
   }
 
   initProjects({
@@ -366,13 +366,17 @@ async function init() {
     ] : []),
     { id: 'help',      label: 'Help & shortcuts', icon: 'i-help',    section: 'Export', shortcut: '?',  keywords: 'keyboard reference',action: () => $('btn-help').click() },
 
+    { id: 'upload',    label: 'Open study',       icon: 'i-upload',  section: 'General',                 keywords: 'upload open dicom nifti ome tiff microscopy', action: () => $('btn-upload').click() },
     { id: 'shortcuts', label: 'Customize shortcuts', icon: 'i-help',  section: 'General',                keywords: 'keyboard keybindings hotkeys preferences', action: openShortcutsModal },
     { id: 'cloud-processing', label: 'Cloud GPU processing', icon: 'i-upload', section: 'Cloud',         keywords: 'modal gpu segmentation process ct mr dicom upload', action: openCloudProcessingUpload },
     ...cloudActionCommands,
     { id: 'cloud-settings', label: 'Cloud settings', icon: 'i-settings', section: 'General',             keywords: 'modal gpu r2 credentials token segmentation settings', action: openCloudSettingsModal },
-    { id: 'upload',    label: 'Upload study',     icon: 'i-upload',  section: 'General',                 keywords: 'open dicom nifti ome tiff microscopy', action: () => $('btn-upload').click() },
     { id: 'theme',     label: 'Toggle theme',     icon: 'i-sun',     section: 'General',                 keywords: 'dark light mode',  action: () => $('btn-theme').click() },
   ]);
+  window.voxellab = {
+    ready: true,
+    call: async (method, params) => (await import('./js/agent-api.js')).callAgent(method, params, { selectSeries }),
+  };
   document.documentElement.dataset.voxellabControlsReady = 'true';
   window.dispatchEvent(new Event('voxellab:controls-ready'));
   await renderProjectsSidebar(state.manifest, state.seriesIdx);

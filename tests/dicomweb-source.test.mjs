@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { test } from 'node:test';
 import { URL } from 'node:url';
+import { nextTask } from './helpers/node/wait.mjs';
 
 const {
   normalizeInstance,
@@ -510,25 +511,25 @@ test('fetchSeriesMetadata fails closed on non-array metadata payloads', async ()
   );
 });
 
-test('fetchSeriesItems limits concurrent frame fetches for large series', async () => {
+function framePeakConcurrency({ sopSuffix, frames, frameConcurrency }) {
   let active = 0;
   let peak = 0;
   const metadata = [normalizeInstance(dicomJsonInstance({
     '00080060': { vr: 'CS', Value: ['US'] },
-    '00080018': { vr: 'UI', Value: ['1.2.sop.us.concurrent'] },
-    '00280008': { vr: 'IS', Value: [5] },
+    '00080018': { vr: 'UI', Value: [`1.2.sop.us.${sopSuffix}`] },
+    '00280008': { vr: 'IS', Value: [frames] },
   }))];
 
-  await fetchSeriesItems({
+  return fetchSeriesItems({
     wadoBase: 'https://pacs.example/wado-rs',
     studyUID: '1.2.study',
     seriesUID: '1.2.series',
     metadata,
-    frameConcurrency: 2,
+    frameConcurrency,
     fetchImpl: async () => {
       active += 1;
       peak = Math.max(peak, active);
-      await new Promise(resolve => globalThis.setTimeout(resolve, 5));
+      await nextTask();
       active -= 1;
       return {
         ok: true,
@@ -537,41 +538,15 @@ test('fetchSeriesItems limits concurrent frame fetches for large series', async 
         },
       };
     },
-  });
+  }).then(() => peak);
+}
 
-  assert.equal(peak, 2);
+test('fetchSeriesItems limits concurrent frame fetches for large series', async () => {
+  assert.equal(await framePeakConcurrency({ sopSuffix: 'concurrent', frames: 5, frameConcurrency: 2 }), 2);
 });
 
 test('fetchSeriesItems treats invalid frame concurrency as conservative', async () => {
-  let active = 0;
-  let peak = 0;
-  const metadata = [normalizeInstance(dicomJsonInstance({
-    '00080060': { vr: 'CS', Value: ['US'] },
-    '00080018': { vr: 'UI', Value: ['1.2.sop.us.invalid-concurrency'] },
-    '00280008': { vr: 'IS', Value: [4] },
-  }))];
-
-  await fetchSeriesItems({
-    wadoBase: 'https://pacs.example/wado-rs',
-    studyUID: '1.2.study',
-    seriesUID: '1.2.series',
-    metadata,
-    frameConcurrency: 0,
-    fetchImpl: async () => {
-      active += 1;
-      peak = Math.max(peak, active);
-      await new Promise(resolve => globalThis.setTimeout(resolve, 5));
-      active -= 1;
-      return {
-        ok: true,
-        async arrayBuffer() {
-          return new Uint8Array([1, 2]).buffer;
-        },
-      };
-    },
-  });
-
-  assert.equal(peak, 1);
+  assert.equal(await framePeakConcurrency({ sopSuffix: 'invalid-concurrency', frames: 4, frameConcurrency: 0 }), 1);
 });
 
 test('fetchSeriesMetadata cache is isolated by auth scope', async () => {

@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 
 from modal_dicom import ensure_registration_inputs
-from registration_alignment import align_registration_pair
+from registration_alignment import align_registration_pair, ants_image_from_slices, registration_transform
 
+from tests.helpers.python.manifests import registration_source
 
 def registration_stack(uid, spacing):
     return [SimpleNamespace(
@@ -20,11 +21,9 @@ def registration_stack(uid, spacing):
 
 
 def test_registration_failure_never_relabels_an_unresampled_volume(monkeypatch):
-    source = {"sourceRecordVersion": 1, "sourceKind": "registration", "registration": {
-        "fixedSeriesUID": "fixed", "movingSeriesUID": "moving", "transform": "rigid",
-    }}
     fixed, moving, error = ensure_registration_inputs(
-        registration_stack("fixed", 1) + registration_stack("moving", 2), source,
+        registration_stack("fixed", 1) + registration_stack("moving", 2),
+        registration_source(),
     )
     assert not error
 
@@ -38,8 +37,6 @@ def test_registration_failure_never_relabels_an_unresampled_volume(monkeypatch):
 
 @pytest.mark.parametrize("parameters", [[], [1] * 6, [float("nan")] * 12, [2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]])
 def test_registration_rejects_invalid_transform(parameters):
-    from registration_alignment import registration_transform
-
     ants = SimpleNamespace(read_transform=lambda path: SimpleNamespace(parameters=parameters))
     with pytest.raises(ValueError):
         _ = registration_transform(ants, ["transform.mat"], np)
@@ -47,8 +44,6 @@ def test_registration_rejects_invalid_transform(parameters):
 
 def test_native_registration_preserves_physical_grid():
     ants = pytest.importorskip("ants")
-    from registration_alignment import ants_image_from_slices
-
     slices = registration_stack("fixed", 2)
     for index, item in enumerate(slices):
         item.PixelSpacing = [2, 3]

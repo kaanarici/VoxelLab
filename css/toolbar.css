@@ -20,7 +20,8 @@
     align-items: center;
     gap: var(--space-md);
 
-    flex: 1 0 560px;
+    flex: 1 1 560px;
+    min-width: 420px;
     justify-content: flex-start;
   }
 
@@ -351,6 +352,7 @@
   }
   .controls.controls--scrubber-sized .scrub-block {
     flex: 0 1 auto;
+    min-width: auto;
   }
   .controls.controls--scrubber-sized .scrubber {
     flex: 0 0 var(--scrubber-w);
@@ -695,19 +697,19 @@
     max-width: calc(100vw - var(--space-md));
     padding: 0 var(--cmp-menu-gutter);
     border: 0;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-popover);
   }
   #cmp-menu .dd-item.cmp-pick {
     min-height: var(--btn-toolbar);
     width: 100%;
     padding: var(--space-xs) var(--space-10) var(--space-xs) var(--space-sm);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     font-size: var(--fs-body-lg);
     box-sizing: border-box;
   }
   #cmp-menu .dd-item.cmp-pick:first-child,
   #cmp-menu .dd-item.cmp-pick:last-child {
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
   }
   #cmp-menu .cmp-pick.ui-checkbox {
     display: flex;

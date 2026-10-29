@@ -10,7 +10,7 @@ for clinical use.
 
 ## Requirements
 
-- Node.js 22.12.0
+- Node.js 22.23.4
 - Python 3.13 for local tooling (setup accepts 3.11+; the Modal image uses 3.11)
 - A Cloudflare account with R2 enabled
 - A Modal account

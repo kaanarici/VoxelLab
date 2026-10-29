@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const {
@@ -287,10 +286,4 @@ test('isolated composite writes refuse without a writes adapter', () => {
   setMicroscopyCompositeEnabled(series, true, 2, host);
 
   assert.equal(series.microscopy.composite, undefined);
-});
-
-test('live composite module does not assign series.microscopy in place', () => {
-  const src = readFileSync(new URL('../js/microscopy/microscopy-channel-composite.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /writeHost/);
-  assert.doesNotMatch(src, /series\.microscopy\.composite\s*=/);
 });

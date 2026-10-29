@@ -1,15 +1,13 @@
 import { expect, test } from '@playwright/test';
 
+import { routeManifest, waitForControlsReady } from '../helpers/browser/app.mjs';
+
 test('the first-run action opens the existing study upload flow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route('**/data/manifest.json', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ patient: 'anonymous', studyDate: '', series: [] }),
-  }));
+  await routeManifest(page);
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.documentElement.dataset.voxellabControlsReady === 'true');
+  await waitForControlsReady(page);
 
   const emptyState = page.locator('#empty-state');
   await expect(emptyState).toBeVisible();

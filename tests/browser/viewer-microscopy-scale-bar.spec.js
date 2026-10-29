@@ -4,13 +4,9 @@ import {
   CALIBRATED_OME_TIFF,
   writeCalibratedOmeTiff,
 } from '../fixtures/microscopy/calibrated-ome-tiff.mjs';
-import {
-  drawEllipseRoi,
-  dropFiles,
-  openUploadModal,
-  routeConfig,
-  waitForCanvasPaint,
-} from './microscopy-upload-helpers.mjs';
+import { waitForSlicePaint } from '../helpers/browser/canvas.mjs';
+import { drawEllipseRoi } from '../helpers/browser/panels.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
 
 async function scaleBarQaSnapshot(page) {
   const metrics = await page.evaluate(async (fixture) => {
@@ -116,10 +112,9 @@ test('microscopy scale bar stays calibrated through zoom, pan, fit, and resize w
   const omeTiffPath = testInfo.outputPath('cells-scale.ome.tiff');
   await writeCalibratedOmeTiff(omeTiffPath);
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
-  await dropFiles(page, '#upload-zone', [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
-  await waitForCanvasPaint(page, '#view');
+  await openLocalUploadModal(page);
+  await dropOnUploadZone(page, [{ path: omeTiffPath, mimeType: 'image/tiff' }]);
+  await waitForSlicePaint(page);
   await drawEllipseRoi(page);
   await page.keyboard.press('Escape');
 

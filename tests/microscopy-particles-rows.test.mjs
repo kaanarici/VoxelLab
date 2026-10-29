@@ -2,14 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { makeRectParticlePlane, PARTICLE_PLANE } from './fixtures/microscopy/particle-ground-truth.mjs';
+import { installViewerGlobals } from './helpers/node/viewer-globals.mjs';
 
-globalThis.location = new URL('http://127.0.0.1/');
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-  setItem(key, value) { storage.set(key, String(value)); },
-  removeItem(key) { storage.delete(key); },
-};
+const { store: storage } = installViewerGlobals();
 
 const { state } = await import('../js/core/state.js');
 const { roiResultRows } = await import('../js/roi/roi-results.js');

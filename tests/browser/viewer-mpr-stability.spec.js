@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { localVolumeSeries, routeLocalVolumeStudy } from './local-volume-fixture.mjs';
+import { localVolumeSeries, routeLocalVolumeStudy } from '../helpers/browser/local-study.mjs';
 
 async function openBrowserFixture(page, slug) {
   await routeLocalVolumeStudy(page, [
@@ -191,7 +191,9 @@ test('MPR Z scrub keeps oblique pane geometry stable through settle redraw', asy
     setMprPosition({ z: 44 }, series, { syncSlice: true });
     drawMPRZScrub();
     const during = await visibleSnap();
-    await new Promise((resolve) => setTimeout(resolve, 220));
+    for (let attempt = 0; attempt < 60 && state.mpr.quality !== 'quality'; attempt += 1) {
+      await nextFrame();
+    }
     await nextFrame();
     await nextFrame();
     return { before, during, settled: await visibleSnap() };

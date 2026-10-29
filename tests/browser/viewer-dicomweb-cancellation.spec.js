@@ -1,32 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-async function routeConfig(page) {
-  await page.route(/\/config(?:\.local)?\.json$/, route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      modalWebhookBase: '',
-      r2PublicUrl: '',
-      trustedUploadOrigins: [],
-      localApiToken: '',
-      localAiAvailable: true,
-      ai: { enabled: true, provider: 'local', ready: true, issues: [] },
-      siteName: 'VoxelLab',
-      disclaimer: 'Not for clinical use. For research and educational purposes only.',
-      features: { cloudProcessing: true, aiAnalysis: true },
-    }),
-  }));
-}
-
-async function openAdvancedOptions(page) {
-  const advanced = page.locator('#upload-advanced-options');
-  if (!await advanced.evaluate(element => element.open)) {
-    await advanced.locator('summary').click();
-  }
-}
+import { openAdvancedOptions, routeConfig } from '../helpers/browser/app.mjs';
 
 test('replacing or dismissing the upload modal aborts DICOMweb discovery and cannot update the next session', async ({ page }) => {
-  await routeConfig(page);
+  await routeConfig(page, { ai: { enabled: true, provider: 'local', ready: true, issues: [] } });
   await page.addInitScript(() => {
     const nativeFetch = window.fetch.bind(window);
     window.__dicomwebAbortRecords = [];

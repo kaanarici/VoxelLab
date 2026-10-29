@@ -2,60 +2,20 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
-import { dropFiles, isolatedFixturePath, openUploadModal, routeConfig } from './microscopy-upload-helpers.mjs';
+import { isolatedFixturePath } from '../helpers/browser/app.mjs';
+import { writeTiny4dNifti, writeTinyNifti } from '../helpers/browser/fixtures/nifti.mjs';
+import { dropOnUploadZone, openLocalUploadModal } from '../helpers/browser/microscopy.mjs';
 
-async function writeTiny4dNifti(path) {
-  const buffer = Buffer.alloc(352 + 16);
-  buffer.writeInt32LE(348, 0);
-  buffer.write('n+1\0', 344, 'ascii');
-  buffer.writeInt16LE(4, 40);
-  buffer.writeInt16LE(2, 42);
-  buffer.writeInt16LE(2, 44);
-  buffer.writeInt16LE(2, 46);
-  buffer.writeInt16LE(2, 48);
-  buffer.writeInt16LE(2, 70);
-  buffer.writeInt16LE(8, 72);
-  buffer.writeFloatLE(1, 76 + 4);
-  buffer.writeFloatLE(1, 76 + 8);
-  buffer.writeFloatLE(1, 76 + 12);
-  buffer.writeFloatLE(2, 76 + 16);
-  buffer.writeFloatLE(352, 108);
-  buffer.writeUInt8(10, 123);
-  buffer.writeFloatLE(0.5, 136);
-  for (let index = 0; index < 16; index += 1) buffer[352 + index] = index * 8;
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, buffer);
-}
 
-async function writeTiny3dNifti(path) {
-  const buffer = Buffer.alloc(352 + 8);
-  buffer.writeInt32LE(348, 0);
-  buffer.write('n+1\0', 344, 'ascii');
-  buffer.writeInt16LE(3, 40);
-  buffer.writeInt16LE(2, 42);
-  buffer.writeInt16LE(2, 44);
-  buffer.writeInt16LE(2, 46);
-  buffer.writeInt16LE(2, 70);
-  buffer.writeInt16LE(8, 72);
-  buffer.writeFloatLE(1, 76 + 4);
-  buffer.writeFloatLE(1, 76 + 8);
-  buffer.writeFloatLE(1, 76 + 12);
-  buffer.writeFloatLE(352, 108);
-  buffer.writeUInt8(2, 123);
-  for (let index = 0; index < 8; index += 1) buffer[352 + index] = index * 16;
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, buffer);
-}
 
 test('upload modal imports 4D NIfTI as independently selectable calibrated timepoint series', async ({ page }, testInfo) => {
   const niftiPath = await isolatedFixturePath(testInfo, 'fmri-timeseries.nii');
   await writeTiny4dNifti(niftiPath);
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page);
 
   const initialCount = await page.locator('#series-list li').count();
-  await dropFiles(page, '#upload-zone', [{ path: niftiPath }]);
+  await dropOnUploadZone(page, [{ path: niftiPath }]);
 
   await expect(page.locator('#series-list li')).toHaveCount(initialCount + 2);
   await expect(page.locator('#series-name')).toHaveText('fmri-timeseries · time 1/2');
@@ -87,15 +47,14 @@ test('upload modal imports 4D NIfTI as independently selectable calibrated timep
 test('upload modal explains mixed native medical and microscopy folders by family', async ({ page }, testInfo) => {
   const niftiPath = await isolatedFixturePath(testInfo, 'mixed-native-brain.nii');
   const microscopyPath = await isolatedFixturePath(testInfo, 'mixed-native-cells.ome.tiff');
-  await writeTiny3dNifti(niftiPath);
+  await writeTinyNifti(niftiPath);
   await mkdir(dirname(microscopyPath), { recursive: true });
   await writeFile(microscopyPath, 'not parsed because mixed native families fail before import');
 
-  await routeConfig(page, { modalWebhookBase: '', r2PublicUrl: '', features: { cloudProcessing: false } });
-  await openUploadModal(page);
+  await openLocalUploadModal(page);
 
   const initialCount = await page.locator('#series-list li').count();
-  await dropFiles(page, '#upload-zone', [
+  await dropOnUploadZone(page, [
     { path: niftiPath, relativePath: 'mixed-native/brain.nii' },
     { path: microscopyPath, mimeType: 'image/tiff', relativePath: 'mixed-native/cells.ome.tiff' },
   ]);
