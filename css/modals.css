@@ -895,7 +895,6 @@
     display: none;
     opacity: 0;
     padding: var(--space-lg);
-    transition: opacity 120ms ease, display 120ms allow-discrete;
   }
   :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible {
     display: flex;
@@ -910,8 +909,6 @@
     border: 0;
     border-radius: var(--radius-dialog);
     box-shadow: var(--shadow-modal);
-    transform: translateY(4px) scale(0.98);
-    transition: transform 120ms ease;
   }
   :is(#ask-modal, #consult-modal, #upload-modal, #confirm-modal, #shortcuts-modal, #cloud-settings-modal, #annot-modal, #help-modal).visible :is(.ask-card, .help-card, .shortcuts-card) {
     transform: none;
